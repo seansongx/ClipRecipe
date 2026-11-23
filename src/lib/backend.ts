@@ -5,6 +5,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { findSimulated } from "./simulated";
 
 /** 是否运行在 Tauri 窗口中（`npm run dev` 直接用浏览器打开时为 false）。 */
 export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -13,6 +14,11 @@ const NOT_IN_TAURI = "此功能需要在桌面应用中使用";
 
 function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   if (!isTauri) return Promise.reject(new Error(NOT_IN_TAURI));
+  if (import.meta.env.DEV) {
+    // 开发环境调试面板的模拟数据不发给后端（lib/simulated.ts）；生产构建里这段不存在
+    const hit = findSimulated(args);
+    if (hit) return Promise.reject(new Error(`这是调试面板模拟的数据，不会发给后端（${command}：${hit}）`));
+  }
   return invoke<T>(command, args);
 }
 
@@ -296,6 +302,8 @@ export interface AppInfo {
   name: string;
   version: string;
   cpuCores: number;
+  /** 编译目标的操作系统（Rust 的 std::env::consts::OS）；前端只经 lib/platform.ts 读取平台 */
+  platform: string;
 }
 
 /** 实际使用的 FFmpeg 从哪里找到（顺序见 src-tauri/src/ffmpeg/mod.rs 的 locate_detailed）。 */
@@ -324,6 +332,8 @@ export interface FfmpegStatus {
   path: string;
   ffprobePath: string;
   version: string | null;
+  /** `ffprobe -version` 的首行 */
+  ffprobeVersion: string | null;
   error: string | null;
   source: FfmpegSource;
   /** 当前 FFmpeg 有 whisper 滤镜（语音生成字幕的内置引擎） */

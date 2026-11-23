@@ -1,6 +1,7 @@
 // 把后端事件接到各个状态仓库。在 App 挂载时调用一次。
 
 import { isTauri, jobsRunning, onFfmpegDownload, onImportProgress, onJobEvent } from "../lib/backend";
+import { loadRealPlatform } from "../lib/platform";
 import { onToolEvent } from "../lib/tools";
 import { useEncoders } from "./encoders";
 import { useFfmpeg } from "./ffmpeg";
@@ -42,6 +43,8 @@ export function initBackend(): () => void {
   const stopImport = onImportProgress((progress) => useQueue.getState().setImportProgress(progress));
   const stopFfmpeg = onFfmpegDownload((progress) => useFfmpeg.getState().setProgress(progress));
   if (isTauri) {
+    // 真实平台以后端为准（lib/platform.ts；读到之前用 User-Agent 推断）
+    void loadRealPlatform();
     // 启动时检测 FFmpeg：没有时批量处理页提示一键下载（不会自动下载）
     void useFfmpeg.getState().refresh().then(() => useEncoders.getState().refresh());
     // 页面重新加载后同步“是否正在处理”

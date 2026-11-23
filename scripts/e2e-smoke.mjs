@@ -6,6 +6,7 @@
 //   npm run e2e                     # 生产形态（内嵌前端、正式 CSP）：先 `tauri build --debug --no-bundle`，跑全部场景
 //   npm run e2e -- --mode dev       # 开发形态（`tauri dev`：vite + 调试程序），跑基础场景
 //   npm run e2e -- --mode both
+//   npm run e2e:debug-panel         # 开发形态下只跑调试面板的场景（--mode dev --debug-panel；面板只在开发环境存在）
 //   npm run e2e -- --no-build       # 生产形态不重新构建，直接用 src-tauri/target/debug/cliprecipe.exe
 //   npm run e2e -- --keep           # 保留临时目录（素材、输出、隔离的配置）便于排查
 //
@@ -37,6 +38,7 @@ import {
   REPO,
   bandStddev,
   captureNativeWindow,
+  titlebarColor,
   ffmpegPaths,
   freePort,
   grayFrame,
@@ -743,6 +745,10 @@ async function bootScenarios(s, media) {
     assert(app.ok && app.value.name === "ClipRecipe" && app.value.cpuCores > 0, `app_info：${JSON.stringify(app)}`);
     const ff = await page.invoke("ffmpeg_status");
     assert(ff.ok && ff.value.available, `ffmpeg_status：${JSON.stringify(ff)}`);
+    // 平台来源（src/lib/platform.ts）：后端报告编译目标，前端写到 <html data-platform>（本测试只在 Windows 上运行）
+    assert(app.value.platform === "windows", `app_info.platform 应为 windows：${JSON.stringify(app.value)}`);
+    await page.waitFor("页面平台为 windows", () => document.documentElement.dataset.platform === "windows");
+    assert(/^ffprobe version /.test(ff.value.ffprobeVersion ?? ""), `ffmpeg_status.ffprobeVersion：${ff.value.ffprobeVersion}`);
     const enc = await page.invoke("encoder_info", { refresh: false });
     assert(enc.ok && enc.value.h264 && enc.value.hevc, `encoder_info：${JSON.stringify(enc)}`);
     // 设置页“关于 · 运行环境”也能显示出来（同样的命令经界面调用）
@@ -1659,6 +1665,210 @@ async function ffmpegDownloadScenarios(exe, media) {
   }
 }
 
+// ------------------------------------------------------------------ 开发环境的调试面板（--mode dev --debug-panel）
+
+/** 调试面板（src/debug/，只在开发环境存在）的界面操作。 */
+const panel = {
+  async open(page) {
+    const open = await page.evaluate(() => !!document.querySelector("[data-slot=sheet-content]"));
+    if (!open) await page.evaluate(() => document.querySelector('[aria-label="调试面板"]').click());
+    await page.waitFor("调试面板打开", () => !!document.querySelector("[data-slot=sheet-content] [role=switch]"));
+  },
+  async close(page) {
+    await page.evaluate(() => document.querySelector("[data-slot=sheet-content] [data-slot=sheet-close]")?.click());
+    await page.waitFor("调试面板关闭", () => !document.querySelector("[role=dialog]"));
+  },
+  /** 打开 / 关闭一项状态模拟（按开关旁的标题）。 */
+  async sim(page, label, on) {
+    await panel.open(page);
+    await page.evaluate(
+      (label, on) => {
+        const sw = [...document.querySelectorAll("[data-slot=sheet-content] [role=switch]")].find((s) =>
+          s.closest("[data-slot=field]").textContent.includes(label),
+        );
+        if ((sw.getAttribute("aria-checked") === "true") !== on) sw.click();
+      },
+      label,
+      on,
+    );
+    await page.waitFor(
+      `模拟“${label}”${on ? "打开" : "关闭"}`,
+      (label, on) =>
+        [...document.querySelectorAll("[data-slot=sheet-content] [role=switch]")]
+          .find((s) => s.closest("[data-slot=field]").textContent.includes(label))
+          .getAttribute("aria-checked") === String(on),
+      [label, on],
+    );
+  },
+  /** 点面板里文字以 text 开头的按钮（平台、主题选项，“全部恢复默认”）。 */
+  async press(page, text) {
+    await panel.open(page);
+    const ok = await page.evaluate(
+      (text) => {
+        const b = [...document.querySelectorAll("[data-slot=sheet-content] button")].find((x) => x.textContent.trim().startsWith(text));
+        b?.click();
+        return !!b;
+      },
+      text,
+    );
+    assert(ok, `调试面板里没有按钮“${text}”`);
+  },
+};
+
+const ipcCount = (page) => page.evaluate(() => window.__e2e.ipc.length);
+const ipcSince = (page, n) => page.evaluate((n) => window.__e2e.ipc.slice(n).map((r) => ({ cmd: r.cmd, args: JSON.stringify(r.args ?? null) })), n);
+const readJson = (file) => (fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : null);
+
+/**
+ * 调试面板在真实的桌面应用（tauri dev）里不改动、不污染真实数据：模拟的队列行不写进 queue.json、对模拟数据的操作不发给后端、
+ * 重启后没有“文件缺失”；FFmpeg 模拟时下载 / 取消 / 重新检测不调用后端；“全部恢复默认”不改主题；模拟非 Windows 平台时标题栏恢复系统默认。
+ */
+async function debugPanelScenarios(s, media) {
+  const queueFile = path.join(s.configDir, "queue.json");
+  const settingsFile = path.join(s.configDir, "settings.json");
+  const FAKE = /示例视频|debug-sim-/;
+
+  await scenario(s, "调试面板：队列模拟不写进 queue.json、对模拟行的操作不发给后端，重启后没有文件缺失警告", async () => {
+    let page = s.page;
+    await ui.clearQueue(page);
+    await ui.dropOnQueue(page, [media.a]);
+    await ui.waitRows(page, "导入一个真实视频", (r) => r.length === 1);
+    const n0 = await ipcCount(page);
+    await panel.sim(page, "队列里各种状态的任务", true);
+    await panel.close(page);
+    await ui.waitRows(page, "注入 10 个模拟行", (r) => r.length === 11);
+    await sleep(1500); // 队列保存的防抖是 800 ms
+    let saved = fs.readFileSync(queueFile, "utf8");
+    assert(saved.includes(path.basename(media.a)), `queue.json 应保存真实的视频：${saved.slice(0, 300)}`);
+    assert(!FAKE.test(saved), `queue.json 含模拟行：${saved.slice(0, 300)}`);
+
+    // 停止：模拟的处理中 / 等待行在前端取消
+    await page.evaluate(() => [...document.querySelectorAll("main footer button")].find((b) => b.textContent.includes("停止")).click());
+    await ui.waitRows(page, "模拟行全部取消", (r) => r.length === 11 && !r.some((x) => /处理中|等待/.test(x.state)));
+    // 播放模拟行：命令在前端被拒绝，界面说明是模拟数据
+    await page.evaluate(() =>
+      [...document.querySelectorAll("li[data-row-index]")]
+        .find((li) => li.innerText.includes("示例视频 03"))
+        .dispatchEvent(new MouseEvent("dblclick", { bubbles: true })),
+    );
+    await page.waitFor("播放模拟行时说明是模拟数据", () => document.querySelector("[role=dialog]")?.innerText.includes("调试面板模拟的数据"));
+    await page.escape();
+    await page.waitFor("预览关闭", () => !document.querySelector("[role=dialog]"));
+    const sent = (await ipcSince(page, n0)).filter(
+      (r) => FAKE.test(r.args) || ["stop_jobs", "cancel_task", "start_jobs", "prioritize_task"].includes(r.cmd),
+    );
+    assert(sent.length === 0, `模拟数据被发给了后端：${JSON.stringify(sent).slice(0, 600)}`);
+
+    // 模拟开着时退出、再启动：模拟按 localStorage 重新打开，真实视频从 queue.json 恢复，没有“已不存在”
+    await s.stop({ graceful: true });
+    saved = fs.readFileSync(queueFile, "utf8");
+    assert(!FAKE.test(saved), `退出后 queue.json 含模拟行：${saved.slice(0, 300)}`);
+    await s.start();
+    page = s.page;
+    await ui.waitRows(page, "重启后：真实视频恢复 + 模拟重新打开", (r) => r.length === 11 && r.some((x) => x.name === path.basename(media.a)));
+    const text = await page.evaluate(() => document.body.innerText);
+    assert(!/已不存在|无法恢复/.test(text), `重启后出现缺失警告：${text.match(/.*(已不存在|无法恢复).*/)?.[0]}`);
+    await panel.sim(page, "队列里各种状态的任务", false);
+    await panel.close(page);
+    await ui.waitRows(page, "关闭模拟后只剩真实视频", (r) => r.length === 1 && r[0].name === path.basename(media.a));
+    return `queue.json 只有 ${path.basename(media.a)}；停止 / 播放模拟行没有发出后端命令；重启后没有缺失警告`;
+  });
+
+  await scenario(s, "调试面板：FFmpeg 模拟时下载 / 取消 / 重新检测不调用后端", async () => {
+    const page = s.page;
+    const n0 = await ipcCount(page);
+    await panel.sim(page, "缺少 FFmpeg", true);
+    await panel.close(page);
+    await page.waitFor("未找到 FFmpeg 提示", () => !!document.querySelector('[aria-label="未找到 FFmpeg"]'));
+    await page.evaluate(() =>
+      [...document.querySelectorAll('[aria-label="未找到 FFmpeg"] button')].find((b) => b.textContent.includes("下载 FFmpeg")).click(),
+    );
+    await page.waitFor("模拟的下载进度", () => !!document.querySelector("[data-testid=ffmpeg-download-progress]"));
+    await page.evaluate(() =>
+      [...document.querySelectorAll("[data-testid=ffmpeg-download-progress] button")].find((b) => b.textContent.includes("取消")).click(),
+    );
+    await page.waitFor("取消后下载进度消失", () => !document.querySelector("[data-testid=ffmpeg-download-progress]"));
+    await ui.nav(page, "settings", "设置");
+    await page.click({ selector: "[role=tab]", text: "关于" });
+    await page.waitFor("运行环境显示未找到", () => document.querySelector("main").innerText.includes("未找到可用的 FFmpeg"));
+    await page.click({ selector: "button", textIncludes: "重新检测 FFmpeg", within: "main" });
+    await sleep(500);
+    await ui.nav(page, "batch", "视频队列");
+    const sent = (await ipcSince(page, n0)).filter((r) =>
+      ["download_ffmpeg", "cancel_ffmpeg_download", "remove_managed_ffmpeg", "redetect_ffmpeg"].includes(r.cmd),
+    );
+    assert(sent.length === 0, `模拟时调用了后端：${JSON.stringify(sent)}`);
+    await panel.sim(page, "缺少 FFmpeg", false);
+    await panel.close(page);
+    await page.waitFor("关闭模拟后提示消失", () => !document.querySelector('[aria-label="未找到 FFmpeg"]'));
+    return "下载、取消、重新检测都只在前端模拟";
+  });
+
+  await scenario(s, "调试面板：“全部恢复默认”只恢复面板自己的选择，不改设置里的主题", async () => {
+    const page = s.page;
+    await panel.press(page, "深色");
+    await page.waitFor("深色主题", () => document.documentElement.dataset.theme === "dark");
+    await sleep(800); // 设置保存的防抖是 300 ms
+    assert(readJson(settingsFile)?.theme === "dark", `settings.json 的主题应为 dark：${JSON.stringify(readJson(settingsFile))}`);
+    await panel.press(page, "macOS");
+    await page.waitFor("模拟 macOS", () => document.documentElement.dataset.platform === "macos");
+    await panel.sim(page, "处理记录里各级别日志", true);
+    await panel.press(page, "全部恢复默认");
+    await page.waitFor("平台恢复为真实的 Windows", () => document.documentElement.dataset.platform === "windows");
+    await sleep(800);
+    const state = await page.evaluate(() => ({
+      theme: document.documentElement.dataset.theme,
+      stored: localStorage.getItem("cliprecipe.debug-panel"),
+      switches: [...document.querySelectorAll("[data-slot=sheet-content] [role=switch]")].map((s) => s.getAttribute("aria-checked")),
+    }));
+    assert(readJson(settingsFile)?.theme === "dark", `恢复默认改了 settings.json 的主题：${JSON.stringify(readJson(settingsFile))}`);
+    assert(state.theme === "dark" && state.stored === null && state.switches.every((v) => v === "false"), JSON.stringify(state));
+    await panel.close(page);
+    return "主题仍为深色（settings.json 与页面），模拟全部关闭，面板的 localStorage 已清除";
+  });
+
+  await scenario(s, "调试面板：模拟 macOS / Linux 时标题栏恢复系统默认颜色，切回 Windows 重新按主题着色", async () => {
+    const page = s.page;
+    const pid = s.appPid();
+    // 看系统标题栏实际显示的像素（Windows 不能读回 DWM 的标题栏颜色属性）
+    const color = async (name) => {
+      await sleep(800);
+      const file = path.join(REPORT, `dev-window-${name}.png`);
+      const rgb = await titlebarColor(pid, file);
+      (s.shots ??= []).push(file);
+      return rgb;
+    };
+    const near = (a, b, tol = 3) => a.every((v, i) => Math.abs(v - b[i]) <= tol);
+    const hex = (c) => `#${c.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+    // 主题的 --titlebar（深色主题，上一个场景设为深色）换算成 sRGB
+    const expected = await page.evaluate(() => {
+      const probe = document.createElement("span");
+      probe.style.color = "var(--titlebar)";
+      document.body.append(probe);
+      const css = getComputedStyle(probe).color;
+      probe.remove();
+      const ctx = document.createElement("canvas").getContext("2d");
+      ctx.fillStyle = css;
+      ctx.fillRect(0, 0, 1, 1);
+      return [...ctx.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+    });
+    const windows = await color("windows-colored");
+    assert(near(windows, expected), `Windows 下标题栏应是主题的 --titlebar ${hex(expected)}，实际 ${hex(windows)}`);
+    const seen = [];
+    for (const name of ["macOS", "Linux"]) {
+      await panel.press(page, name);
+      const c = await color(`${name.toLowerCase()}-default`);
+      seen.push(`${name} ${hex(c)}`);
+      assert(!near(c, expected, 4), `模拟 ${name} 时标题栏应恢复系统默认颜色，实际仍是主题色 ${hex(c)}`);
+    }
+    await panel.press(page, "真实");
+    const back = await color("windows-recolored");
+    assert(near(back, expected), `切回 Windows 后标题栏应重新着色为 ${hex(expected)}，实际 ${hex(back)}`);
+    await panel.close(page);
+    return `Windows ${hex(windows)}（= --titlebar）→ ${seen.join("、")}（系统默认）→ 切回 ${hex(back)}`;
+  });
+}
+
 async function saveShot(s, label) {
   if (!s.page) return;
   try {
@@ -1738,6 +1948,12 @@ async function runMode(mode, media) {
     results.push({ mode, name: "启动应用", status: "fail", details: e.message, artifacts: await saveArtifacts(s, "start"), secs: "-" });
     log(`✘ [${mode}] 启动应用：${e.message}`);
     await s.stop({ graceful: false });
+    return;
+  }
+  if (mode === "dev" && opt("--debug-panel")) {
+    // 只跑调试面板的场景（面板只在开发环境存在）：npm run e2e:debug-panel
+    await debugPanelScenarios(s, media);
+    await s.stop({ graceful: true });
     return;
   }
   await bootScenarios(s, media);

@@ -4,7 +4,7 @@
 import { CircleAlert, Cpu, Loader } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import type { EncoderInfo } from "@/lib/backend";
 import { describeEncoder, useEncoders } from "@/state/encoders";
 import { SOURCE_LABELS, useFfmpeg } from "@/state/ffmpeg";
@@ -105,7 +105,8 @@ function FfmpegStatus() {
   );
 }
 
-export default function StatusBar() {
+/** `extra`：状态栏最右端的附加内容（开发环境的调试面板入口，见 App.tsx）。 */
+export default function StatusBar({ extra }: { extra?: ReactNode }) {
   const items = useQueue((s) => s.items);
   const selected = useQueue((s) => s.selected);
   const importing = useQueue((s) => s.importing);
@@ -129,6 +130,7 @@ export default function StatusBar() {
       <ToolStatus />
       <span className="ml-auto flex items-center">
         <FfmpegStatus />
+        {extra}
       </span>
     </footer>
   );

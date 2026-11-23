@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { isTauri, setWindowChrome, windowReady, type ThemeSetting } from "../lib/backend";
+import { usePlatform, type Platform } from "../lib/platform";
 import { useSettings } from "./settings";
 
 export type Theme = "light" | "dark";
@@ -66,8 +67,11 @@ function cssVar(name: string, over = "--background"): string {
   return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 }
 
-/** 把主题应用到页面与窗口。 */
-function applyTheme(theme: Theme, preference: ThemeSetting): Promise<void> {
+/**
+ * 把主题应用到页面与窗口。窗口主题（系统标题栏深浅）与底色各平台都设置；标题栏 / 标题文字 / 边框着色只有 Windows 11 的 DWM 支持，
+ * 只在平台为 Windows 时换算并传给后端；其它平台传空串，后端把这三个颜色恢复为系统默认（开发环境模拟平台来回切换时结果确定）。
+ */
+function applyTheme(theme: Theme, preference: ThemeSetting, platform: Platform): Promise<void> {
   // index.css 的深色变量与 shadcn 的 dark: 变体都以 data-theme 为准
   document.documentElement.dataset.theme = theme;
   try {
@@ -76,12 +80,13 @@ function applyTheme(theme: Theme, preference: ThemeSetting): Promise<void> {
     // 忽略：只影响浏览器预览时的初始主题
   }
   if (!isTauri) return Promise.resolve();
+  const caption = platform === "windows";
   return setWindowChrome({
     preference,
     dark: theme === "dark",
-    titlebar: cssVar("--titlebar"),
-    text: cssVar("--foreground"),
-    border: cssVar("--border"),
+    titlebar: caption ? cssVar("--titlebar") : "",
+    text: caption ? cssVar("--foreground") : "",
+    border: caption ? cssVar("--border") : "",
     background: cssVar("--background"),
   }).catch(() => {});
 }
@@ -92,9 +97,10 @@ export function useApplyTheme(theme: Theme): void {
   const setting = useSettings((s) => s.settings.theme);
   // 设置读取前用首帧时的偏好（boot-theme.js 读取的就是同一个设置）
   const preference: ThemeSetting = loaded ? setting : bootPreference();
+  const platform = usePlatform();
   useEffect(() => {
-    void applyTheme(theme, preference);
-  }, [theme, preference]);
+    void applyTheme(theme, preference, platform);
+  }, [theme, preference, platform]);
   useEffect(() => {
     if (!isTauri) return;
     // 两帧之后：React 的首屏已提交并绘制

@@ -28,7 +28,8 @@ import { Spinner } from "@/components/ui/spinner";
 import Hint from "@/components/Hint";
 import { COVER_EXTENSIONS, isTauri, pickFile, SUBTITLE_EXTENSIONS } from "@/lib/backend";
 import { dirName, formatBitrate, formatDuration, formatFps, formatSize } from "@/lib/format";
-import { KEYS } from "@/lib/shortcuts";
+import { isModKey } from "@/lib/platform";
+import { matchShortcut, useShortcutLabels } from "@/lib/shortcuts";
 import { cn, scrollViewport } from "@/lib/utils";
 import { usePreview } from "@/state/preview";
 import { useQueue, type QueueItem } from "@/state/queue";
@@ -192,6 +193,7 @@ function Row({
   onShowInfo: (item: QueueItem) => void;
 }) {
   const { select, cancel } = useQueue.getState();
+  const keys = useShortcutLabels();
   const isActive = item.state === "running" || item.state === "waiting";
   return (
     <ContextMenu>
@@ -323,7 +325,7 @@ function Row({
       <ContextMenuContent className="min-w-44">
         <ContextMenuItem onClick={() => usePreview.getState().playSource(item)}>
           <Play /> 播放
-          <ContextMenuShortcut>Enter</ContextMenuShortcut>
+          <ContextMenuShortcut>{keys.play}</ContextMenuShortcut>
         </ContextMenuItem>
         <ContextMenuItem onClick={() => onShowInfo(item)}>
           <Info /> 媒体信息
@@ -339,7 +341,7 @@ function Row({
           }}
         >
           <X /> {isActive ? "取消处理" : "移除所选"}
-          {!isActive && <ContextMenuShortcut>{KEYS.remove}</ContextMenuShortcut>}
+          {!isActive && <ContextMenuShortcut>{keys.remove}</ContextMenuShortcut>}
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
@@ -396,8 +398,9 @@ function useDragReorder(container: RefObject<HTMLDivElement | null>) {
 }
 
 /**
- * 键盘操作（列表获得焦点时，像系统的列表控件）：↑↓ / Home / End 移动并选中，Shift 扩展选择，Ctrl 只移动焦点；
- * 空格切换选中，Enter 播放，Ctrl+A 全选，Delete 移除所选。点击：单选；Ctrl 加选；Shift 连续选择。
+ * 键盘操作（列表获得焦点时，像系统的列表控件）：↑↓ / Home / End 移动并选中，Shift 扩展选择，主修饰键只移动焦点；
+ * 空格切换选中，播放、全选、移除所选按 lib/shortcuts.ts。点击：单选；主修饰键加选；Shift 连续选择。
+ * 主修饰键：macOS 是 ⌘，其余是 Ctrl（lib/platform.ts）。
  */
 function useListKeyboard(list: RefObject<HTMLUListElement | null>) {
   const items = useQueue((s) => s.items);
@@ -411,7 +414,7 @@ function useListKeyboard(list: RefObject<HTMLUListElement | null>) {
   const onRowClick = (e: ReactMouseEvent, item: QueueItem) => {
     const { select } = useQueue.getState();
     if (e.shiftKey) select(item.id, "range");
-    else select(item.id, e.ctrlKey || e.metaKey ? "toggle" : "single");
+    else select(item.id, isModKey(e) ? "toggle" : "single");
     setActiveId(item.id);
     list.current?.focus({ preventScroll: true });
   };
@@ -421,16 +424,34 @@ function useListKeyboard(list: RefObject<HTMLUListElement | null>) {
     const queue = useQueue.getState();
     const all = queue.items;
     if (all.length === 0) return;
-    const ctrl = e.ctrlKey || e.metaKey;
+    const mod = isModKey(e);
     const index = Math.max(0, all.findIndex((i) => i.id === active));
     const moveTo = (next: number) => {
       const target = all[Math.max(0, Math.min(all.length - 1, next))];
       if (!target) return;
       setActiveId(target.id);
       if (e.shiftKey) queue.select(target.id, "range");
-      else if (!ctrl) queue.select(target.id, "single");
+      else if (!mod) queue.select(target.id, "single");
     };
     const current = all[index];
+    const native = e.nativeEvent;
+    if (matchShortcut(native, "play")) {
+      if (!current) return;
+      usePreview.getState().playSource(current);
+      e.preventDefault();
+      return;
+    }
+    if (matchShortcut(native, "remove")) {
+      if (queue.selected.size === 0) return;
+      requestRemove({ kind: "ids", ids: [...queue.selected] });
+      e.preventDefault();
+      return;
+    }
+    if (matchShortcut(native, "selectAll")) {
+      queue.selectAll();
+      e.preventDefault();
+      return;
+    }
     switch (e.key) {
       case "ArrowDown":
         moveTo(active ? index + 1 : 0);
@@ -455,19 +476,6 @@ function useListKeyboard(list: RefObject<HTMLUListElement | null>) {
           queue.select(current.id, "toggle");
           setActiveId(current.id);
         }
-        break;
-      case "Enter":
-        if (current && !ctrl) usePreview.getState().playSource(current);
-        else return;
-        break;
-      case "Delete":
-        if (queue.selected.size === 0) return;
-        requestRemove({ kind: "ids", ids: [...queue.selected] });
-        break;
-      case "a":
-      case "A":
-        if (!ctrl || e.shiftKey || e.altKey) return;
-        queue.selectAll();
         break;
       default:
         return;
@@ -494,6 +502,7 @@ export default function QueueList({ hovering }: { hovering: boolean }) {
   const { dragId, drop, onGripDown } = useDragReorder(container);
   const { active, onRowClick, onKeyDown, onFocus } = useListKeyboard(list);
   const [infoItem, setInfoItem] = useState<QueueItem | null>(null);
+  const keys = useShortcutLabels();
 
   return (
     <div
@@ -520,7 +529,7 @@ export default function QueueList({ hovering }: { hovering: boolean }) {
               <p className="text-foreground">把视频或文件夹拖到这里</p>
               <p className="text-xs">
                 {isTauri
-                  ? "或用“添加视频”（Ctrl+O）、“添加文件夹”（Ctrl+Shift+O）；拖入配方文件（.json）可加载参数"
+                  ? `或用“添加视频”（${keys.addVideos}）、“添加文件夹”（${keys.addFolder}）；拖入配方文件（.json）可加载参数`
                   : "当前在浏览器中预览，导入功能需要在桌面应用中使用"}
               </p>
             </div>

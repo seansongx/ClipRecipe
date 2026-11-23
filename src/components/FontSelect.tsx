@@ -7,6 +7,7 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Hint from "@/components/Hint";
 import { isTauri, listSystemFonts, pickFile, type SystemFont } from "@/lib/backend";
+import { EXAMPLE_PATHS, usePlatform } from "@/lib/platform";
 
 const FONT_EXTENSIONS = ["ttf", "ttc", "otf", "otc"];
 
@@ -32,6 +33,7 @@ function useSystemFonts(): SystemFont[] {
 
 export default function FontSelect({ value, onChange }: { value: string; onChange: (fontFile: string) => void }) {
   const fonts = useSystemFonts();
+  const platform = usePlatform();
   const [customChosen, setCustomChosen] = useState(false);
   const inList = fonts.some((f) => f.path === value);
   const custom = customChosen || (value !== "" && !inList);
@@ -84,7 +86,7 @@ export default function FontSelect({ value, onChange }: { value: string; onChang
           <InputGroupInput
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            placeholder="字体文件路径（.ttf / .ttc / .otf）"
+            placeholder={`字体文件路径（.ttf / .ttc / .otf），如 ${EXAMPLE_PATHS[platform].font}`}
             aria-label="字体文件路径"
           />
           <InputGroupAddon align="inline-end">

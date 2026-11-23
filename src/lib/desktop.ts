@@ -25,6 +25,8 @@ export const browserKeyEvents = new WeakSet<Event>();
 /** 只对浏览器有意义的按键。 */
 export function isBrowserShortcut(e: KeyboardEvent): boolean {
   const key = e.key;
+  // 有意不按平台区分（不用 lib/platform.ts 的 isModKey）：这里拦的是 WebView 自己的快捷键，Ctrl 与 ⌘ 两种都拦最稳妥，
+  // 也不受调试面板的平台模拟影响。应用自己的快捷键按平台匹配，见 lib/shortcuts.ts。
   const ctrl = e.ctrlKey || e.metaKey;
   if (["F3", "F5", "F7", "BrowserBack", "BrowserForward", "BrowserRefresh", "BrowserSearch", "BrowserHome"].includes(key)) {
     return true;

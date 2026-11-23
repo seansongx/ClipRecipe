@@ -3,6 +3,7 @@ import { ClipboardPaste, FolderOpen, TriangleAlert, X } from "lucide-react";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import Hint from "@/components/Hint";
 import { checkOutputDir, isTauri, pickFolder } from "@/lib/backend";
+import { formatCombo } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 import { useLog } from "@/state/log";
 import { useQueue } from "@/state/queue";
@@ -57,7 +58,7 @@ export default function OutputPicker({
       const text = cleanPastedPath(await navigator.clipboard.readText());
       if (text) update({ outputDir: text });
     } catch (e) {
-      useLog.getState().add("warn", `无法读取剪贴板（可在输入框中按 Ctrl+V 粘贴）：${String(e)}`);
+      useLog.getState().add("warn", `无法读取剪贴板（可在输入框中按 ${formatCombo({ mod: true, label: "V" })} 粘贴）：${String(e)}`);
     }
   };
 

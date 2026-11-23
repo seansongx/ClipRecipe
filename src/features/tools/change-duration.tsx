@@ -4,6 +4,7 @@ import ChoiceGroup from "@/components/ChoiceGroup";
 import ParamField from "@/components/ParamField";
 import RangeInput from "@/components/RangeInput";
 import type { Range } from "@/lib/backend";
+import { FILE_MANAGER, usePlatform } from "@/lib/platform";
 import { defineTool, VIDEO_INPUTS, type ToolFormProps } from "./types";
 
 export type DurationMode = "multiplier" | "absolute";
@@ -29,11 +30,12 @@ function clock(seconds: number): string {
 
 function ChangeDurationForm({ value, onChange }: ToolFormProps<ChangeDurationParams>) {
   const { min, max } = value.seconds;
+  const platform = usePlatform();
   return (
     <>
       <p className="pb-1 text-xs leading-snug text-muted-foreground">
         只改写 MP4 / MOV 文件头里记录的总时长（mvhd），画面和声音逐字节保持不变、不重编码。
-        资源管理器、MediaInfo 等读取文件头的程序会显示新时长；FFmpeg / ffprobe（以及用它解析的网站）按实际数据计算，
+        {FILE_MANAGER[platform]}、MediaInfo 等读取文件头的程序会显示新时长；FFmpeg / ffprobe（以及用它解析的网站）按实际数据计算，
         仍显示真实时长。其它格式（mkv 等）不支持。
       </p>
       <ParamField label="方式">

@@ -344,6 +344,26 @@ ${hwndOf(pid)}
 [void][E2E.Win]::ShowWindow($h, 6)`);
 }
 
+/**
+ * 系统标题栏实际显示的颜色：截取窗口（含标题栏）保存到 file，取标题栏中段一条横带（第 10 行物理像素、宽度的 40%～55%，
+ * 避开左侧的标题文字与右侧的按钮）的平均颜色，返回 [r, g, b]。
+ * （DwmGetWindowAttribute 不能读回 DWMWA_CAPTION_COLOR 等属性，返回 E_INVALIDARG，所以看真实像素。）
+ */
+export async function titlebarColor(pid, file) {
+  const info = nativeWindow(pid);
+  if (!info) throw new Error("找不到应用窗口");
+  captureNativeWindow(pid, file);
+  const x = Math.round(info.width * 0.4);
+  const w = Math.round(info.width * 0.15);
+  const { ffmpeg: bin } = ffmpegPaths();
+  const buf = await run(
+    bin,
+    ["-hide_banner", "-loglevel", "error", "-i", file, "-vf", `crop=${w}:1:${x}:10,scale=1:1:flags=area,format=rgb24`, "-f", "rawvideo", "-"],
+    { encoding: "buffer" },
+  );
+  return [...buf.subarray(0, 3)];
+}
+
 /** 截取屏幕上主窗口所在的矩形（含系统标题栏，真实显示的像素），保存为 PNG。 */
 export function captureNativeWindow(pid, file) {
   powershell(`${WIN32}

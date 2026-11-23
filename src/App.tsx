@@ -10,7 +10,7 @@ import ShutdownDialog from "./components/ShutdownDialog";
 import UpdateDialog from "./components/UpdateDialog";
 import { isTauri, onOpenPaths, openProjectPage, takeLaunchPaths } from "./lib/backend";
 import { browserKeyEvents, isEditable } from "./lib/desktop";
-import { KEYS } from "./lib/shortcuts";
+import { matchShortcut, useShortcutLabels, type ShortcutId } from "./lib/shortcuts";
 import { initBackend } from "./state/events";
 import { useLog } from "./state/log";
 import { addFolder, addVideos, openPaths } from "./state/open";
@@ -28,12 +28,15 @@ import StatusBar from "./views/StatusBar";
 const ToolboxView = lazy(() => import("./views/ToolboxView"));
 const SettingsView = lazy(() => import("./views/SettingsView"));
 const ToolDialog = lazy(() => import("./views/tools/ToolDialog"));
+// 开发环境的调试面板（src/debug/，docs/PLAN.md“开发环境的调试面板”）：生产构建里 import.meta.env.DEV 是常量 false，
+// 这个动态导入连同 src/debug/ 一起被剔除，产物里没有面板与入口
+const DebugPanel = import.meta.env.DEV ? lazy(() => import("./debug/DebugPanel")) : null;
 
 const NAV = [
-  { id: "batch", label: "批量处理", icon: Layers, keys: KEYS.batch },
-  { id: "toolbox", label: "工具箱", icon: Wrench, keys: KEYS.toolbox },
-  { id: "settings", label: "设置", icon: Settings, keys: KEYS.settingsView },
-] as const;
+  { id: "batch", label: "批量处理", icon: Layers, shortcut: "batch" },
+  { id: "toolbox", label: "工具箱", icon: Wrench, shortcut: "toolbox" },
+  { id: "settings", label: "设置", icon: Settings, shortcut: "settingsView" },
+] as const satisfies readonly { id: ViewId; label: string; icon: unknown; shortcut: ShortcutId }[];
 
 const triggerId = (id: ViewId) => `nav-${id}`;
 const panelId = (id: ViewId) => `view-${id}`;
@@ -46,47 +49,43 @@ const openDocs = () =>
   openProjectPage().catch((e) => useLog.getState().add("error", `无法打开使用文档：${String(e)}`));
 
 /**
- * 全局快捷键（显示文字见 lib/shortcuts.ts）。监听 document 的冒泡阶段：输入框、菜单、对话框已处理（取消了默认行为）的按键不再处理；
- * 只有 lib/desktop.ts 当作浏览器快捷键拦下的（如 Ctrl+O）仍交给应用。
+ * 全局快捷键（按键定义与显示文字都在 lib/shortcuts.ts，按当前平台匹配：macOS 用 ⌘，其余用 Ctrl）。
+ * 监听 document 的冒泡阶段：输入框、菜单、对话框已处理（取消了默认行为）的按键不再处理；
+ * 只有 lib/desktop.ts 当作浏览器快捷键拦下的（如“添加视频”的 O）仍交给应用。
  */
 function useAppShortcuts() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented && !browserKeyEvents.has(e)) return;
       if (e.repeat && e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-      const ctrl = e.ctrlKey || e.metaKey;
       const { setView } = useView.getState();
       const handled = (() => {
-        if (e.key === "F1" && !ctrl && !e.altKey) {
+        if (matchShortcut(e, "docs")) {
           if (isTauri) void openDocs();
           return true;
         }
         if (overlayOpen()) return false;
-        if (ctrl && !e.altKey) {
-          if (e.code === "KeyO") {
-            setView("batch");
-            void (e.shiftKey ? addFolder() : addVideos());
-            return true;
-          }
-          if (e.shiftKey) return false;
-          if (e.key === ",") {
-            setView("settings");
-            return true;
-          }
-          const view = ({ Digit1: "batch", Digit2: "toolbox", Digit3: "settings" } as const)[e.code as "Digit1"];
-          if (view) {
-            setView(view);
-            return true;
-          }
-          if (e.key === "Enter" && !isEditable(e.target)) {
-            const queue = useQueue.getState();
-            if (useView.getState().view !== "batch" || queue.running || queue.importing || queue.items.length === 0) return false;
-            void queue.start(useRecipe.getState().recipe);
-            return true;
-          }
-          return false;
+        if (matchShortcut(e, "addVideos") || matchShortcut(e, "addFolder")) {
+          setView("batch");
+          void (e.shiftKey ? addFolder() : addVideos());
+          return true;
         }
-        if (e.key === "Escape" && !e.shiftKey && !isEditable(e.target)) {
+        if (matchShortcut(e, "settings")) {
+          setView("settings");
+          return true;
+        }
+        const view = NAV.find((item) => matchShortcut(e, item.shortcut))?.id;
+        if (view) {
+          setView(view);
+          return true;
+        }
+        if (matchShortcut(e, "start") && !isEditable(e.target)) {
+          const queue = useQueue.getState();
+          if (useView.getState().view !== "batch" || queue.running || queue.importing || queue.items.length === 0) return false;
+          void queue.start(useRecipe.getState().recipe);
+          return true;
+        }
+        if (matchShortcut(e, "stop") && !isEditable(e.target)) {
           const queue = useQueue.getState();
           if (!queue.running || useView.getState().view !== "batch") return false;
           void queue.stop();
@@ -128,6 +127,7 @@ export default function App() {
   const setView = useView((s) => s.setView);
   const [theme, toggleTheme] = useTheme();
   const settingsLoaded = useSettings((s) => s.loaded);
+  const keys = useShortcutLabels();
 
   useApplyTheme(theme);
   useAppShortcuts();
@@ -164,8 +164,8 @@ export default function App() {
                 CR
               </div>
               <TabsList aria-label="主导航" className="w-full">
-                {NAV.map(({ id, label, icon: Icon, keys }) => (
-                  <Hint key={id} label={label} keys={keys} side="right">
+                {NAV.map(({ id, label, icon: Icon, shortcut }) => (
+                  <Hint key={id} label={label} keys={keys[shortcut]} side="right">
                     <TabsTrigger
                       value={id}
                       id={triggerId(id)}
@@ -206,7 +206,15 @@ export default function App() {
             </Suspense>
           </main>
         </div>
-        <StatusBar />
+        <StatusBar
+          extra={
+            DebugPanel && (
+              <Suspense fallback={null}>
+                <DebugPanel />
+              </Suspense>
+            )
+          }
+        />
       </div>
       <PreviewModal />
       <ShutdownDialog />

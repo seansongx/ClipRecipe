@@ -111,9 +111,26 @@
   --warning: oklch(0.828 0.189 84.429);
 }
 
+/*
+ * 界面字体（--font-ui，经 --font-sans 用于全应用）：各平台的系统界面字体与中文字体。Mira 预设的 Inter 是远程 / 打包字体，
+ * 本应用的 CSP 不允许。平台以 <html data-platform> 为准（src/lib/platform.ts 写入，开发环境可由调试面板模拟），
+ * 没有该属性时按 Windows。
+ */
+:root {
+  --font-ui: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+[data-platform="macos"] {
+  --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+}
+
+[data-platform="linux"] {
+  --font-ui: system-ui, "Ubuntu", "Cantarell", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", sans-serif;
+}
+
 @theme inline {
-  /* Mira 预设的字体是 Inter（远程 / 打包字体）；本应用的 CSP 不允许远程字体，用系统界面字体 */
-  --font-sans: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  /* 按平台切换的系统界面字体，见上方 --font-ui */
+  --font-sans: var(--font-ui);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);

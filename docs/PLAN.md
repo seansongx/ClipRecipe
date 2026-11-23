@@ -42,6 +42,9 @@ components/              基于 shadcn 组合的业务控件：范围输入、�
 state/                   队列、配方、设置、任务进度
 lib/backend.ts           命令与事件封装，类型与后端 serde 结构一致
 lib/utils.ts             cn()（合并 className）、scrollViewport()
+lib/platform.ts          平台来源（全应用只从这里读平台，见“平台来源”）
+lib/shortcuts.ts         快捷键的定义、显示文字与按键匹配
+debug/                   开发环境的调试面板（生产构建不含，见“开发环境的调试面板”）
 ```
 
 - 界面文字用中文。
@@ -88,7 +91,8 @@ lib/utils.ts             cn()（合并 className）、scrollViewport()
 界面要像桌面程序而不是网页（参考剪映专业版那种深色、紧凑的工具感，但不照抄布局与图标）。新界面照下面做，全局部分已经实现：
 
 - **窗口**：保留系统窗口框架（贴靠布局、缩放边框、阴影、圆角、系统菜单都由系统提供）。主窗口隐藏创建，前端画好第一帧后
-  `window_ready` 才显示；Windows 11 的标题栏 / 标题文字 / 边框颜色经 DWM 设为 `--titlebar` / `--foreground` / `--border`（`state/theme.ts` 在 canvas 上把 oklch 换算成 `#rrggbb`，带透明度的叠在 `--background` 上）；
+  `window_ready` 才显示；Windows 11 的标题栏 / 标题文字 / 边框颜色经 DWM 设为 `--titlebar` / `--foreground` / `--border`（`state/theme.ts` 在 canvas 上把 oklch 换算成 `#rrggbb`，带透明度的叠在 `--background` 上；
+  只在平台为 Windows 时换算并传给后端；其它平台传空串，后端把三个颜色恢复为系统默认 `DWMWA_COLOR_DEFAULT`）；
   窗口显示前的底色是 `desktop.rs` 的 `BOOT_BACKGROUND_*`（`--background` 换算成的 `#ffffff` / `#0a0a0a`，单元测试按 `index.css` 核对），
   Windows 10 与其它平台只设置窗口深浅主题（`src-tauri/src/desktop.rs`、`state/theme.ts`）。窗口位置、大小、最大化由
   tauri-plugin-window-state 记在配置目录的 `window-state.json`（保存的位置不在任何显示器上时移回主屏中央）；单实例
@@ -113,13 +117,18 @@ lib/utils.ts             cn()（合并 className）、scrollViewport()
   控件边界（输入框、复选框、开关）与背景 3:1，禁用的控件按 WCAG 豁免；e2e 的界面状态审计（`scripts/e2e-audit-page.js`）逐组检查这些规则。
   **注意**：目前用的是 shadcn 默认配色，它的 `--input` / `--muted` 达不到这些门槛（浅色主题输入框与开关边界约 1.26:1，竖向 Tabs 选中项约 1.09），
   审计会报出来；要通过只能调整主题变量，这需要项目所有者决定。
-- **快捷键**：显示文字集中在 `lib/shortcuts.ts`（设置 → 关于里的快捷键表也读它）；全局快捷键在 App.tsx 的 `useAppShortcuts`
-  （Ctrl+O / Ctrl+Shift+O 添加视频 / 文件夹、Ctrl+Enter 开始、Esc 停止、Ctrl+, 设置、Ctrl+1/2/3 切换页面、F1 文档），
-  有对话框或菜单打开时让给它们；队列列表（listbox）获得焦点时：方向键 / Home / End、Shift 扩展选择、空格、Enter 播放、Ctrl+A、Delete。
-  新增快捷键时同时更新 `lib/shortcuts.ts` 与按钮提示的 `keys`。对话框的焦点限制与关闭后焦点回到触发按钮由 Base UI 负责。
+- **快捷键**：`lib/shortcuts.ts` 是唯一来源：每个快捷键定义一次按键组合（主修饰键 `mod`、Shift、Alt、主键），
+  按当前平台（`lib/platform.ts`）生成显示文字（macOS 用符号 `⇧⌘O`，其余 `Ctrl+Shift+O`）并匹配按键事件（`matchShortcut`：macOS 的主修饰键是
+  metaKey，其余是 ctrlKey，另一个修饰键必须没按）。按钮提示的 `keys`、菜单里的 `ContextMenuShortcut`、设置 → 关于里的快捷键表（`shortcutGroups`）
+  都用 `useShortcutLabels()` / `shortcutLabel()` 取文字，不要写死 `Ctrl+`。全局快捷键在 App.tsx 的 `useAppShortcuts`
+  （添加视频 / 文件夹 ⌃O / ⌃⇧O、开始 ⌃Enter、Esc 停止、⌃, 设置、⌃1/2/3 切换页面、F1 文档；⌃ 指主修饰键），
+  有对话框或菜单打开时让给它们；队列列表（listbox）获得焦点时：方向键 / Home / End、Shift 扩展选择、空格、Enter 播放、全选、移除所选
+  （Windows / Linux 为 Delete，macOS 为 ⌫）。新增快捷键时在 `lib/shortcuts.ts` 加定义，按钮提示与处理都引用它的 ID。
+  对话框的焦点限制与关闭后焦点回到触发按钮由 Base UI 负责。
 - **滚动条与滚动**：长内容用 shadcn ScrollArea；原生滚动条（文本框、对话框）由 `index.css` 设为细的、颜色与 ScrollArea 滑块相同（`--border`，标准的 `scrollbar-width` / `scrollbar-color`），没有回弹滚动。
 - **密度与字体**：密度来自 Mira 本身（控件 h-7、正文 text-xs/relaxed 即 12 px），不要再用自定义的高度、字号去压缩或放大组件。
-  字体是系统界面字体（Segoe UI / PingFang SC / Microsoft YaHei，`--font-sans`；Mira 预设的 Inter 是远程 / 打包字体，CSP 不允许），
+  字体是各平台的系统界面字体（`index.css` 的 `--font-ui` 按 `<html data-platform>` 切换，经 `--font-sans` 生效：Windows 为 Segoe UI / Microsoft YaHei，
+  macOS 为系统字体 / PingFang SC，Linux 为 system-ui / Noto Sans CJK SC 等；不要在组件上写字体。Mira 预设的 Inter 是远程 / 打包字体，CSP 不允许），
   `body` 的字号是 Mira 的正文 `text-xs/relaxed`（不要改 `<html>` 的字号，那是 rem 的基准），数字等宽（全局 `tabular-nums`）；
   页面标题栏高 44 px（`h-11`）、工具栏按钮 `size="sm"`；圆角用 Mira 的 `--radius`（0.625rem）刻度；
   不要做网页式的大号空状态、大圆角卡片、居中的营销文案。
@@ -127,6 +136,58 @@ lib/utils.ts             cn()（合并 className）、scrollViewport()
 - **状态**：窗口底部状态栏（`views/StatusBar.tsx`）显示队列数量、运行状态与总进度、FFmpeg 与实际会用的编码器（读后端已缓存的探测结果 `encoder_info_cached`，还没探测时如实说明）；批量处理或独立工具运行时
   任务栏按钮显示进度（`state/taskbar.ts` → `set_taskbar_progress`），结束清除，有失败时显示红色直到用户回到窗口。
 - 功能完成后把 `registry.ts` 的 `status` 改为 `done`，并更新 FEATURES.md 的状态标记。
+
+#### 平台来源（`lib/platform.ts`）
+
+前端**只从这里**读当前平台（`"windows" | "macos" | "linux"`），不要在别处读 `navigator.userAgent` / `navigator.platform`，
+也不要自己用 `e.ctrlKey || e.metaKey` 判断主修饰键。
+
+- 真实平台：桌面应用里是后端 `app_info` 的 `platform`（Rust 编译目标的 `std::env::consts::OS`），启动时 `state/events.ts` 调用
+  `loadRealPlatform()` 读取；读到之前、以及 `npm run dev` 在浏览器里跑（没有 Tauri）时用 User-Agent 推断（WebView 的 UA 与编译目标一致）。
+- 用法：组件用 `usePlatform()`（平台变化时重新渲染），事件处理等用 `getPlatform()`；主修饰键用 `isModKey(e)`；
+  快捷键用 `lib/shortcuts.ts`；系统文件管理器的名字 `FILE_MANAGER[platform]`；说明文字与占位符里的示例路径 `EXAMPLE_PATHS[platform]`
+  （只是示例，真实路径的处理与平台无关）。`<html data-platform>` 跟随当前平台（`main.tsx` 首次渲染前写入），`index.css` 据此切换字体。
+- 开发环境下可被调试面板模拟（`simulatePlatform`）；生产构建里 `import.meta.env.DEV` 是常量 false，模拟分支被剔除，永远是真实平台。
+- 后端的平台差异仍是编译期 `cfg(target_os)`，模拟不影响。
+
+#### 开发环境的调试面板（`src/debug/`）
+
+只在开发环境（`npm run dev`、`npm run tauri dev`）存在，用来在一台机器上检查各平台的前端表现和难复现的界面状态。
+
+- **入口**：状态栏最右端的小虫图标按钮，或快捷键 Ctrl+Shift+D（macOS ⇧⌘D；按**真实**平台匹配，模拟 macOS 时在 Windows 键盘上仍按
+  Ctrl+Shift+D）。打开后是右侧抽屉（shadcn Sheet）。面板里的选择存在 localStorage 的 `cliprecipe.debug-panel`，刷新后重新应用；
+  “全部恢复默认”只恢复面板自己的东西：关掉所有模拟、取消平台模拟、清除面板的 localStorage；**不改设置**（主题是真实设置，不在恢复范围内）。
+- **平台模拟**：真实 / Windows / macOS / Linux。只改前端表现：快捷键的显示与按键、界面字体、标题栏着色（只在 Windows 时调用 DWM 着色）、
+  示例路径与文件管理器名称。后端行为（编码器、字体目录、回收站、文件对话框……）仍是真实平台的，面板上有说明。
+  在 Windows 上模拟 macOS 时 ⌘ 对应 Win 键，Win+数字等会被系统拦截，验证按键可以在开发者工具里派发带 `metaKey` 的 KeyboardEvent。
+- **主题**：跟随系统 / 浅色 / 深色，直接改设置里的 `theme`（与设置页同一个状态，`state/theme.ts` 负责应用）。桌面应用里会保存到设置文件；
+  浏览器里没有设置文件，由面板的 localStorage 记住。
+- **状态模拟**（`src/debug/simulations.ts`）：把模拟数据注入前端状态层（`state/ffmpeg`、`state/queue`、`state/log` 的 zustand store），
+  视图照常从状态层读取，**视图里没有任何调试分支**。每项可单独打开 / 恢复：打开时记下被替换的真实值，恢复时放回；注入的队列行与日志按 ID 移除，
+  不影响用户自己的数据。桌面应用里后端异步回来的真实结果（启动检测 FFmpeg、`jobs_running`）由订阅守住：真实值记为恢复值，界面仍显示模拟值。
+  - 缺少 FFmpeg：`useFfmpeg.status` 换成“未找到、可下载”，出现批量处理页提示、状态栏与设置 → 关于 → 运行环境的对应状态，导入 / 开始处理被拦下。
+  - FFmpeg 下载进行中 / 下载失败（互斥）：`useFfmpeg.download` 为 running（进度循环推进；点“取消”结束模拟）或 failed。
+  - 队列里各种状态的任务：处理中（含裂变 2/3）、等待、完成、失败、取消各 2 个，`running` 为 true，状态栏显示总进度。
+  - 处理记录里各级别日志：调试 / 信息 / 警告 / 错误各 2 条。
+  浏览器里同样可用（设置页的运行环境在浏览器里只在状态层有 FFmpeg 状态时显示 FFmpeg 两行）。
+- **模拟数据不写盘、不发给后端**（`npm run tauri dev` 里也不改动、不污染真实数据）：
+  - 模拟的队列行的 ID 与路径登记在 `lib/simulated.ts`。状态层保存队列（`unfinishedTasks` → `queue.json`）、开始处理、插队、重载同名字幕封面时
+    排除它们；停止、取消在前端把模拟行改为已取消。兜底：`lib/backend.ts` 的命令调用在参数里发现登记过的值时直接拒绝并说明是模拟数据
+    （播放、工具、预览、媒体信息等入口因此不会把假路径发给后端）。生产构建里这些检查不存在（`import.meta.env.DEV`）。
+  - 任一 FFmpeg 模拟打开期间，`useFfmpeg` 里会触发后端的操作（下载、取消下载、删除、重新检测）换成前端的：点“下载 / 重试下载”进入“下载进行中”模拟，
+    “取消”结束它，删除与重新检测只在处理记录里说明；全部 FFmpeg 模拟关闭后换回。处理记录本来就不写盘。
+  - 模拟平台时标题栏：切到 macOS / Linux 时后端把 DWM 颜色恢复为系统默认，切回 Windows 重新按主题着色。
+- **测试**：`npm run test:debug-panel`（`scripts/test-debug-panel.mjs`，用 Vite 按开发模式加载真实模块，断言保存队列排除模拟行、命令参数识别模拟值、
+  停止 / 取消不调用后端、FFmpeg 操作被替换与换回、恢复默认不改主题）；`npm run e2e:debug-panel`（`--mode dev --debug-panel`：在 `tauri dev` 的真实窗口里
+  验证 queue.json 不含模拟行、操作不发出后端命令、开着模拟重启没有缺失警告、FFmpeg 模拟不调用下载 / 重新检测、恢复默认不改 settings.json 的主题、
+  模拟 macOS / Linux 时 DWM 标题栏颜色为系统默认并在切回后恢复）。
+- **调试信息**（只读）：窗口尺寸（随缩放更新）、真实平台及来源、当前 / 模拟平台、应用版本（浏览器里读 package.json）、
+  FFmpeg / FFprobe 的路径与版本（取自后端 `ffmpeg_status`，其中 `ffprobeVersion` 为本面板新增；“缺少 FFmpeg”模拟打开时仍显示真实值；取不到时写明原因），
+  “复制全部”（剪贴板 API 被拒绝时改为选中整段后复制选区）。
+- **生产构建不含面板**：`App.tsx` 里 `const DebugPanel = import.meta.env.DEV ? lazy(() => import("./debug/DebugPanel")) : null`，
+  生产构建时条件是常量 false，动态导入连同 `src/debug/` 整个被摇树剔除；平台模块里的模拟分支同理。
+  检查：`npm run build` 后在 `dist/` 里搜“调试面板”“cliprecipe.debug-panel”“simulatePlatform”等都应搜不到。
+  其它代码不要静态导入 `src/debug/` 里的任何东西。
 
 ## 验收标准
 

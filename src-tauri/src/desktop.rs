@@ -311,7 +311,7 @@ pub struct WindowChrome {
     pub preference: ThemeSetting,
     /// 当前实际是否为深色
     pub dark: bool,
-    /// 标题栏底色（`--titlebar`）
+    /// 标题栏底色（`--titlebar`）；标题栏、标题文字、边框三个颜色为空串时恢复系统默认（前端只在 Windows 平台着色）
     pub titlebar: String,
     /// 标题文字（`--foreground`）
     pub text: String,
@@ -410,15 +410,21 @@ mod windows_chrome {
             DWMWA_USE_IMMERSIVE_DARK_MODE,
             &BOOL::from(chrome.dark),
         );
-        if let Some(c) = colorref(&chrome.titlebar) {
-            set(hwnd, DWMWA_CAPTION_COLOR, &c);
-        }
-        if let Some(c) = colorref(&chrome.text) {
-            set(hwnd, DWMWA_TEXT_COLOR, &c);
-        }
-        if let Some(c) = colorref(&chrome.border) {
-            set(hwnd, DWMWA_BORDER_COLOR, &c);
-        }
+        set(
+            hwnd,
+            DWMWA_CAPTION_COLOR,
+            &color_or_default(&chrome.titlebar),
+        );
+        set(hwnd, DWMWA_TEXT_COLOR, &color_or_default(&chrome.text));
+        set(hwnd, DWMWA_BORDER_COLOR, &color_or_default(&chrome.border));
+    }
+
+    /// `DWMWA_COLOR_DEFAULT`：交还给系统的默认颜色。
+    const DWM_COLOR_DEFAULT: COLORREF = COLORREF(0xFFFF_FFFF);
+
+    /// 颜色为空（前端不着色，例如开发环境模拟非 Windows 平台）或无法解析时恢复系统默认，而不是保留上一次的颜色。
+    fn color_or_default(hex: &str) -> COLORREF {
+        colorref(hex).unwrap_or(DWM_COLOR_DEFAULT)
     }
 
     #[cfg(test)]
@@ -427,6 +433,12 @@ mod windows_chrome {
         fn colorref_is_bgr() {
             assert_eq!(super::colorref("#00c1cd").map(|c| c.0), Some(0x00cd_c100));
             assert_eq!(super::colorref("bad"), None);
+        }
+
+        #[test]
+        fn empty_color_resets_to_system_default() {
+            assert_eq!(super::color_or_default("").0, 0xFFFF_FFFF);
+            assert_eq!(super::color_or_default("#0a0a0a").0, 0x000a_0a0a);
         }
     }
 }

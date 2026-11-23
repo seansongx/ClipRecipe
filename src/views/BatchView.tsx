@@ -24,7 +24,8 @@ import Hint from "@/components/Hint";
 import OutputPicker from "@/components/OutputPicker";
 import { folderFromDrop } from "@/components/useFolderDrop";
 import { isPointInElement, isRecipeFile, isTauri, onDragDrop } from "@/lib/backend";
-import { KEYS } from "@/lib/shortcuts";
+import { usePlatform } from "@/lib/platform";
+import { multiSelectHint, useShortcutLabels } from "@/lib/shortcuts";
 import { addFolder, addVideos, openPaths } from "@/state/open";
 import { useQueue, type SortKey } from "@/state/queue";
 import { useRecipe } from "@/state/recipe";
@@ -50,10 +51,12 @@ function QueueToolbar() {
   const selected = useQueue((s) => s.selected);
   const { selectAll, invertSelection, moveSelected, moveSelectedToTop, sortBy } = useQueue.getState();
   const none = selected.size === 0;
+  const keys = useShortcutLabels();
+  const platform = usePlatform();
 
   return (
     <div className="flex flex-wrap items-center gap-0.5 px-3 py-1.5">
-      <Hint label="全选（列表获得焦点时）" keys={KEYS.selectAll}>
+      <Hint label="全选（列表获得焦点时）" keys={keys.selectAll}>
         <Button variant="ghost" size="sm" onClick={selectAll} disabled={items.length === 0}>
           全选
         </Button>
@@ -61,7 +64,7 @@ function QueueToolbar() {
       <Button variant="ghost" size="sm" onClick={invertSelection} disabled={items.length === 0}>
         反选
       </Button>
-      <Hint label="从队列移除所选（不删除文件）" keys={KEYS.remove} disabledTrigger>
+      <Hint label="从队列移除所选（不删除文件）" keys={keys.remove} disabledTrigger>
         <Button
           variant="ghost"
           size="sm"
@@ -123,7 +126,7 @@ function QueueToolbar() {
       </DropdownMenu>
       <QueueToolsMenu />
       <span className="ml-auto truncate pl-2 text-muted-foreground">
-        Ctrl / Shift + 点击多选 · 双击播放 · 右键更多 · 拖动把手排序
+        {multiSelectHint(platform)} · 双击播放 · 右键更多 · 拖动把手排序
       </span>
     </div>
   );
@@ -175,6 +178,7 @@ export default function BatchView() {
   const recursive = useSettings((s) => s.settings.recursive);
   const outputBox = useRef<HTMLDivElement>(null);
   const hover = useWindowDrop(outputBox);
+  const keys = useShortcutLabels();
 
   return (
     <div className="flex h-full">
@@ -182,14 +186,14 @@ export default function BatchView() {
         <header className="flex h-11 shrink-0 items-center gap-2 border-b px-4">
           <h1 className="text-sm font-semibold">视频队列</h1>
           <div className="ml-auto flex gap-1.5">
-            <Hint label="添加视频" keys={KEYS.addVideos}>
+            <Hint label="添加视频" keys={keys.addVideos}>
               <Button variant="outline" size="sm" onClick={() => void addVideos()} disabled={!isTauri || !!importing}>
                 <Plus /> 添加视频
               </Button>
             </Hint>
             <Hint
               label={recursive ? "包含子目录（可在设置中修改）" : "不含子目录（可在设置中修改）"}
-              keys={KEYS.addFolder}
+              keys={keys.addFolder}
             >
               <Button variant="outline" size="sm" onClick={() => void addFolder()} disabled={!isTauri || !!importing}>
                 <FolderPlus /> 添加文件夹
@@ -217,13 +221,13 @@ export default function BatchView() {
         <footer className="flex items-center gap-3 border-t bg-card px-4 py-2">
           <OutputPicker boxRef={outputBox} dropTarget={hover?.target === "output"} />
           {running ? (
-            <Hint label="停止处理" keys={KEYS.stop}>
+            <Hint label="停止处理" keys={keys.stop}>
               <Button variant="outline" onClick={() => void stop()} className="w-28 shrink-0">
                 <Square /> 停止
               </Button>
             </Hint>
           ) : (
-            <Hint label="按当前配方处理队列" keys={KEYS.start} disabledTrigger>
+            <Hint label="按当前配方处理队列" keys={keys.start} disabledTrigger>
               <Button
                 onClick={() => void start(useRecipe.getState().recipe)}
                 disabled={!isTauri || items.length === 0 || !!importing}

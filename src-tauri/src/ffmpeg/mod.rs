@@ -262,6 +262,8 @@ pub struct FfmpegStatus {
     pub ffprobe_path: String,
     /// `ffmpeg -version` 的首行
     pub version: Option<String>,
+    /// `ffprobe -version` 的首行
+    pub ffprobe_version: Option<String>,
     pub error: Option<String>,
     /// 实际使用的 FFmpeg 从哪里找到
     pub source: FfmpegSource,
@@ -336,6 +338,7 @@ impl FfmpegStatus {
             path: located.paths.ffmpeg.to_string_lossy().into_owned(),
             ffprobe_path: located.paths.ffprobe.to_string_lossy().into_owned(),
             version: None,
+            ffprobe_version: None,
             error: Some(error),
             source: located.source,
             whisper: false,
@@ -353,6 +356,7 @@ pub fn status() -> FfmpegStatus {
         path: paths.ffmpeg.to_string_lossy().into_owned(),
         ffprobe_path: paths.ffprobe.to_string_lossy().into_owned(),
         version: None,
+        ffprobe_version: None,
         error: None,
         source: located.source,
         whisper: false,
@@ -365,9 +369,12 @@ pub fn status() -> FfmpegStatus {
             return status;
         }
     }
-    if let Err(e) = version_line(&paths.ffprobe) {
-        status.error = Some(format!("ffprobe：{e}"));
-        return status;
+    match version_line(&paths.ffprobe) {
+        Ok(line) => status.ffprobe_version = Some(line),
+        Err(e) => {
+            status.error = Some(format!("ffprobe：{e}"));
+            return status;
+        }
     }
     status.available = true;
     status.whisper = has_filter(&paths.ffmpeg, "whisper");

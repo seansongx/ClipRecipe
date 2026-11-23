@@ -12,6 +12,8 @@ pub struct AppInfo {
     name: &'static str,
     version: &'static str,
     cpu_cores: usize,
+    /// 编译目标的操作系统：`windows` / `macos` / `linux`（前端的平台来源，见 src/lib/platform.ts）
+    platform: &'static str,
 }
 
 #[tauri::command]
@@ -20,6 +22,7 @@ pub fn app_info() -> AppInfo {
         name: "ClipRecipe",
         version: env!("CARGO_PKG_VERSION"),
         cpu_cores: cpu_cores(),
+        platform: std::env::consts::OS,
     }
 }
 

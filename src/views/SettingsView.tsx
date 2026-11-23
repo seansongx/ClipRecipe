@@ -48,7 +48,8 @@ import {
   type ThemeSetting,
 } from "@/lib/backend";
 import { formatSize } from "@/lib/format";
-import { SHORTCUT_GROUPS } from "@/lib/shortcuts";
+import { EXAMPLE_PATHS, usePlatform } from "@/lib/platform";
+import { shortcutGroups } from "@/lib/shortcuts";
 import { useEncoders } from "@/state/encoders";
 import { SOURCE_LABELS, useFfmpeg } from "@/state/ffmpeg";
 import { playCompletionSound } from "@/state/finish";
@@ -584,6 +585,7 @@ function AdvancedGroup() {
 
 function FfmpegRow({ ffmpeg }: { ffmpeg: FfmpegStatus | null }) {
   const checking = useFfmpeg((s) => s.checking);
+  const platform = usePlatform();
   return (
     <Row label="FFmpeg" hint="查找顺序：环境变量 CLIPRECIPE_FFMPEG → 应用内下载 → 程序目录 → 系统 PATH">
       {!ffmpeg && "检测中…"}
@@ -605,7 +607,7 @@ function FfmpegRow({ ffmpeg }: { ffmpeg: FfmpegStatus | null }) {
           <p>未找到可用的 FFmpeg</p>
           <p className="text-xs text-muted-foreground">
             {ffmpeg.error}。可以在下方一键下载，或自行安装 FFmpeg 并加入 PATH、设置环境变量 CLIPRECIPE_FFMPEG 指向
-            ffmpeg 可执行文件（ffprobe 需在同一目录）。
+            ffmpeg 可执行文件（如 {EXAMPLE_PATHS[platform].ffmpeg}，ffprobe 需在同一目录）。
           </p>
         </>
       )}
@@ -734,7 +736,12 @@ function EnvironmentSection() {
   return (
     <Section title="运行环境">
       {!isTauri ? (
-        <Row label="状态">当前在浏览器中预览，环境信息需要在桌面应用中查看。</Row>
+        <>
+          <Row label="状态">当前在浏览器中预览，环境信息需要在桌面应用中查看。</Row>
+          {/* 浏览器里没有检测结果；状态层里有 FFmpeg 状态时（开发环境的调试面板注入）照常显示 */}
+          {ffmpeg && <FfmpegRow ffmpeg={ffmpeg} />}
+          {ffmpeg && <ManagedFfmpegRow ffmpeg={ffmpeg} />}
+        </>
       ) : (
         <>
           <Row label="CPU 核心">{info ? info.cpuCores : "读取中…"}</Row>
@@ -824,9 +831,10 @@ function AboutGroup() {
 
 /** 键盘快捷键一览（内容见 lib/shortcuts.ts）。 */
 function ShortcutsSection() {
+  const platform = usePlatform();
   return (
     <>
-      {SHORTCUT_GROUPS.map((group) => (
+      {shortcutGroups(platform).map((group) => (
         <Section key={group.title} title={`键盘快捷键 · ${group.title}`}>
           {group.items.map((item) => (
             <div key={item.label} className="flex items-center gap-4 border-b px-4 py-1.5 last:border-b-0">

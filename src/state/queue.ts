@@ -24,6 +24,7 @@ import {
   type TaskState,
 } from "../lib/backend";
 import { fileName, pathKey } from "../lib/format";
+import { isSimulated } from "../lib/simulated";
 import { requireFfmpeg } from "./ffmpeg";
 import { useLog } from "./log";
 import { useSettings } from "./settings";
@@ -185,7 +186,7 @@ export const useQueue = create<QueueState>((set, get) => ({
   },
 
   reloadSidecars: async () => {
-    const items = get().items;
+    const items = get().items.filter((i) => !isSimulated(i.id));
     if (items.length === 0) return;
     try {
       const found = await findSidecars(
@@ -290,7 +291,7 @@ export const useQueue = create<QueueState>((set, get) => ({
     set({ items: [...picked, ...items.filter((i) => !selected.has(i.id))] });
     if (running) {
       // 后端每次把一个任务移到最前：倒序提交，最终顺序与界面一致
-      const waiting = picked.filter((i) => i.state === "waiting").reverse();
+      const waiting = picked.filter((i) => i.state === "waiting" && !isSimulated(i.id)).reverse();
       for (const item of waiting) {
         prioritizeTask(item.id).catch((e) => useLog.getState().add("error", `插队失败：${String(e)}`));
       }
@@ -319,6 +320,7 @@ export const useQueue = create<QueueState>((set, get) => ({
 
     const tasks: TaskSpec[] = [];
     items.forEach((item, index) => {
+      if (isSimulated(item.id)) return;
       if (item.probeError && !item.info) return;
       if (settings.skipDone && item.state === "done") return;
       tasks.push({
@@ -370,6 +372,18 @@ export const useQueue = create<QueueState>((set, get) => ({
   },
 
   stop: async () => {
+    const active = (i: QueueItem) => i.state === "running" || i.state === "waiting";
+    // 模拟的行（lib/simulated.ts）在前端取消；只有真实的任务才通知后端
+    if (get().items.some((i) => active(i) && isSimulated(i.id))) {
+      set({
+        items: get().items.map((i) => (active(i) && isSimulated(i.id) ? { ...i, state: "cancelled", speed: 0 } : i)),
+      });
+      if (!get().items.some((i) => active(i) && !isSimulated(i.id))) {
+        const count = (state: TaskState) => get().items.filter((i) => get().runIds.includes(i.id) && i.state === state).length;
+        set({ running: false, lastRun: { done: count("done"), failed: count("failed"), cancelled: count("cancelled") } });
+        return;
+      }
+    }
     try {
       await stopJobs();
     } catch (e) {
@@ -378,6 +392,10 @@ export const useQueue = create<QueueState>((set, get) => ({
   },
 
   cancel: async (id) => {
+    if (isSimulated(id)) {
+      set({ items: patchItem(get().items, id, { state: "cancelled", speed: 0 }) });
+      return;
+    }
     try {
       await cancelTask(id);
     } catch (e) {
@@ -438,7 +456,8 @@ export const useQueue = create<QueueState>((set, get) => ({
 /** 需要保存的任务：未完成的（已完成的不保存）。 */
 export function unfinishedTasks(items: QueueItem[]): SavedTask[] {
   return items
-    .filter((item) => item.state !== "done")
+    // 开发环境调试面板模拟的行不保存（lib/simulated.ts）
+    .filter((item) => item.state !== "done" && !isSimulated(item.id))
     .map((item) => ({
       path: item.path,
       sourceRoot: item.sourceRoot,

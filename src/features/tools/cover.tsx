@@ -81,7 +81,7 @@ function CoverForm({ value, onChange }: ToolFormProps<CoverParams>) {
             onChange={(e) => onChange({ position: e.target.value })}
             placeholder="10%"
             aria-label="截取位置"
-            className="h-7 w-28 px-2 text-xs md:text-xs"
+            className="w-28"
           />
         </ParamField>
       )}
@@ -93,7 +93,6 @@ function CoverForm({ value, onChange }: ToolFormProps<CoverParams>) {
               onChange={(e) => onChange({ namePattern: e.target.value })}
               placeholder="{name}_cover"
               aria-label="截图文件名样式"
-              className="h-7 px-2 text-xs md:text-xs"
             />
           </ParamField>
           <ParamField label="格式">
@@ -113,7 +112,7 @@ function CoverForm({ value, onChange }: ToolFormProps<CoverParams>) {
               checked={value.alsoEmbed}
               onCheckedChange={(checked) => onChange({ alsoEmbed: checked === true })}
             />
-            <Label htmlFor={embedId} className="text-xs font-normal">
+            <Label htmlFor={embedId}>
               同时把截图嵌入视频作为封面
             </Label>
           </div>

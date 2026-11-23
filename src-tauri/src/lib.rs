@@ -1,6 +1,7 @@
 //! ClipRecipe 后端。目录约定见 docs/PLAN.md。
 
 pub mod commands;
+pub mod desktop;
 pub mod ffmpeg;
 pub mod fsutil;
 pub mod jobs;
@@ -11,12 +12,64 @@ pub mod preview;
 pub mod system;
 pub mod tools;
 
+/// 窗口位置与大小保存在配置目录（设置了 `CLIPRECIPE_CONFIG_DIR` 时在它里面，端到端测试因此互不干扰）。
+const WINDOW_STATE_FILE: &str = "window-state.json";
+
+/// 端到端测试（只在 `e2e-hooks` 调试构建中存在）：设置后即使配置目录被替换也启用单实例，并改用专用的应用标识，
+/// 不会与用户正在运行的 ClipRecipe 互相激活。
+#[cfg(feature = "e2e-hooks")]
+const E2E_INSTANCE_ENV: &str = "CLIPRECIPE_E2E_SINGLE_INSTANCE";
+
+fn config_dir_override() -> Option<std::path::PathBuf> {
+    std::env::var_os(commands::CONFIG_DIR_ENV)
+        .filter(|v| !v.is_empty())
+        .map(std::path::PathBuf::from)
+}
+
+/// 是否启用单实例。设置了 `CLIPRECIPE_CONFIG_DIR`（独立的一套配置，例如端到端测试）时视为另一个实例，不启用。
+fn single_instance<R: tauri::Runtime>(context: &mut tauri::Context<R>) -> bool {
+    #[cfg(feature = "e2e-hooks")]
+    if std::env::var_os(E2E_INSTANCE_ENV).is_some_and(|v| v == "1") {
+        let id = format!("{}.e2e", context.config().identifier);
+        context.config_mut().identifier = id;
+        return true;
+    }
+    let _ = context;
+    config_dir_override().is_none()
+}
+
+fn window_state_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    // 插件把文件名接在系统配置目录后面；给绝对路径时就是这个路径
+    let file = match config_dir_override() {
+        Some(dir) => {
+            // 插件只创建系统配置目录，替换的配置目录要先建好，否则保存失败
+            let _ = std::fs::create_dir_all(&dir);
+            dir.join(WINDOW_STATE_FILE).to_string_lossy().into_owned()
+        }
+        None => WINDOW_STATE_FILE.to_owned(),
+    };
+    tauri_plugin_window_state::Builder::default()
+        .with_state_flags(desktop::window_state_flags())
+        .with_filename(file)
+        .build()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut context = tauri::generate_context!();
+    let mut builder = tauri::Builder::default();
+    // 单实例插件必须最先注册
+    if single_instance(&mut context) {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            desktop::on_second_instance(app, argv, cwd)
+        }));
+    }
+    builder
+        .plugin(window_state_plugin())
         .plugin(tauri_plugin_dialog::init())
         .manage(commands::AppState::default())
         .manage(commands::system::SystemState::default())
+        .manage(desktop::DesktopState::default())
         .setup(|app| {
             if let Err(e) = commands::preview::setup(app.handle()) {
                 eprintln!("预览目录初始化失败：{e}");
@@ -26,6 +79,9 @@ pub fn run() {
                 Ok(dir) => ffmpeg::managed::set_default_root(dir.join("ffmpeg")),
                 Err(e) => eprintln!("无法确定本地数据目录，不能下载 FFmpeg：{e}"),
             }
+            desktop::remember_launch_paths(app.handle());
+            // 主窗口不由配置自动创建（tauri.conf.json 中 create: false）：先隐藏创建，首帧画好后再显示
+            desktop::create_main_window(app.handle())?;
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -40,6 +96,7 @@ pub fn run() {
             commands::app::app_info,
             commands::app::ffmpeg_status,
             commands::app::encoder_info,
+            commands::app::encoder_info_cached,
             commands::ffmpeg::download_ffmpeg,
             commands::ffmpeg::cancel_ffmpeg_download,
             commands::ffmpeg::remove_managed_ffmpeg,
@@ -81,8 +138,12 @@ pub fn run() {
             commands::system::open_project_page,
             commands::system::check_update,
             commands::system::allow_sound_file,
+            commands::window::window_ready,
+            commands::window::set_window_chrome,
+            commands::window::set_taskbar_progress,
+            commands::window::take_launch_paths,
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {

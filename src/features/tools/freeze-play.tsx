@@ -36,7 +36,7 @@ function FreezePlayForm({ value, onChange }: ToolFormProps<FreezePlayParams>) {
           onChange={(e) => onChange({ positions: e.target.value })}
           aria-label="暂停位置"
           placeholder="如 3, 50%, 1:20"
-          className="h-7 w-40 text-xs md:text-xs"
+          className="w-40"
         />
       </ParamField>
       <ParamField label="暂停时长" hint="按帧取整；暂停期间静音，视频相应变长。">

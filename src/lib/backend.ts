@@ -371,6 +371,8 @@ export interface OutputDirCheck {
 export const getAppInfo = () => call<AppInfo>("app_info");
 export const getFfmpegStatus = () => call<FfmpegStatus>("ffmpeg_status");
 export const getEncoderInfo = (refresh = false) => call<EncoderInfo>("encoder_info", { refresh });
+/** 已经探测过的编码器信息；还没探测过时为 null（不会触发探测）。 */
+export const getCachedEncoderInfo = () => call<EncoderInfo | null>("encoder_info_cached");
 
 // ---------- 应用内下载 FFmpeg（src-tauri/src/commands/ffmpeg.rs） ----------
 
@@ -659,3 +661,29 @@ export const allowSoundFile = (path: string) => call<string>("allow_sound_file",
 export const onShutdownCountdown = (handler: (tick: { remaining: number }) => void) =>
   subscribe("shutdown-countdown", handler);
 export const onShutdownFailed = (handler: (error: string) => void) => subscribe("shutdown-failed", handler);
+
+// ---------- 主窗口（src-tauri/src/commands/window.rs，实现见 src-tauri/src/desktop.rs） ----------
+
+/** 窗口配色：设置里的主题偏好、当前是否深色、主题变量的实际值（#rrggbb）。 */
+export interface WindowChrome {
+  preference: ThemeSetting;
+  dark: boolean;
+  titlebar: string;
+  text: string;
+  border: string;
+  background: string;
+}
+
+export type TaskbarProgressState = "none" | "normal" | "indeterminate" | "paused" | "error";
+
+/** 首帧已画好：第一次调用时显示主窗口。 */
+export const windowReady = () => call<void>("window_ready");
+/** 按应用主题设置窗口主题、底色与标题栏颜色。 */
+export const setWindowChrome = (chrome: WindowChrome) => call<void>("set_window_chrome", { chrome });
+/** 任务栏按钮上的进度（progress 为 0～100）。 */
+export const setTaskbarProgress = (state: TaskbarProgressState, progress?: number) =>
+  call<void>("set_taskbar_progress", { state, progress: progress === undefined ? null : Math.round(progress) });
+/** 首次启动时命令行带的文件（只返回一次）。 */
+export const takeLaunchPaths = () => call<string[]>("take_launch_paths");
+/** 再次启动程序时命令行里的文件（单实例转交）。 */
+export const onOpenPaths = (handler: (paths: string[]) => void) => subscribe("open-paths", handler);

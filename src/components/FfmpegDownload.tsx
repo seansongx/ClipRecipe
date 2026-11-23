@@ -27,10 +27,9 @@ export function FfmpegDownloadControl({ idleLabel }: { idleLabel: string }) {
           </span>
           <Button
             variant="outline"
-            size="xs"
+            size="sm"
             onClick={() => void cancelDownload()}
             disabled={download.cancelling}
-            className="text-xs font-normal"
           >
             {download.cancelling ? "正在取消…" : "取消"}
           </Button>
@@ -45,7 +44,7 @@ export function FfmpegDownloadControl({ idleLabel }: { idleLabel: string }) {
           下载失败：{download.error}
         </p>
       )}
-      <Button size="xs" onClick={() => void startDownload()} className="text-xs">
+      <Button size="sm" onClick={() => void startDownload()}>
         <Download /> {download.kind === "failed" ? "重试下载" : idleLabel}
       </Button>
     </div>
@@ -100,7 +99,7 @@ export function FfmpegMissingBanner() {
         <Hint label="暂不下载">
           <Button
             variant="ghost"
-            size="icon-xs"
+            size="icon-sm"
             aria-label="关闭 FFmpeg 提示"
             onClick={() => useFfmpeg.getState().dismissBanner()}
           >

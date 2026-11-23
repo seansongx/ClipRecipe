@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { FileInput } from "lucide-react";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
+import Hint from "@/components/Hint";
 import { isTauri, listSystemFonts, pickFile, type SystemFont } from "@/lib/backend";
 
 const FONT_EXTENSIONS = ["ttf", "ttc", "otf", "otc"];
@@ -51,44 +52,39 @@ export default function FontSelect({ value, onChange }: { value: string; onChang
           else if (next !== CUSTOM_FONT) onChange(next);
         }}
       >
-        <SelectTrigger size="sm" aria-label="字体" className="h-7 w-full max-w-56 px-2 text-xs">
+        <SelectTrigger aria-label="字体" className="w-full max-w-56">
           <SelectValue />
         </SelectTrigger>
         <SelectContent className="max-h-72">
-          <SelectItem value={DEFAULT_FONT} className="text-xs">
+          <SelectItem value={DEFAULT_FONT}>
             默认（自动选择中文字体）
           </SelectItem>
-          <SelectItem value={CUSTOM_FONT} className="text-xs">
+          <SelectItem value={CUSTOM_FONT}>
             其它字体文件…
           </SelectItem>
           {fonts.length > 0 && <SelectSeparator />}
           {fonts.map((font) => (
-            <SelectItem key={font.path} value={font.path} className="text-xs">
+            <SelectItem key={font.path} value={font.path}>
               {font.name}
-              {font.cjk && <span className="text-[10px] text-muted-foreground">中文</span>}
+              {font.cjk && <span className="text-xs text-muted-foreground">中文</span>}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
       {custom && (
-        <InputGroup className="h-7">
+        <InputGroup>
           <InputGroupInput
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder="字体文件路径（.ttf / .ttc / .otf）"
             aria-label="字体文件路径"
-            className="h-7 px-2 text-xs md:text-xs"
           />
           <InputGroupAddon align="inline-end">
-            <InputGroupButton
-              size="icon-xs"
-              onClick={() => void browse()}
-              disabled={!isTauri}
-              aria-label="浏览"
-              title="浏览"
-            >
-              <FileInput />
-            </InputGroupButton>
+            <Hint label="浏览">
+              <InputGroupButton size="icon-xs" onClick={() => void browse()} disabled={!isTauri} aria-label="浏览">
+                <FileInput />
+              </InputGroupButton>
+            </Hint>
           </InputGroupAddon>
         </InputGroup>
       )}

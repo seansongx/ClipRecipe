@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
 
 /**
  * 数字输入：shadcn Input 的薄封装。输入过程中允许暂时无效的文本，
@@ -64,7 +63,7 @@ export default function NumberInput({
       onKeyDown={(e) => {
         if (e.key === "Enter") commit();
       }}
-      className={cn("h-7 px-2 text-xs tabular-nums md:text-xs", className)}
+      className={className}
     />
   );
 }

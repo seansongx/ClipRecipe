@@ -15,7 +15,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="border-b px-4 py-2 last:border-b-0">
+    <section className="border-b py-2 first:pt-0 last:border-b-0 last:pb-0">
       <h3 className="mb-1 text-xs font-medium text-muted-foreground">{title}</h3>
       {children}
     </section>
@@ -28,9 +28,9 @@ export default function MediaInfoDialog({ item, onClose }: { item: QueueItem; on
   const v = info?.video;
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent aria-describedby={undefined} className="gap-0 overflow-hidden p-0 sm:max-w-xl">
-        <DialogHeader className="border-b px-4 py-3 pr-12">
-          <DialogTitle className="truncate text-sm">媒体信息 · {item.name}</DialogTitle>
+      <DialogContent aria-describedby={undefined} className="overflow-hidden sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle className="truncate">媒体信息 · {item.name}</DialogTitle>
         </DialogHeader>
         <ScrollArea className="[&>[data-slot=scroll-area-viewport]]:max-h-[70vh]">
           <div className="text-xs select-text">

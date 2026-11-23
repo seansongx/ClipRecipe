@@ -51,10 +51,69 @@ lib/utils.ts             cn()（合并 className）、scrollViewport()
   也不要写原生 `<button>` / `<input>` / `<select>` / `<textarea>`、原生取色器、自制遮罩/弹窗/提示框，或 `window.confirm`（用 AlertDialog）。
   需要的组件还没有时用 CLI 添加：`npx shadcn@latest add <组件>`（生成到 `components/ui/`，不要凭记忆手抄）。
   只有 shadcn 没有的业务控件才自己写，并且必须由 shadcn 组件组合而成（见“模块/工具编写指南”的控件表）。
-- 样式用 Tailwind 和 `index.css` 里的主题变量（shadcn 标准命名：`background`、`foreground`、`card`、`popover`、`primary`（琥珀色强调）、
-  `secondary`、`muted`、`muted-foreground`、`accent`、`border`、`input`、`ring`、`destructive`，另加 `success`、`warning`），
-  如 `bg-card`、`text-muted-foreground`、`text-primary`、`text-warning`；不要写死颜色。深色模式由 App.tsx 在 `<html>` 上设置
-  `data-theme="dark"`，`index.css` 把 Tailwind 的 `dark:` 变体绑定到它，深浅色都要正常。
+- **shadcn 风格是 Mira**（`components.json` 的 `"style": "radix-mira"`：Radix、lucide 图标、CSS 变量、按钮不用手形光标；
+  由 `npx shadcn@latest apply <预设码>` 切换而来，预设码 `b1D0dv72` = Mira 样式 + lucide + 中性色，见 `npx shadcn preset decode`）。
+  **`components/ui/` 下的文件是 CLI 生成的原版，不要手改**：
+  - 添加组件：`npx shadcn@latest add <组件>`；更新已有组件：`npx shadcn@latest add <组件> --overwrite`（一个一个更新，
+    批量 add 会把只差 `"use client"` 的文件当成相同而跳过）。
+  - `npm run check:shadcn`（`scripts/check-shadcn-stock.mjs`）逐个用 `shadcn add <组件> --diff` 与注册表比较，应当输出“全部与原版一致”。
+  - **外观只改主题变量**（`index.css` 顶部的变量块：颜色、`--radius`、字体）。使用处只写排版类（flex / grid、宽度、外边距、
+    元素之间的 gap、截断、滚动），**不要**给 shadcn 组件写改外观的类（颜色、底色、边框、圆角、字号字重、内边距、高度、阴影、
+    选中 / 悬停样式）；尺寸用组件自带的 `size` 变体（Mira：按钮 `default` h-7、`sm` h-6、`xs` h-5 且 10 px 字，图标按钮
+    `icon` / `icon-sm` / `icon-xs`；输入框与 Select 默认 h-7），选中态用组件自带的（Tabs 的 `default` 变体、Toggle 的 muted 底）。
+  - 变量满足不了的硬性要求（无障碍、桌面约定）才在 `index.css` 末尾“对 shadcn 组件的全局规则”里按 `data-slot` 加一条，
+    写明原因；目前只有：浮层不缩放不滑动（归零 tw-animate 的 scale / translate）、遮罩不模糊、ScrollArea 的 display:table 修正与滚动链。
+    其它必要的行为放在 `components/` 的薄封装或 `lib/desktop.ts`（例如输入框关闭拼写检查与自动填充）。
+- 页面自己的普通元素（队列行、状态栏、日志行、标题、说明文字）用 Tailwind 和 `index.css` 里的主题变量（shadcn 标准命名：`background`、`foreground`、`card`、`popover`、`primary`（青色强调）、
+  `secondary`、`muted`、`muted-foreground`、`accent`、`border`、`input`、`ring`、`destructive`，另加 `success`、`warning`、
+  `titlebar`（系统标题栏底色）、`scrollbar` / `scrollbar-hover`），如 `bg-card`、`text-muted-foreground`、`text-primary`、`text-warning`；
+  不要写死颜色。深色模式以 `<html data-theme="dark">` 为准（首帧前由 `public/boot-theme.js` 按设置写好，之后由 `state/theme.ts` 更新），
+  `index.css` 把 Tailwind 的 `dark:` 变体绑定到它，深浅色都要正常。
+
+#### 桌面应用体验约定
+
+界面要像桌面程序而不是网页（参考剪映专业版那种深色、紧凑的工具感，但不照抄布局与图标）。新界面照下面做，全局部分已经实现：
+
+- **窗口**：保留系统窗口框架（贴靠布局、缩放边框、阴影、圆角、系统菜单都由系统提供）。主窗口隐藏创建，前端画好第一帧后
+  `window_ready` 才显示；Windows 11 的标题栏 / 标题文字 / 边框颜色经 DWM 设为 `--titlebar` / `--foreground` / `--border`，
+  Windows 10 与其它平台只设置窗口深浅主题（`src-tauri/src/desktop.rs`、`state/theme.ts`）。窗口位置、大小、最大化由
+  tauri-plugin-window-state 记在配置目录的 `window-state.json`（保存的位置不在任何显示器上时移回主屏中央）；单实例
+  （tauri-plugin-single-instance）：再次启动时激活已有窗口（含最小化、托盘隐藏），命令行里的文件经 `open-paths` 事件导入。
+  设置了 `CLIPRECIPE_CONFIG_DIR` 时视为另一套实例，不启用单实例（端到端测试另用 `CLIPRECIPE_E2E_SINGLE_INSTANCE` 验证）。
+- **没有网页行为**（`lib/desktop.ts`，main.tsx 安装）：空白处右键什么也不弹，应用菜单用 shadcn ContextMenu，输入框保留系统编辑菜单；
+  刷新、查找、打印、保存 / 打开网页、查看源码、光标浏览（F7）、缩放（Ctrl +/-/0、Ctrl + 滚轮、双指）、前进后退（Alt + 方向键、鼠标侧键、滑动）
+  全部无效，Ctrl+A 只在输入框里全选；正式版另由 WebView2 关闭浏览器快捷键与自动填充（调试版保留 F12 开发者工具）。
+  不要写 `<a href>` 导航，外部网址经 `open_project_page`（只允许本项目地址）在系统浏览器打开；不用 HTML5 拖放（拖动排序用指针事件）。
+- **光标与选择**：控件（按钮、标签页、开关、菜单项、选项）一律箭头光标，手形只给真正的超链接（`index.css` 已统一，不要加 `cursor-pointer`）。
+  界面文字不可选中（`body { user-select: none }`）；值得复制的内容加 `select-text`：处理记录、路径、命令、错误信息、关于 / 运行环境。
+  输入框是文本光标。鼠标点击不出焦点框，键盘焦点环（`focus-visible`）保留。
+- **提示**：不用原生 `title` 属性（e2e 会检查页面上没有 `[title]`）。一律用 `components/Hint.tsx`（shadcn Tooltip，500 ms 延迟、
+  Mira 原样的反色提示）；有快捷键时传 `keys`（显示为 Kbd）；按钮可能被禁用时加 `disabledTrigger`。
+  **`asChild` 会改写状态属性**：Radix 的 `asChild` 把外层（Tooltip、Popover、ContextMenu 等触发器）的 `data-state` / `data-slot`
+  作为 props 传进被包的组件，而 shadcn 控件把收到的 props 放在自己的属性之后展开，于是 TabsTrigger 的 `active`、ToggleGroupItem 的 `on`、
+  Switch / Checkbox 的 `checked` 被换成提示的 `closed`，依赖 `data-state` 的选中样式全部失效（侧栏导航曾因此没有选中态）。
+  `Hint` 已在内部去掉这两个属性（`StateSafeSlot`），可以直接包带状态的控件；自己写别的 `asChild` 组合包住带状态的控件时也要这样处理，
+  或者让选中样式基于 `aria-selected` / `aria-checked` / `aria-pressed`。
+- **选中态与对比度**：用 Mira 组件自带的选中样式，靠主题变量保证看得出来：导航（侧栏、设置分组）是竖向 Tabs 的 `default`
+  变体（muted 列表底上的选中项有底色，深色主题另有 input 色边框；键盘焦点是 ring 色的 1px 描边 + 光晕），分段选择 / 按钮组
+  是 ToggleGroup 的 `outline` 变体（选中项 muted 底）。所以 `--muted` 与所在面板（background / card / popover）的亮度对比要 ≥ 1.2，
+  `--muted-foreground` 在 muted 底上 ≥ 4.5。只改文字颜色不算选中态。文字对比满足 WCAG AA（正文 4.5:1、大字 3:1），
+  控件边界（输入框、复选框、开关）与背景 3:1——因此浅色主题的 `--primary` 用 `#006b75`（白字 6.3:1），`--input` 两种主题都按 3:1 取值
+  （深色主题开关的未选中底是 input/80，也要 ≥ 3），装饰性的分隔线用 `--border`。
+  禁用的控件按 WCAG 豁免。e2e 的界面状态审计（`scripts/e2e-audit-page.js`）会逐组检查这些规则。
+- **快捷键**：显示文字集中在 `lib/shortcuts.ts`（设置 → 关于里的快捷键表也读它）；全局快捷键在 App.tsx 的 `useAppShortcuts`
+  （Ctrl+O / Ctrl+Shift+O 添加视频 / 文件夹、Ctrl+Enter 开始、Esc 停止、Ctrl+, 设置、Ctrl+1/2/3 切换页面、F1 文档），
+  有对话框或菜单打开时让给它们；队列列表（listbox）获得焦点时：方向键 / Home / End、Shift 扩展选择、空格、Enter 播放、Ctrl+A、Delete。
+  新增快捷键时同时更新 `lib/shortcuts.ts` 与按钮提示的 `keys`。对话框的焦点限制与关闭后焦点回到触发按钮由 Radix 负责。
+- **滚动条与滚动**：长内容用 shadcn ScrollArea；原生滚动条（文本框、对话框）由 `index.css` 统一成细的主题色，没有回弹滚动。
+- **密度与字体**：密度来自 Mira 本身（控件 h-7、正文 text-xs/relaxed 即 12 px），不要再用自定义的高度、字号去压缩或放大组件。
+  字体是系统界面字体（Segoe UI / PingFang SC / Microsoft YaHei，`--font-sans`；Mira 预设的 Inter 是远程 / 打包字体，CSP 不允许），
+  `body` 的字号是 Mira 的正文 `text-xs/relaxed`（不要改 `<html>` 的字号，那是 rem 的基准），数字等宽（全局 `tabular-nums`）；
+  页面标题栏高 44 px（`h-11`）、工具栏按钮 `size="sm"`；圆角用 Mira 的 `--radius`（0.625rem）刻度；
+  不要做网页式的大号空状态、大圆角卡片、居中的营销文案。
+- **动效**：只淡入淡出（不缩放、不滑动；`index.css` 的全局规则把 Mira 浮层的缩放 / 位移归零），尊重系统的“减少动态效果”。
+- **状态**：窗口底部状态栏（`views/StatusBar.tsx`）显示队列数量、运行状态与总进度、FFmpeg 与实际会用的编码器（读后端已缓存的探测结果 `encoder_info_cached`，还没探测时如实说明）；批量处理或独立工具运行时
+  任务栏按钮显示进度（`state/taskbar.ts` → `set_taskbar_progress`），结束清除，有失败时显示红色直到用户回到窗口。
 - 功能完成后把 `registry.ts` 的 `status` 改为 `done`，并更新 FEATURES.md 的状态标记。
 
 ## 验收标准
@@ -533,3 +592,18 @@ let outputs = done_outputs(&c, "t1");                            // 最终输出
   （不查找程序目录、PATH、node_modules）。正式构建里这些代码不存在，所以无法被触发。`[ffmpeg]` 场景用
   `scripts/e2e-ffmpeg-server.mjs` 的本机假服务器（把 node_modules 里的真 ffmpeg / ffprobe 打成 npm 结构的 tgz，第一个地址返回 503）
   走完整界面流程：缺少提示与导入拦截 → 下载中取消（临时文件清理）→ 下载完成后立即可导入 → 设置页删除。
+- **桌面体验的端到端检查**（见“桌面应用体验约定”）：页面与原生窗口标题；首帧主题（探针在文档创建时记录第一帧的 `data-theme`
+  与底色，以及之后每次变化，重启后在深色主题下检查没有先浅后深）；空白处右键被拦截、输入框保留编辑菜单；刷新 / 查找 / 打印 /
+  缩放 / 后退等按键与 Ctrl+滚轮被拦截且页面没有重新加载；控件光标、界面文字不可选、页面上没有 `title` 属性；Ctrl+1/2/3、Ctrl+,、
+  Ctrl+O 与队列列表的 Ctrl+A / End / Shift+↑ / Delete；Esc 停止批量处理；`set_taskbar_progress` 在处理中为 normal、结束后为 none；
+  用 Win32（PowerShell）移动窗口后重启，位置大小恢复且 `window-state.json` 在隔离的配置目录里；单实例：主会话带
+  `CLIPRECIPE_E2E_SINGLE_INSTANCE=1`（只在 `e2e-hooks` 构建中存在：即使设置了配置目录也启用单实例，并改用应用标识
+  `io.github.cliprecipe.e2e`，不会激活用户正在运行的程序），把窗口最小化后带一个视频路径再启动一次，第二个进程退出、
+  原窗口恢复、视频进入队列。报告目录里另有含系统标题栏的真实窗口截图（`*-window-*.png`）。
+- **界面状态审计**（`scripts/e2e-audit-page.js` 注入页面，`window.__e2e.audit({ root })`；场景“界面状态审计”）：深色、浅色各一遍，
+  覆盖三个页面、设置的六个分组、18 个模块的表单（逐个展开）、34 个工具对话框，另在 FFmpeg 下载提示与设置页各审计一次。检查：
+  ① 同组选项（标签页、分段选择、按钮组、列表）里选中项与未选中项明显不同——底色对比 ≥ 1.2，或有只属于选中项的指示条 / 边框 / 阴影，
+  只差文字颜色不算；② `aria-selected` / `aria-checked` 与 `data-state` 一致（被 `asChild` 改写会被发现）；③ 开关、复选框选中与未选中不同，
+  它们和输入框的边界对比 ≥ 3；④ 每处文字（含占位符）与逐层叠加后的实际背景对比 ≥ 4.5（大字 3），禁用的豁免。
+  另外显式断言侧栏与设置分组的选中项（aria / data-state / 可见底色）以及侧栏的键盘焦点环（对比 ≥ 3）。颜色一律经 canvas 换算
+  （oklab、color-mix 也能比较），读取前先把鼠标移开、取消焦点并等过渡结束。

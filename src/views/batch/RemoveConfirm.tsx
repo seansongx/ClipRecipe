@@ -64,7 +64,7 @@ export function RemoveConfirmDialog() {
             checked={dontAsk}
             onCheckedChange={(v) => usePending.setState({ dontAsk: v === true })}
           />
-          <Label htmlFor={checkboxId} className="text-xs font-normal text-muted-foreground">
+          <Label htmlFor={checkboxId}>
             以后不再询问（可在设置中重新开启）
           </Label>
         </div>

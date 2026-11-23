@@ -65,7 +65,6 @@ function RemoveWatermarkForm({ value, onChange }: ModuleFormProps<RemoveWatermar
           <ToggleGroup
             type="multiple"
             variant="outline"
-            size="sm"
             spacing={1}
             value={value.presets}
             onValueChange={(presets) => onChange({ presets: presets as WatermarkPreset[] })}
@@ -76,7 +75,6 @@ function RemoveWatermarkForm({ value, onChange }: ModuleFormProps<RemoveWatermar
               <ToggleGroupItem
                 key={p.value}
                 value={p.value}
-                className="h-7 px-2 text-xs font-normal text-muted-foreground data-[state=on]:bg-primary/12 data-[state=on]:font-medium data-[state=on]:text-foreground dark:data-[state=on]:bg-primary/18"
               >
                 {p.label}
               </ToggleGroupItem>

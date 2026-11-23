@@ -27,7 +27,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync, execSync, spawn } from "node:child_process";
 import { Cdp, Page, sleep, waitForPage } from "./e2e-cdp.mjs";
 import { startFakeFfmpegServer } from "./e2e-ffmpeg-server.mjs";
 import {
@@ -36,6 +36,7 @@ import {
   PROD_EXE,
   REPO,
   bandStddev,
+  captureNativeWindow,
   ffmpegPaths,
   freePort,
   grayFrame,
@@ -43,6 +44,9 @@ import {
   killTree,
   listFiles,
   makeMedia,
+  minimizeNativeWindow,
+  moveNativeWindow,
+  nativeWindow,
   portInUse,
   probe,
   processesOf,
@@ -319,6 +323,11 @@ class Session {
     await sleep(1000);
   }
 
+  /** 应用主进程的进程号。 */
+  appPid() {
+    return processesOf(this.exe)[0] ?? [...this.appPids][0] ?? null;
+  }
+
   /** 删除被强制结束的应用留下的预览目录。 */
   cleanupPreviewDirs() {
     for (const pid of this.appPids) {
@@ -341,15 +350,15 @@ const ui = {
   rows(page) {
     return page.evaluate(() =>
       [...document.querySelectorAll("li[data-row-index]")].map((li) => {
-        const title = li.querySelector("p[title]");
+        const title = li.querySelector("p[data-path]");
         const body = title?.closest("div.min-w-0");
         const state = [...li.children].find((c) => c.tagName === "SPAN" && c.classList.contains("tabular-nums") && !c.classList.contains("w-6"));
         return {
           name: title?.textContent.trim(),
-          path: title?.getAttribute("title"),
+          path: title?.getAttribute("data-path"),
           summary: body?.querySelector(":scope > p")?.textContent.trim() ?? "",
           state: state?.textContent.trim() ?? "",
-          badges: [...li.querySelectorAll("[data-slot=badge]")].map((b) => ({ text: b.textContent.trim(), title: b.getAttribute("title") })),
+          badges: [...li.querySelectorAll("[data-slot=badge]")].map((b) => ({ text: b.textContent.trim(), title: b.getAttribute("aria-label") })),
           text: li.innerText,
         };
       }),
@@ -409,16 +418,16 @@ const ui = {
   },
 
   runSummary(page) {
-    return page.evaluate(() => [...document.querySelectorAll("main footer span")].map((s) => s.textContent.trim()).find((t) => t.startsWith("上次") || t.startsWith("处理中")) ?? "");
+    return page.evaluate(() => [...document.querySelectorAll("#statusbar span")].map((s) => s.textContent.trim()).find((t) => t.startsWith("上次") || t.startsWith("处理中")) ?? "");
   },
 
   async startBatch(page) {
     await page.click({ selector: "main footer button", text: "开始处理" });
-    await page.waitFor("处理开始", () => [...document.querySelectorAll("main footer button")].some((b) => b.textContent.trim() === "停止") || [...document.querySelectorAll("main footer span")].some((s) => s.textContent.startsWith("上次")), [], { timeout: 15000 });
+    await page.waitFor("处理开始", () => [...document.querySelectorAll("main footer button")].some((b) => b.textContent.trim() === "停止") || [...document.querySelectorAll("#statusbar span")].some((s) => s.textContent.startsWith("上次")), [], { timeout: 15000 });
   },
 
   async waitBatchFinished(page, timeout = 240000) {
-    await page.waitFor("批量处理结束", () => [...document.querySelectorAll("main footer span")].some((s) => s.textContent.trim().startsWith("上次")) && ![...document.querySelectorAll("main footer button")].some((b) => b.textContent.trim() === "停止"), [], { timeout, interval: 500 });
+    await page.waitFor("批量处理结束", () => [...document.querySelectorAll("#statusbar span")].some((s) => s.textContent.trim().startsWith("上次")) && ![...document.querySelectorAll("main footer button")].some((b) => b.textContent.trim() === "停止"), [], { timeout, interval: 500 });
     return ui.runSummary(page);
   },
 
@@ -523,8 +532,150 @@ function partials(dir) {
 
 // ------------------------------------------------------------------ 场景
 
+/** 首帧主题检查：首帧已带主题与对应底色，之后 data-theme 没有变成别的值（没有先浅后深的闪烁）。 */
+async function checkFirstFrame(page, expectTheme) {
+  const boot = await page.evaluate(() => ({
+    first: window.__e2e.firstFrame,
+    history: window.__e2e.themeHistory,
+    now: document.documentElement.dataset.theme,
+  }));
+  assert(boot.first, "没有记录到首帧");
+  const theme = expectTheme ?? boot.now;
+  assert(boot.first.theme === theme, `首帧主题 ${boot.first.theme}，应为 ${theme}（${JSON.stringify(boot)}）`);
+  const flips = boot.history.filter((h) => h.theme !== theme);
+  assert(flips.length === 0, `启动过程中主题变化过：${JSON.stringify(boot.history)}`);
+  const rgb = (boot.first.background ?? "").match(/\d+(\.\d+)?/g)?.map(Number) ?? [];
+  const transparent = rgb.length === 4 && rgb[3] === 0;
+  const luminance = rgb.length >= 3 ? (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255 : -1;
+  // 底色透明时露出的是 WebView 底色（后端按同一主题设置），也不会闪白
+  assert(transparent || (theme === "dark" ? luminance < 0.2 : luminance > 0.8), `首帧底色 ${boot.first.background} 与主题 ${theme} 不符`);
+  return `首帧主题 ${boot.first.theme}（底色 ${boot.first.background}，设置偏好 ${boot.first.boot?.theme ?? "无"}），启动中 data-theme 变化 ${boot.history.length} 次、均为 ${theme}`;
+}
+
+/** 在主窗口截一张包含系统标题栏的真实屏幕截图（尽力而为）。 */
+function saveNativeShot(s, label) {
+  const pid = s.appPid();
+  if (!pid) return;
+  try {
+    const file = path.join(REPORT, `${s.label}-window-${label}.png`);
+    captureNativeWindow(pid, file);
+    s.shots = [...(s.shots ?? []), file];
+  } catch (e) {
+    log("  窗口截图失败：", e.message);
+  }
+}
+
+/** 桌面应用体验：去掉网页行为、标题、光标、首帧主题（docs/PLAN.md“桌面应用体验约定”）。 */
+async function desktopScenarios(s) {
+  const { page } = s;
+  await scenario(s, "桌面体验：窗口标题、首帧主题、右键菜单、浏览器快捷键与缩放、光标与选择、无原生提示", async () => {
+    const notes = [];
+    // 标题：页面标题与原生窗口标题都只是程序名
+    const docTitle = await page.evaluate(() => document.title);
+    assert(docTitle === "ClipRecipe", `页面标题：${docTitle}`);
+    const win = nativeWindow(s.appPid());
+    assert(win && win.title === "ClipRecipe" && win.visible, `原生窗口：${JSON.stringify(win)}`);
+    notes.push(`窗口“${win.title}” ${win.width}×${win.height}`);
+    notes.push(await checkFirstFrame(page));
+    // 窗口配色（标题栏、底色）：启动时按主题设置，颜色都是 #rrggbb
+    const chrome = await page.evaluate(() => window.__e2e.ipc.filter((r) => r.cmd === "set_window_chrome").map((r) => ({ ok: r.ok, ...r.args?.chrome })));
+    const hex = /^#[0-9a-f]{6}$/;
+    assert(chrome.length > 0 && chrome.every((c) => c.ok && [c.titlebar, c.text, c.border, c.background].every((v) => hex.test(v))), `set_window_chrome：${JSON.stringify(chrome)}`);
+    const last = chrome.at(-1);
+    const pageTheme = await page.evaluate(() => document.documentElement.dataset.theme);
+    assert(last.dark === (pageTheme === "dark"), `窗口配色与页面主题不一致：${JSON.stringify(last)}，页面 ${pageTheme}`);
+    notes.push(`窗口配色 ${last.dark ? "深色" : "浅色"}：标题栏 ${last.titlebar}、文字 ${last.text}、边框 ${last.border}`);
+
+    // 右键空白处：没有菜单（默认行为被取消）；输入框保留系统编辑菜单（不取消）
+    const mark = await page.evaluate(() => window.__e2e.events.length);
+    const empty = await page.locate({ selector: "main header h1" });
+    await page.rightClickAt(empty.x, empty.y);
+    const menuEvent = await page.evaluate((m) => window.__e2e.events.slice(m).find((e) => e.type === "contextmenu"), mark);
+    assert(menuEvent?.prevented === true, `空白处右键没有被拦截：${JSON.stringify(menuEvent)}`);
+    assert(!(await page.evaluate(() => !!document.querySelector("[role=menu]"))), "空白处右键不应弹出菜单");
+    const inputMenu = await page.evaluate(() => {
+      const input = document.querySelector("main input[aria-label=输出文件夹]");
+      const ev = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+      input.dispatchEvent(ev);
+      return ev.defaultPrevented;
+    });
+    assert(inputMenu === false, "输入框应保留系统的编辑菜单");
+
+    // 浏览器快捷键：刷新、查找、打印、保存、查看源码、光标浏览、缩放、后退都不起作用（页面没有重新加载、事件被取消）
+    await page.evaluate(() => {
+      window.__e2eMarker = "still-here";
+      document.activeElement?.blur?.();
+    });
+    const zoomBefore = await page.evaluate(() => ({ dpr: window.devicePixelRatio, scale: window.visualViewport?.scale ?? 1, width: window.innerWidth }));
+    const keys = [
+      ["F5", "F5", 116, 0],
+      ["r", "KeyR", 82, 2],
+      ["R", "KeyR", 82, 10],
+      ["f", "KeyF", 70, 2],
+      ["g", "KeyG", 71, 2],
+      ["p", "KeyP", 80, 2],
+      ["s", "KeyS", 83, 2],
+      ["u", "KeyU", 85, 2],
+      ["F7", "F7", 118, 0],
+      ["=", "Equal", 187, 2],
+      ["-", "Minus", 189, 2],
+      ["0", "Digit0", 48, 2],
+      ["ArrowLeft", "ArrowLeft", 37, 1],
+      ["a", "KeyA", 65, 2],
+    ];
+    const keyMark = await page.evaluate(() => window.__e2e.events.length);
+    for (const [key, code, keyCode, modifiers] of keys) await page.key(key, code, keyCode, modifiers);
+    await page.wheel(400, 300, -240, 2); // Ctrl + 滚轮
+    await sleep(600);
+    const after = await page.evaluate((m) => ({
+      marker: window.__e2eMarker,
+      events: window.__e2e.events.slice(m),
+      dpr: window.devicePixelRatio,
+      scale: window.visualViewport?.scale ?? 1,
+      width: window.innerWidth,
+      selection: String(window.getSelection()),
+      dialogs: document.querySelectorAll("[role=dialog],[role=alertdialog]").length,
+    }), keyMark);
+    assert(after.marker === "still-here", "按浏览器快捷键后页面被重新加载了");
+    const keyEvents = after.events.filter((e) => e.type === "keydown");
+    const notPrevented = keyEvents.filter((e) => !e.prevented).map((e) => `${e.ctrl ? "Ctrl+" : ""}${e.alt ? "Alt+" : ""}${e.key}`);
+    assert(keyEvents.length === keys.length && notPrevented.length === 0, `没有被拦截的浏览器快捷键：${notPrevented.join("、")}（收到 ${keyEvents.length} 个）`);
+    const wheel = after.events.find((e) => e.type === "wheel" && e.ctrl);
+    assert(wheel?.prevented === true, `Ctrl+滚轮没有被拦截：${JSON.stringify(wheel)}`);
+    assert(after.dpr === zoomBefore.dpr && after.scale === zoomBefore.scale && after.width === zoomBefore.width, `页面被缩放了：${JSON.stringify(zoomBefore)} → ${JSON.stringify(after)}`);
+    assert(after.selection === "", `Ctrl+A 选中了页面文字：${after.selection.slice(0, 60)}`);
+    assert(after.dialogs === 0, "快捷键打开了对话框");
+    notes.push(`${keys.length} 个浏览器快捷键与 Ctrl+滚轮都被拦截`);
+
+    // 光标与选择：控件是箭头光标，界面文字不可选；输入框是文本光标；没有原生 title 提示
+    const ui = await page.evaluate(() => {
+      const cursor = (sel) => {
+        const el = document.querySelector(sel);
+        return el ? getComputedStyle(el).cursor : null;
+      };
+      return {
+        button: cursor("main header button"),
+        tab: cursor("#nav-batch"),
+        switch: cursor("aside [role=switch]"),
+        input: cursor("main input[aria-label=输出文件夹]"),
+        headingSelect: getComputedStyle(document.querySelector("main h1")).userSelect,
+        titled: [...document.querySelectorAll("[title]")].map((e) => `${e.tagName}:${e.getAttribute("title")}`).slice(0, 5),
+      };
+    });
+    assert(ui.button === "default" && ui.tab === "default" && ui.switch === "default", `控件光标：${JSON.stringify(ui)}`);
+    assert(ui.input === "text", `输入框光标：${ui.input}`);
+    assert(ui.headingSelect === "none", `标题文字可以选中：${ui.headingSelect}`);
+    assert(ui.titled.length === 0, `还有原生 title 提示：${ui.titled.join("、")}`);
+    notes.push("按钮 / 标签 / 开关为箭头光标，输入框为文本光标，界面文字不可选，没有 title 提示");
+    return notes.join("；");
+  });
+  saveNativeShot(s, `boot-${await page.evaluate(() => document.documentElement.dataset.theme)}`);
+}
+
 async function bootScenarios(s, media) {
   const { page } = s;
+
+  await desktopScenarios(s);
 
   await scenario(
     s,
@@ -573,6 +724,7 @@ async function bootScenarios(s, media) {
     { csp: [/e2e-csp-probe/], console: [/e2e-csp-probe/, /Content Security Policy/] },
   );
   await saveShot(s, "boot");
+  saveNativeShot(s, `boot-${s.theme ?? "toggled"}`);
 
   await scenario(s, "环境命令：app_info / ffmpeg_status / encoder_info", async () => {
     const app = await page.invoke("app_info");
@@ -609,6 +761,166 @@ async function bootScenarios(s, media) {
     const ipc = await page.evaluate(() => window.__e2e.ipc.filter((r) => r.cmd === "import_paths").map((r) => r.args));
     assert(ipc.length === 2 && ipc.every((a) => Array.isArray(a.paths) && typeof a.recursive === "boolean"), `import_paths 参数：${JSON.stringify(ipc)}`);
     return rows.map((r) => `${r.name}: ${r.summary}`).join("；");
+  });
+
+  await shortcutScenario(s, media);
+  await auditScenario(s);
+}
+
+/**
+ * 界面状态审计（scripts/e2e-audit-page.js）：鼠标移开、取消焦点后检查 root 内的选中态、aria 与 data-state 一致、对比度。
+ * 返回统计；有问题时抛出（列出全部问题）。
+ */
+async function auditUi(page, label, root) {
+  await page.cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 2, y: 4000, button: "none", pointerType: "mouse" });
+  await page.evaluate(() => document.activeElement?.blur?.());
+  await sleep(250);
+  const r = await page.evaluate((o) => window.__e2e.audit(o), { root });
+  if (r.problems.length) throw new Error(`界面审计（${label}）发现 ${r.problems.length} 个问题：\n${r.problems.slice(0, 15).join("\n")}`);
+  return r;
+}
+
+/** 导航项（侧栏 / 设置分组）的选中态：选中项 aria 与 data-state 一致，底色与未选中项明显不同，键盘焦点环与选中底色同时可见。 */
+async function assertNavSelected(page, listSelector, expectText) {
+  const r = await page.evaluate((sel) => {
+    const tabs = [...document.querySelectorAll(`${sel} [role=tab]`)];
+    const canvas = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+    const rgb = (css) => {
+      canvas.clearRect(0, 0, 1, 1);
+      canvas.fillStyle = css;
+      canvas.fillRect(0, 0, 1, 1);
+      return [...canvas.getImageData(0, 0, 1, 1).data];
+    };
+    return tabs.map((t) => ({
+      text: t.textContent.trim(),
+      selected: t.getAttribute("aria-selected") === "true",
+      state: t.getAttribute("data-state"),
+      bg: rgb(getComputedStyle(t).backgroundColor),
+    }));
+  }, listSelector);
+  const selected = r.filter((t) => t.selected);
+  assert(selected.length === 1 && selected[0].text.includes(expectText), `${listSelector} 的选中项应为“${expectText}”：${JSON.stringify(r)}`);
+  assert(selected[0].state === "active", `${listSelector} 选中项的 data-state 是 ${selected[0].state}（应为 active，状态属性被覆盖）`);
+  const others = r.filter((t) => !t.selected);
+  assert(others.every((t) => t.state === "inactive"), `${listSelector} 未选中项的 data-state：${JSON.stringify(others.map((t) => t.state))}`);
+  // 选中项有不透明度可见的主题色底，未选中项没有底色
+  assert(selected[0].bg[3] > 20 && others.every((t) => t.bg[3] < 5), `${listSelector} 选中项没有可见的底色：${JSON.stringify(r)}`);
+  return `${expectText}（底色 rgba(${selected[0].bg.join(",")})）`;
+}
+
+/** 全部页面、18 个模块、34 个工具对话框，在深色与浅色下各审计一遍。 */
+async function auditScenario(s) {
+  const { page } = s;
+  await scenario(s, "界面状态审计：三个页面、设置各分组、18 个模块、34 个工具对话框（深色 + 浅色）", async () => {
+    const original = await page.evaluate(() => document.documentElement.dataset.theme);
+    const themes = original === "dark" ? ["dark", "light"] : ["light", "dark"];
+    const counts = { audits: 0, groups: 0, texts: 0, boundaries: 0 };
+    const add = (r) => {
+      counts.audits++;
+      counts.groups += r.stats.groups;
+      counts.texts += r.stats.texts;
+      counts.boundaries += r.stats.boundaries;
+    };
+    const notes = [];
+    for (const theme of themes) {
+      if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== theme) {
+        await page.click({ selector: "nav button", label: theme === "dark" ? "切换到深色" : "切换到浅色" });
+        await page.waitFor(`主题 ${theme}`, (t) => document.documentElement.dataset.theme === t, [theme]);
+      }
+      // 三个页面：侧栏选中项明确
+      for (const [id, heading, label] of [["batch", "视频队列", "批量处理"], ["toolbox", "工具箱", "工具箱"], ["settings", "设置", "设置"]]) {
+        await ui.nav(page, id, heading);
+        add(await auditUi(page, `${theme} ${heading}`));
+        notes.push(`${theme} 侧栏 ${await assertNavSelected(page, "nav", label)}`);
+      }
+      // 侧栏的键盘焦点环与选中底色同时可见、互相区分
+      const ring = await page.evaluate(() => window.__e2e.focusRing("#nav-settings"));
+      assert(ring.ok && ring.contrast >= 3, `侧栏焦点环：${JSON.stringify(ring)}`);
+      // 设置的每个分组
+      for (const tab of ["转换", "字幕与封面", "通用", "完成后", "高级", "关于"]) {
+        await page.click({ selector: "[role=tab]", text: tab });
+        await sleep(200);
+        add(await auditUi(page, `${theme} 设置 · ${tab}`, "main"));
+        await assertNavSelected(page, "main [aria-label=设置分组]", tab);
+      }
+      // 18 个模块的参数表单（逐个展开，不改动开关）
+      await ui.nav(page, "batch", "视频队列");
+      const modules = await page.evaluate(() => [...document.querySelectorAll("aside [data-slot=collapsible] button[aria-expanded]")].map((b) => b.querySelector("span span")?.firstChild?.textContent.trim() ?? b.textContent.trim()));
+      assert(modules.length === 18, `模块数 ${modules.length}`);
+      for (const name of modules) {
+        await ui.expandModule(page, name);
+        add(await auditUi(page, `${theme} 模块 ${name}`, "aside"));
+      }
+      await ui.expandModule(page, "帧率");
+      // 34 个工具对话框
+      await ui.nav(page, "toolbox", "工具箱");
+      const tools = await page.evaluate(() => [...document.querySelectorAll("[role=button][aria-label^='打开 ']")].map((b) => b.getAttribute("aria-label").slice(3)));
+      for (const name of tools) {
+        await ui.openTool(page, name);
+        add(await auditUi(page, `${theme} 工具 ${name}`, "[role=dialog]"));
+        await ui.closeDialog(page);
+      }
+      notes.push(`${theme}：${modules.length} 个模块、${tools.length} 个工具`);
+    }
+    if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== original) {
+      await page.click({ selector: "nav button", label: original === "dark" ? "切换到深色" : "切换到浅色" });
+    }
+    await ui.nav(page, "batch", "视频队列");
+    return `${counts.audits} 次审计无问题（${counts.groups} 组选项、${counts.texts} 处文字、${counts.boundaries} 个控件边界）；${notes.join("；")}`;
+  });
+}
+
+/** 键盘快捷键：切换页面、打开设置、Ctrl+O 添加视频，队列列表的 Ctrl+A / 方向键 / Shift 选择 / Delete。 */
+async function shortcutScenario(s, media) {
+  const { page } = s;
+  await scenario(s, "键盘：Ctrl+1/2/3 与 Ctrl+, 切换页面、Ctrl+O 添加视频、队列 Ctrl+A / 方向键 / Shift / Delete", async () => {
+    const heading = () => page.evaluate(() => document.querySelector("main h1")?.textContent.trim());
+    const press = async (key, code, keyCode, modifiers, expect) => {
+      await page.key(key, code, keyCode, modifiers);
+      await page.waitFor(`页面 ${expect}`, (h) => document.querySelector("main h1")?.textContent.trim() === h, [expect]);
+    };
+    await press("2", "Digit2", 50, 2, "工具箱");
+    await press("3", "Digit3", 51, 2, "设置");
+    await press("1", "Digit1", 49, 2, "视频队列");
+    await press(",", "Comma", 188, 2, "设置");
+    await press("1", "Digit1", 49, 2, "视频队列");
+    const pages = await heading();
+
+    // Ctrl+O：系统对话框（探针代答）选中的视频加入队列
+    const before = (await ui.rows(page)).length;
+    await page.queueDialog([media.extra]);
+    await page.key("o", "KeyO", 79, 2);
+    await ui.waitRows(page, "Ctrl+O 添加视频", (r) => r.length === before + 1 && r.some((x) => x.name === "extra.mp4"));
+
+    const selectedRows = () =>
+      page.evaluate(() => [...document.querySelectorAll("li[data-row-index][aria-selected=true]")].map((li) => li.querySelector("p[data-path]")?.textContent.trim()));
+    // 点击第一行：列表获得焦点、只选中这一行
+    await page.click({ selector: "li[data-row-index] p[data-path]", nth: 0 });
+    const focused = await page.evaluate(() => document.activeElement?.getAttribute("role"));
+    assert(focused === "listbox", `点击后焦点应在队列列表上：${focused}`);
+    assert((await selectedRows()).length === 1, "点击应只选中一行");
+    await page.key("a", "KeyA", 65, 2);
+    const all = await selectedRows();
+    assert(all.length === before + 1, `Ctrl+A 应全选：${all}`);
+    const pageSelection = await page.evaluate(() => String(window.getSelection()));
+    assert(pageSelection === "", "Ctrl+A 不应选中页面文字");
+    await page.key("End", "End", 35);
+    let sel = await selectedRows();
+    assert(sel.length === 1 && sel[0] === "extra.mp4", `End 应只选中最后一行：${sel}`);
+    await page.key("ArrowUp", "ArrowUp", 38, 8); // Shift+↑
+    sel = await selectedRows();
+    assert(sel.length === 2 && sel.includes("extra.mp4"), `Shift+↑ 应选中两行：${sel}`);
+    await page.key("ArrowDown", "ArrowDown", 40);
+    sel = await selectedRows();
+    assert(sel.length === 1 && sel[0] === "extra.mp4", `↓ 应回到只选中最后一行：${sel}`);
+    // Delete：移除所选（开启了“删除任务时确认”时先确认）
+    await page.key("Delete", "Delete", 46);
+    await sleep(300);
+    if (await page.evaluate(() => !!document.querySelector("[role=alertdialog]"))) {
+      await page.click({ selector: "[role=alertdialog] button", text: "删除" });
+    }
+    const rows = await ui.waitRows(page, "Delete 移除所选", (r) => r.length === before && !r.some((x) => x.name === "extra.mp4"));
+    return `页面切换后回到“${pages}”；Ctrl+O 添加 extra.mp4；Ctrl+A 全选 ${all.length} 行；End / Shift+↑ / ↓ 选择正确；Delete 后剩 ${rows.length} 行`;
   });
 }
 
@@ -651,8 +963,13 @@ async function batchScenarios(s, media) {
     assert(logText.length > logBefore && /条/.test(logText), "处理记录没有新增");
     const jobs = await page.evaluate(() => window.__e2e.ipc.filter((r) => r.cmd === "start_jobs").pop());
     assert(jobs?.ok && jobs.args.request.tasks.length === 3, `start_jobs：${JSON.stringify(jobs).slice(0, 300)}`);
+    // 任务栏进度：处理中为 normal（0～100），结束后清除
+    const taskbar = await page.evaluate(() => window.__e2e.ipc.filter((r) => r.cmd === "set_taskbar_progress").map((r) => ({ state: r.args?.state, progress: r.args?.progress, ok: r.ok })));
+    const normal = taskbar.filter((t) => t.state === "normal");
+    assert(normal.length > 0 && normal.every((t) => t.ok && t.progress >= 0 && t.progress <= 100), `任务栏进度：${JSON.stringify(taskbar)}`);
+    assert(taskbar.at(-1)?.state === "none" && taskbar.at(-1)?.ok, `结束后任务栏进度应清除：${JSON.stringify(taskbar.slice(-3))}`);
     const recordCount = /处理记录\s*(\d+) 条/.exec(logText)?.[1];
-    return `${summary}；${Object.entries(probes).map(([f, p]) => `${f} ${p.width}×${p.height}@${p.fps.toFixed(0)} ${p.vcodec}/${p.acodec} ${p.duration.toFixed(2)}s`).join("；")}；处理记录 ${recordCount} 条`;
+    return `任务栏进度 ${normal.length} 次（${normal.map((t) => t.progress).join("→")}）后清除；${summary}；${Object.entries(probes).map(([f, p]) => `${f} ${p.width}×${p.height}@${p.fps.toFixed(0)} ${p.vcodec}/${p.acodec} ${p.duration.toFixed(2)}s`).join("；")}；处理记录 ${recordCount} 条`;
   });
   await saveShot(s, "batch-done");
 
@@ -676,7 +993,7 @@ async function batchScenarios(s, media) {
   });
 
   await scenario(s, "预览：双击队列行播放源视频（allow_media_file + asset 协议）", async () => {
-    await page.click({ selector: "li[data-row-index] p[title]", nth: 0 }, { count: 2 });
+    await page.click({ selector: "li[data-row-index] p[data-path]", nth: 0 }, { count: 2 });
     const r = await ui.checkVideo(page, "源视频播放", 30000);
     const allow = await page.evaluate(() => window.__e2e.ipc.filter((x) => x.cmd === "allow_media_file").pop());
     assert(allow?.ok, `allow_media_file：${JSON.stringify(allow)}`);
@@ -727,11 +1044,11 @@ async function batchScenarios(s, media) {
     await ui.expandModule(page, "文本");
     await page.click({ selector: "aside button", label: "字体" });
     const fonts = await page.waitFor("字体列表", () => {
-      const n = document.querySelectorAll("[role=option]").length;
+      const n = document.querySelectorAll("[data-slot=select-item]").length;
       return n > 2 ? n : null;
     });
     await page.escape();
-    await page.waitFor("字体列表关闭", () => document.querySelectorAll("[role=option]").length === 0);
+    await page.waitFor("字体列表关闭", () => document.querySelectorAll("[data-slot=select-item]").length === 0);
     return `${r}；${steps}；最大像素差 ${diff}；系统字体 ${fonts - 2} 个`;
   });
 
@@ -768,7 +1085,7 @@ async function batchScenarios(s, media) {
     await page.click({ selector: "aside header button", textIncludes: "查看命令" });
     await page.waitFor("处理记录中的命令", () => [...document.querySelectorAll("main section")].some((sec) => sec.innerText.includes("的处理命令")));
     // 右键第二行 → 独立工具 → 视频倒放：对话框打开，范围为选中的 1 个
-    await page.rightClick({ selector: "li[data-row-index] p[title]", nth: 1 });
+    await page.rightClick({ selector: "li[data-row-index] p[data-path]", nth: 1 });
     await page.click({ selector: "[role=menuitem]", textIncludes: "独立工具" });
     await page.click({ selector: "[role=menu] [role=menuitem]", text: "视频倒放" });
     await page.waitFor("视频倒放对话框", () => document.querySelector("[role=dialog] h2")?.textContent.includes("视频倒放"));
@@ -786,7 +1103,7 @@ async function batchScenarios(s, media) {
     // 拖动把手排序（指针事件，系统拖放开启时 HTML5 拖放不可用）：第 1 行拖到第 3 行下方
     const names = async () => (await ui.rows(page)).map((r) => r.name);
     const before = await names();
-    await page.drag({ selector: "li[data-row-index] span[title=拖动调整顺序]", nth: 0 }, { selector: "li[data-row-index]", nth: 2 }, 12);
+    await page.drag({ selector: "li[data-row-index] span[aria-label=拖动调整顺序]", nth: 0 }, { selector: "li[data-row-index]", nth: 2 }, 12);
     const after = await names();
     assert(JSON.stringify(after) === JSON.stringify([before[1], before[2], before[0]]), `拖动排序：${before} → ${after}`);
     // 排序菜单：名称 Z→A
@@ -1016,7 +1333,8 @@ async function batchScenarios(s, media) {
     const rowsMid = await ui.rows(page);
     assert(!rowsMid[0].state.startsWith("完成"), "长视频在停止前就处理完了（测试素材太短）");
     const partialSeen = partials(out);
-    await page.click({ selector: "main footer button", text: "停止" });
+    // 快捷键 Esc 停止（没有打开的对话框时）
+    await page.escape();
     const summary = await ui.waitBatchFinished(page, 30000);
     const rows = await ui.rows(page);
     assert(rows[0].state.startsWith("已取消"), `行状态：${rows[0].state}`);
@@ -1075,9 +1393,20 @@ async function batchScenarios(s, media) {
 async function persistenceScenarios(s, media) {
   const { page } = s;
   // 准备：队列里留一个已取消（上一场景）+ 一个未处理的视频
-  await scenario(s, "重启前：队列与设置已保存到隔离的配置目录", async () => {
+  await scenario(s, "重启前：队列与设置已保存到隔离的配置目录；深色主题；移动窗口", async () => {
     await ui.dropOnQueue(page, [media.extra]);
     await ui.waitRows(page, "extra 导入", (r) => r.some((x) => x.name === "extra.mp4"));
+    // 深色主题（重启后检查首帧就是深色，没有白屏、先浅后深）
+    if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== "dark") {
+      await page.click({ selector: "nav button", label: "切换到深色" });
+    }
+    s.theme = "dark";
+    // 像用户拖动一样移动、缩放窗口（物理像素），重启后应恢复
+    const pid = s.appPid();
+    moveNativeWindow(pid, 60, 40, 1560, 1000);
+    await sleep(800);
+    s.windowBefore = nativeWindow(pid);
+    assert(s.windowBefore && s.windowBefore.x === 60 && s.windowBefore.width === 1560, `移动窗口：${JSON.stringify(s.windowBefore)}`);
     await sleep(1800); // 队列保存防抖 800ms、设置 300ms
     const queue = JSON.parse(fs.readFileSync(path.join(s.configDir, "queue.json"), "utf8"));
     const settings = JSON.parse(fs.readFileSync(path.join(s.configDir, "settings.json"), "utf8"));
@@ -1108,6 +1437,15 @@ async function persistenceScenarios(s, media) {
     assert(rows.every((r) => r.summary.includes("×")), "恢复的任务缺少媒体信息");
     const theme = await s.page.evaluate(() => document.documentElement.dataset.theme);
     assert(!s.theme || theme === s.theme, `主题未保留：${theme}，应为 ${s.theme}`);
+    const firstFrame = await checkFirstFrame(s.page, "dark");
+    // 窗口位置与大小（tauri-plugin-window-state，保存在隔离的配置目录）
+    const win = nativeWindow(s.appPid());
+    const b = s.windowBefore;
+    const near = (a, c) => Math.abs(a - c) <= 2;
+    assert(win && b && near(win.x, b.x) && near(win.y, b.y) && near(win.width, b.width) && near(win.height, b.height), `窗口位置大小未恢复：${JSON.stringify(b)} → ${JSON.stringify(win)}`);
+    const stateFile = path.join(s.configDir, "window-state.json");
+    assert(fs.existsSync(stateFile), "window-state.json 不在隔离的配置目录中");
+    saveNativeShot(s, "after-restart-dark");
     const fps = await ui.switchState(s.page, "帧率");
     assert(fps === "checked", "配方（localStorage）未保留");
     const shown = await (async () => {
@@ -1118,7 +1456,35 @@ async function persistenceScenarios(s, media) {
     assert(shown === "checked", "设置页没有显示保存的开关状态");
     await ui.nav(s.page, "batch", "视频队列");
     await saveShot(s, "after-restart");
-    return `恢复 ${rows.length} 个任务（${rows.map((r) => `${r.name} ${r.state}`).join("、")}）；主题 ${theme}；设置页显示已保存的开关`;
+    return `恢复 ${rows.length} 个任务（${rows.map((r) => `${r.name} ${r.state}`).join("、")}）；主题 ${theme}；${firstFrame}；窗口 ${win.x},${win.y} ${win.width}×${win.height} 已恢复；设置页显示已保存的开关`;
+  });
+
+  await scenario(s, "单实例：再次启动程序时激活已运行的窗口（从最小化恢复），并导入命令行里的文件", async () => {
+    const pid = s.appPid();
+    minimizeNativeWindow(pid);
+    await sleep(600);
+    const minimized = nativeWindow(pid);
+    assert(minimized?.minimized, `窗口没有最小化：${JSON.stringify(minimized)}`);
+    const port = await freePort();
+    const second = spawn(s.exe, [media.b], { env: s.env(port), stdio: "ignore", windowsHide: false });
+    const exit = await new Promise((resolve) => {
+      const timer = setTimeout(() => resolve("timeout"), 20000);
+      second.on("exit", (code) => {
+        clearTimeout(timer);
+        resolve(code);
+      });
+    });
+    if (exit === "timeout") {
+      killTree(second.pid);
+      throw new Error("第二个实例没有退出（单实例未生效）");
+    }
+    await ui.waitRows(s.page, "命令行里的文件导入已运行的实例", (r) => r.some((x) => x.name === "bravo_clip.mp4"), 20000);
+    await sleep(400);
+    const win = nativeWindow(pid);
+    assert(win && !win.minimized && win.visible, `已运行的窗口没有恢复：${JSON.stringify(win)}`);
+    const running = processesOf(s.exe);
+    assert(running.length === 1, `应只有一个程序进程：${running}`);
+    return `第二个实例退出（代码 ${exit}）；原窗口从最小化恢复（${win.width}×${win.height}）；bravo_clip.mp4 已导入`;
   });
 }
 
@@ -1162,6 +1528,7 @@ async function ffmpegDownloadScenarios(exe, media) {
       await page.waitFor("下载提示", (sel) => !!document.querySelector(sel), [BANNER]);
       const text = await page.evaluate((sel) => document.querySelector(sel).innerText, BANNER);
       assert(/下载 FFmpeg/.test(text) && text.includes("GPL"), `提示内容：${text}`);
+      await auditUi(page, "FFmpeg 下载提示", BANNER);
       // 关掉提示后拖入视频：不导入，提示重新出现，处理记录说明原因
       await page.click({ selector: "button", label: "关闭 FFmpeg 提示" });
       await page.waitFor("提示关闭", (sel) => !document.querySelector(sel), [BANNER]);
@@ -1179,6 +1546,7 @@ async function ffmpegDownloadScenarios(exe, media) {
         const t = document.querySelector("main").innerText;
         return t.includes("未找到可用的 FFmpeg") && t.includes(`下载 FFmpeg ${v}`);
       }, [server.version]);
+      await auditUi(page, "设置 · 关于（缺少 FFmpeg）", "main");
       await saveShot(s, "ffmpeg-missing-settings");
       await ui.nav(page, "batch", "视频队列");
       assert(server.hits.length === 0, `未点击下载时不应有请求：${server.hits}`);
@@ -1192,6 +1560,8 @@ async function ffmpegDownloadScenarios(exe, media) {
         const el = document.querySelector("[data-testid=ffmpeg-download-progress]");
         return el && /正在下载 ffmpeg：.+ \/ .+/.test(el.innerText) ? el.innerText.replace(/\s+/g, " ") : null;
       }, [], { timeout: 30000, interval: 100 });
+      await page.evaluate(() => window.__e2e.audit({ root: "[role=region]" }))
+        .then((r) => assert(r.problems.length === 0, `下载进度区审计：${r.problems.join(" | ")}`));
       await saveShot(s, "ffmpeg-downloading");
       await page.click({ selector: `${BANNER} button`, text: "取消" });
       await page.waitFor("取消后回到下载按钮", (sel) => {
@@ -1276,6 +1646,11 @@ async function cleanup() {
     s.cleanupPreviewDirs();
   }
   killAllChildren();
+  // 单实例测试改用的应用标识（io.github.cliprecipe.e2e）可能让 Tauri / 插件建了空的系统数据目录
+  for (const base of [process.env.APPDATA, process.env.LOCALAPPDATA]) {
+    const dir = base && path.join(base, "io.github.cliprecipe.e2e");
+    if (dir && fs.existsSync(dir)) await removeDir(dir);
+  }
   if (opt("--keep")) {
     log(`保留临时目录：${WORK}`);
   } else if (!(await removeDir(WORK))) {
@@ -1313,7 +1688,8 @@ async function runMode(mode, media) {
     exe = w("bin", "cliprecipe.exe");
     fs.copyFileSync(PROD_EXE, exe);
   }
-  const s = new Session(mode, exe);
+  // 生产形态的主会话验证单实例（e2e-hooks：改用专用的应用标识，不会激活用户正在运行的 ClipRecipe）
+  const s = new Session(mode, exe, mode === "prod" ? { env: { CLIPRECIPE_E2E_SINGLE_INSTANCE: "1" } } : {});
   sessions.push(s);
   try {
     await s.start();

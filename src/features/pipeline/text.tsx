@@ -171,7 +171,7 @@ function ItemForm({ item, onChange }: { item: TextItem; onChange: (patch: Partia
               aria-label="要删去的文字"
               placeholder={"如：_高清\n【合集】"}
               rows={2}
-              className="min-h-0 px-2 py-1 text-xs md:text-xs"
+              className="min-h-0"
             />
           </ParamField>
           <ParamField label="分行符" hint="在这些字符处换行（字符本身去掉），如 #、|、空格。">
@@ -180,7 +180,7 @@ function ItemForm({ item, onChange }: { item: TextItem; onChange: (patch: Partia
               onChange={(e) => onChange({ lineBreaks: e.target.value })}
               aria-label="分行符"
               placeholder="不分行"
-              className="h-7 w-28 px-2 text-xs md:text-xs"
+              className="w-28"
             />
           </ParamField>
         </>
@@ -203,7 +203,7 @@ function ItemForm({ item, onChange }: { item: TextItem; onChange: (patch: Partia
             aria-label="自定义文字"
             placeholder="可多行"
             rows={3}
-            className="min-h-0 px-2 py-1 text-xs md:text-xs"
+            className="min-h-0"
           />
         </ParamField>
       )}
@@ -233,7 +233,7 @@ function ItemForm({ item, onChange }: { item: TextItem; onChange: (patch: Partia
               checked={item.fitWidth}
               onCheckedChange={(checked) => onChange({ fitWidth: checked === true })}
             />
-            <Label htmlFor={fitId} className="text-xs font-normal text-muted-foreground">
+            <Label htmlFor={fitId}>
               太宽时自动缩小
             </Label>
           </span>
@@ -313,12 +313,12 @@ function ItemForm({ item, onChange }: { item: TextItem; onChange: (patch: Partia
       >
         <div className="space-y-2">
           <Select value={item.position} onValueChange={(position) => onChange({ position: position as TextPosition })}>
-            <SelectTrigger size="sm" aria-label="位置" className="h-7 w-28 px-2 text-xs">
+            <SelectTrigger aria-label="位置" className="w-28">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {POSITIONS.map((p) => (
-                <SelectItem key={p.value} value={p.value} className="text-xs">
+                <SelectItem key={p.value} value={p.value}>
                   {p.label}
                 </SelectItem>
               ))}
@@ -388,9 +388,9 @@ function TextForm({ value, onChange }: ModuleFormProps<TextParams>) {
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="gap-1">
-      <TabsList className="w-full group-data-horizontal/tabs:h-7">
+      <TabsList className="w-full">
         {value.items.map((item, i) => (
-          <TabsTrigger key={i} value={String(i)} className="gap-1 text-xs">
+          <TabsTrigger key={i} value={String(i)}>
             文本 {i + 1}
             {item.enabled && <span className="size-1.5 rounded-full bg-primary" aria-label="已启用" />}
           </TabsTrigger>

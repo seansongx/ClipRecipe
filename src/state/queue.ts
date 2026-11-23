@@ -70,6 +70,8 @@ interface QueueState {
   lastRun: RunStats | null;
   /** 本次运行已完成的输出（“完成后打开输出文件夹”用；完成后移除的任务也算在内） */
   runOutputs: string[];
+  /** 本次（或上一次）运行包含的任务（状态栏、任务栏的总进度） */
+  runIds: string[];
 
   addPaths: (paths: string[]) => Promise<void>;
   addImported: (result: ImportResult) => number;
@@ -81,7 +83,10 @@ interface QueueState {
   restore: () => Promise<void>;
   remove: (ids: string[]) => void;
   clear: () => void;
-  select: (id: string, mode: "single" | "toggle") => void;
+  /** 连续选择（Shift）的起点 */
+  anchor: string | null;
+  /** single：只选这一行；toggle：加选 / 取消（Ctrl）；range：从锚点到这一行（Shift） */
+  select: (id: string, mode: "single" | "toggle" | "range") => void;
   selectAll: () => void;
   invertSelection: () => void;
   clearSelection: () => void;
@@ -116,6 +121,8 @@ export const useQueue = create<QueueState>((set, get) => ({
   running: false,
   lastRun: null,
   runOutputs: [],
+  runIds: [],
+  anchor: null,
 
   addPaths: async (paths) => {
     if (paths.length === 0 || get().importing) return;
@@ -225,10 +232,20 @@ export const useQueue = create<QueueState>((set, get) => ({
   },
 
   select: (id, mode) => {
+    const { items, anchor } = get();
+    if (mode === "range") {
+      // 从锚点（上一次单选 / Ctrl 点选的行）到这一行连续选中，锚点不变
+      const from = items.findIndex((i) => i.id === (anchor ?? id));
+      const to = items.findIndex((i) => i.id === id);
+      if (to < 0) return;
+      const [a, b] = from < 0 ? [to, to] : [Math.min(from, to), Math.max(from, to)];
+      set({ selected: new Set(items.slice(a, b + 1).map((i) => i.id)) });
+      return;
+    }
     const selected = new Set(mode === "toggle" ? get().selected : []);
     if (mode === "toggle" && selected.has(id)) selected.delete(id);
     else selected.add(id);
-    set({ selected });
+    set({ selected, anchor: id });
   },
   selectAll: () => set({ selected: new Set(get().items.map((i) => i.id)) }),
   invertSelection: () => {
@@ -323,6 +340,7 @@ export const useQueue = create<QueueState>((set, get) => ({
       running: true,
       lastRun: null,
       runOutputs: [],
+      runIds: [...ids],
       items: items.map((item) =>
         ids.has(item.id)
           ? {

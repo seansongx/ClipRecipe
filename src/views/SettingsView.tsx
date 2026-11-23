@@ -17,6 +17,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -27,11 +28,11 @@ import ChoiceGroup from "@/components/ChoiceGroup";
 import ColorField from "@/components/ColorField";
 import { FfmpegDownloadControl, FfmpegDownloadNote } from "@/components/FfmpegDownload";
 import FontSelect from "@/components/FontSelect";
+import Hint from "@/components/Hint";
 import NumberInput from "@/components/NumberInput";
 import {
   getAppInfo,
   getDataDir,
-  getEncoderInfo,
   isTauri,
   openDataDir,
   openProjectPage,
@@ -47,6 +48,8 @@ import {
   type ThemeSetting,
 } from "@/lib/backend";
 import { formatSize } from "@/lib/format";
+import { SHORTCUT_GROUPS } from "@/lib/shortcuts";
+import { useEncoders } from "@/state/encoders";
 import { SOURCE_LABELS, useFfmpeg } from "@/state/ffmpeg";
 import { playCompletionSound } from "@/state/finish";
 import { useLog } from "@/state/log";
@@ -69,7 +72,7 @@ type GroupId = (typeof GROUPS)[number]["id"];
 
 function Row({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex items-start gap-4 border-b px-4 py-3 last:border-b-0">
+    <div className="flex items-start gap-4 border-b px-4 py-2.5 last:border-b-0">
       <div className="w-44 shrink-0">
         <p>{label}</p>
         {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
@@ -81,9 +84,9 @@ function Row({ label, hint, children }: { label: string; hint?: ReactNode; child
 
 function Section({ title, children }: { title?: string; children: ReactNode }) {
   return (
-    <section className="mb-6">
-      {title && <h2 className="mb-2 text-xs font-medium text-muted-foreground">{title}</h2>}
-      <Card className="gap-0 py-0 shadow-none">{children}</Card>
+    <section className="mb-5">
+      {title && <h2 className="mb-1.5 text-xs font-medium text-muted-foreground">{title}</h2>}
+      <Card className="gap-0">{children}</Card>
     </section>
   );
 }
@@ -154,7 +157,7 @@ function ConvertGroup() {
             onChange={(e) => update({ nameStrip: { ...settings.nameStrip, text: e.target.value } })}
             rows={2}
             placeholder="例如：_原片"
-            className="min-h-14 resize-y px-2 py-1 font-mono text-xs md:text-xs"
+            className="min-h-14 resize-y"
           />
           <div className="mt-1.5 flex items-center gap-1.5">
             <Checkbox
@@ -162,7 +165,7 @@ function ConvertGroup() {
               checked={settings.nameStrip.regex}
               onCheckedChange={(v) => update({ nameStrip: { ...settings.nameStrip, regex: v === true } })}
             />
-            <Label htmlFor={regexId} className="text-xs font-normal text-muted-foreground">
+            <Label htmlFor={regexId}>
               按正则表达式匹配
             </Label>
           </div>
@@ -294,7 +297,9 @@ function GpuHint() {
   useEffect(() => {
     if (!isTauri || !gpu || !ffmpegPath) return;
     let alive = true;
-    getEncoderInfo(false)
+    useEncoders
+      .getState()
+      .detect(false)
       .then((info) => alive && setFailed(info.failedVendors))
       .catch(() => {});
     return () => {
@@ -309,15 +314,11 @@ function GpuHint() {
         检测到 {failed.join("、")} 的显卡驱动，但硬件编码试编码失败，可能是驱动版本过低或显卡不支持编码，已改用软件编码。
         更新显卡驱动后可在“关于”中重新检测。
       </p>
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        aria-label="不再提示"
-        title="不再提示"
-        onClick={() => update({ gpuHintDismissed: true })}
-      >
-        <X />
-      </Button>
+      <Hint label="不再提示">
+        <Button variant="ghost" size="icon-sm" aria-label="不再提示" onClick={() => update({ gpuHintDismissed: true })}>
+          <X />
+        </Button>
+      </Hint>
     </div>
   );
 }
@@ -391,10 +392,9 @@ function GeneralGroup() {
           <div className="mt-1.5 flex items-center gap-2">
             <Button
               variant="outline"
-              size="xs"
+              size="sm"
               disabled={!isTauri || checking}
               onClick={() => void useUpdate.getState().check(true)}
-              className="text-xs font-normal"
             >
               <RefreshCw /> {checking ? "检查中…" : "立即检查"}
             </Button>
@@ -426,33 +426,32 @@ function SoundRow() {
     <Row label="完成提示音" hint="全部任务结束时播放；不选文件时使用内置提示音">
       {toggle("sound", "完成提示音")}
       <div className="mt-1.5 flex items-center gap-2">
-        <InputGroup className="h-7 max-w-96">
+        <InputGroup className="max-w-96">
           <InputGroupInput
             value={settings.soundPath}
             onChange={(e) => update({ soundPath: e.target.value })}
             placeholder="内置提示音（可选择 wav 文件）"
             aria-label="提示音文件"
             disabled={!settings.sound}
-            className="h-7 px-2 text-xs md:text-xs"
           />
           <InputGroupAddon align="inline-end">
-            <InputGroupButton
-              size="icon-xs"
-              onClick={() => void browse()}
-              disabled={!isTauri || !settings.sound}
-              aria-label="选择 wav 文件"
-              title="选择 wav 文件"
-            >
-              <FileInput />
-            </InputGroupButton>
+            <Hint label="选择 wav 文件">
+              <InputGroupButton
+                size="icon-xs"
+                onClick={() => void browse()}
+                disabled={!isTauri || !settings.sound}
+                aria-label="选择 wav 文件"
+              >
+                <FileInput />
+              </InputGroupButton>
+            </Hint>
           </InputGroupAddon>
         </InputGroup>
         <Button
           variant="outline"
-          size="xs"
+          size="sm"
           disabled={!settings.sound}
           onClick={() => void playCompletionSound(settings.soundPath)}
-          className="text-xs font-normal"
         >
           <Play /> 试听
         </Button>
@@ -482,7 +481,7 @@ function DeleteSourceRow() {
           checked={settings.deleteToTrash}
           onCheckedChange={(v) => update({ deleteToTrash: v === true })}
         />
-        <Label htmlFor={trashId} className="text-xs font-normal text-muted-foreground">
+        <Label htmlFor={trashId}>
           移入回收站（取消勾选则永久删除，无法恢复）
         </Label>
       </div>
@@ -574,7 +573,7 @@ function AdvancedGroup() {
           value={settings.copyright}
           onChange={(e) => update({ copyright: e.target.value })}
           placeholder="例如：© 2026 某某工作室"
-          className="h-7 max-w-96 px-2 text-xs md:text-xs"
+          className="max-w-96"
         />
       </Row>
     </Section>
@@ -612,10 +611,10 @@ function FfmpegRow({ ffmpeg }: { ffmpeg: FfmpegStatus | null }) {
       )}
       <Button
         variant="outline"
-        size="xs"
+        size="sm"
         onClick={() => void useFfmpeg.getState().redetect()}
         disabled={checking}
-        className="mt-1 text-xs font-normal text-muted-foreground"
+        className="mt-1"
       >
         <RefreshCw /> {checking ? "检测中…" : "重新检测 FFmpeg"}
       </Button>
@@ -662,10 +661,10 @@ function ManagedFfmpegRow({ ffmpeg }: { ffmpeg: FfmpegStatus }) {
           {installed && !running && (
             <Button
               variant="outline"
-              size="xs"
+              size="sm"
               onClick={() => setConfirming(true)}
               disabled={removing}
-              className="self-start text-xs font-normal text-muted-foreground"
+              className="self-start"
             >
               <Trash2 /> {removing ? "删除中…" : "删除已下载的 FFmpeg"}
             </Button>
@@ -709,7 +708,9 @@ function EnvironmentSection() {
 
   const detect = (refresh: boolean) => {
     setDetecting(true);
-    getEncoderInfo(refresh)
+    useEncoders
+      .getState()
+      .detect(refresh)
       .then(setEncoders)
       .catch((e) => setError(String(e)))
       .finally(() => setDetecting(false));
@@ -756,10 +757,10 @@ function EnvironmentSection() {
             )}
             <Button
               variant="outline"
-              size="xs"
+              size="sm"
               onClick={() => detect(true)}
               disabled={detecting || !ffmpeg?.available}
-              className="mt-1 text-xs font-normal text-muted-foreground"
+              className="mt-1"
             >
               <RefreshCw /> 重新检测
             </Button>
@@ -769,9 +770,9 @@ function EnvironmentSection() {
               <p>{dataDir}</p>
               <Button
                 variant="outline"
-                size="xs"
+                size="sm"
                 onClick={() => openDataDir().catch((e) => setError(String(e)))}
-                className="mt-1 text-xs font-normal text-muted-foreground"
+                className="mt-1"
               >
                 <FolderOpen /> 打开数据目录
               </Button>
@@ -799,10 +800,10 @@ function AboutGroup() {
           <p className="mt-1 text-xs text-muted-foreground">以 MIT 许可证开源，免费使用，无需注册。</p>
           <Button
             variant="outline"
-            size="xs"
+            size="sm"
             disabled={!isTauri}
             onClick={() => void openDocs()}
-            className="mt-1.5 text-xs font-normal"
+            className="mt-1.5"
           >
             <BookOpen /> 使用文档（GitHub）
           </Button>
@@ -815,7 +816,30 @@ function AboutGroup() {
           </p>
         </Row>
       </Section>
+      <ShortcutsSection />
       <EnvironmentSection />
+    </>
+  );
+}
+
+/** 键盘快捷键一览（内容见 lib/shortcuts.ts）。 */
+function ShortcutsSection() {
+  return (
+    <>
+      {SHORTCUT_GROUPS.map((group) => (
+        <Section key={group.title} title={`键盘快捷键 · ${group.title}`}>
+          {group.items.map((item) => (
+            <div key={item.label} className="flex items-center gap-4 border-b px-4 py-1.5 last:border-b-0">
+              <KbdGroup className="w-44 shrink-0 flex-wrap">
+                {item.keys.map((k) => (
+                  <Kbd key={k}>{k}</Kbd>
+                ))}
+              </KbdGroup>
+              <span className="text-xs">{item.label}</span>
+            </div>
+          ))}
+        </Section>
+      ))}
     </>
   );
 }
@@ -833,8 +857,8 @@ export default function SettingsView() {
   const [group, setGroup] = useState<GroupId>("convert");
   return (
     <div className="flex h-full flex-col">
-      <header className="border-b px-5 py-3">
-        <h1 className="text-base font-semibold">设置</h1>
+      <header className="flex h-11 shrink-0 items-center border-b px-4">
+        <h1 className="text-sm font-semibold">设置</h1>
       </header>
       <Tabs
         value={group}
@@ -842,13 +866,13 @@ export default function SettingsView() {
         orientation="vertical"
         className="min-h-0 flex-1 gap-0"
       >
-        <div className="w-36 shrink-0 border-r px-2 py-3">
-          <TabsList variant="line" aria-label="设置分组" className="w-full gap-0.5 p-0">
+        <div className="w-36 shrink-0 border-r px-2 py-2">
+          <TabsList aria-label="设置分组" className="w-full">
           {GROUPS.map((g) => (
             <TabsTrigger
               key={g.id}
               value={g.id}
-              className="h-8 w-full flex-none justify-start px-3 text-sm font-normal after:hidden data-active:bg-muted data-active:text-primary dark:data-active:border-transparent dark:data-active:bg-muted"
+              className="flex-none"
             >
               {g.label}
             </TabsTrigger>

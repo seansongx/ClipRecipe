@@ -53,7 +53,7 @@ function InsertFrameForm({ value, onChange }: ToolFormProps<InsertFrameParams>) 
           onChange={(e) => onChange({ positions: e.target.value })}
           aria-label="插入位置"
           placeholder="如 3, 50%, 1:20"
-          className="h-7 w-40 text-xs md:text-xs"
+          className="w-40"
         />
       </ParamField>
       <ParamField label="显示帧数">

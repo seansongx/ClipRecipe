@@ -34,7 +34,7 @@ const MAX_REGIONS = 4;
 function SubtitleEraseForm({ value, onChange }: ToolFormProps<SubtitleEraseParams>) {
   return (
     <>
-      <p className="pb-1 text-[11px] leading-snug text-muted-foreground">
+      <p className="pb-1 text-xs leading-snug text-muted-foreground">
         本地近似处理：用周围像素填补、模糊或纯色遮盖所选区域，不调用任何云服务。背景简单时效果较好，
         复杂画面会留下涂抹痕迹。不会自动识别字幕位置，请用预设字幕条或手动框选。
       </p>
@@ -125,7 +125,7 @@ function SubtitleEraseForm({ value, onChange }: ToolFormProps<SubtitleEraseParam
           placeholder={"如 0-12\n1:05-1:30"}
           aria-label="擦除时段"
           rows={2}
-          className="min-h-12 px-2 py-1 text-xs md:text-xs"
+          className="min-h-12"
         />
       </ParamField>
     </>

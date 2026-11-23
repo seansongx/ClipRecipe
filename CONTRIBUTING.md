@@ -16,7 +16,9 @@
 - 参数结构体用 serde（`camelCase`、`#[serde(default)]`，都有 `Default`）；前端 `defaults` 必须与后端 `Default` 一致，
   设置项的 `DEFAULT_SETTINGS` 必须与 `Settings::default()` 一致（`cargo test` 会自动检查）。
 - 界面文字用中文；控件一律用 shadcn/ui（`npx shadcn@latest add <组件>` 添加），不要手写 `<button>` / `<input>` /
-  `<select>` / `<textarea>` 等原生控件；颜色用 `index.css` 的主题变量，深浅色都要正常。
+  `<select>` / `<textarea>` 等原生控件；颜色用 `index.css` 的主题变量，深浅色都要正常。shadcn 风格是 Mira，
+  `src/components/ui/` 是 CLI 生成的原版，不要手改（`npm run check:shadcn` 核对）；外观只改 `index.css` 的主题变量，
+  组件尺寸用自带的 `size` 变体，不给组件写改外观的类（详见 docs/PLAN.md“架构约定 · 前端”）。
 - 每个模块 / 工具都要有单元测试（断言生成的滤镜或命令行）和集成测试（`src-tauri/tests/`，用 `lavfi` 现场生成素材真实运行）。
   不提交媒体文件、FFmpeg 二进制或原软件的截图素材。
 

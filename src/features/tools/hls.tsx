@@ -28,7 +28,7 @@ function HlsForm({ value, onChange }: ToolFormProps<HlsParams>) {
           />
         </WithUnit>
       </ParamField>
-      <p className="px-0.5 py-1 text-[11px] leading-snug text-muted-foreground">
+      <p className="px-0.5 py-1 text-xs leading-snug text-muted-foreground">
         每个视频输出到同名文件夹：index.m3u8 与 index_0000.ts 等分片，视频直接复制不重编码。
       </p>
     </>

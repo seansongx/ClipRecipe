@@ -76,7 +76,7 @@ function SidesNumberInput({
   return (
     <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
       {SIDE_LABELS.map(([side, label]) => (
-        <Label key={side} className="gap-1.5 text-xs font-normal text-muted-foreground">
+        <Label key={side}>
           <span className="w-3">{label}</span>
           <NumberInput
             className="w-[72px]"
@@ -151,6 +151,9 @@ function CropForm({ value, onChange }: ModuleFormProps<CropParams>) {
         <ChoiceGroup<CropMode>
           value={value.mode}
           onChange={(mode) => onChange({ mode })}
+          // 四个选项一行放不下：排成整齐的 2×2，而不是让最后一个单独折到下一行
+          spacing={1}
+          className="grid w-full grid-cols-2"
           options={[
             { value: "margins", label: "指定四边" },
             { value: "percent", label: "百分比" },
@@ -247,7 +250,7 @@ function CropForm({ value, onChange }: ModuleFormProps<CropParams>) {
           </ParamField>
         </>
       )}
-      <p className="pt-1 text-[11px] text-muted-foreground">裁剪后剩余画面过小（不足 16 像素或原画面的 10%）时该任务会报错。</p>
+      <p className="pt-1 text-xs text-muted-foreground">裁剪后剩余画面过小（不足 16 像素或原画面的 10%）时该任务会报错。</p>
     </>
   );
 }

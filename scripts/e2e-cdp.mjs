@@ -3,7 +3,9 @@
 // 通过 http://127.0.0.1:<端口>/json/list 找到页面，再用 WebSocket 连接。
 // 只连 127.0.0.1，用 node:http（不读 HTTP_PROXY），绕开系统代理。
 
+import fs from "node:fs";
 import http from "node:http";
+import path from "node:path";
 
 /** GET http://127.0.0.1:port/path，解析 JSON。 */
 export function getJson(port, path) {
@@ -133,6 +135,28 @@ export const PROBE_SCRIPT = String.raw`
   window.addEventListener("unhandledrejection", (e) => {
     e2e.errors.push({ kind: "unhandledrejection", message: String(e.reason && (e.reason.stack || e.reason.message) || e.reason) });
   });
+  // 桌面体验：按键 / 右键 / 滚轮 / 鼠标侧键事件最终是否被取消了默认行为（window 冒泡阶段最后执行，看到的是最终结果）
+  e2e.events = [];
+  for (const type of ["keydown", "contextmenu", "wheel", "mouseup"]) {
+    window.addEventListener(type, (e) => {
+      e2e.events.push({ type, key: e.key, code: e.code, ctrl: e.ctrlKey, shift: e.shiftKey, alt: e.altKey, button: e.button, prevented: e.defaultPrevented, target: e.target && e.target.tagName });
+    }, { passive: true });
+  }
+  // 首帧的主题与底色，以及之后 data-theme 的每次变化（检查启动时没有先浅后深的闪烁）
+  e2e.firstFrame = null;
+  e2e.themeHistory = [];
+  requestAnimationFrame(() => {
+    const root = document.documentElement;
+    e2e.firstFrame = {
+      theme: root ? root.dataset.theme || null : null,
+      background: root ? getComputedStyle(root).backgroundColor : null,
+      bodyBackground: document.body ? getComputedStyle(document.body).backgroundColor : null,
+      boot: window.__CLIPRECIPE_BOOT__ || null,
+    };
+  });
+  new MutationObserver(() => {
+    e2e.themeHistory.push({ t: Math.round(performance.now()), theme: document.documentElement.dataset.theme || null, frame: !!e2e.firstFrame });
+  }).observe(document, { attributes: true, subtree: true, attributeFilter: ["data-theme"] });
   const IPC = /^https?:\/\/ipc\.localhost\//;
   const realFetch = window.fetch;
   window.fetch = async function (input, init) {
@@ -194,6 +218,9 @@ export const PROBE_SCRIPT = String.raw`
 })();
 `;
 
+/** 界面状态审计（scripts/e2e-audit-page.js，在探针之后注入，定义 window.__e2e.audit / focusRing）。 */
+export const AUDIT_SCRIPT = fs.readFileSync(path.join(import.meta.dirname, "e2e-audit-page.js"), "utf8");
+
 /** 页面操作：求值、等待、真实鼠标 / 键盘输入（经 CDP Input 域，Radix 的 pointerdown / mousedown 也能触发）。 */
 export class Page {
   constructor(cdp) {
@@ -219,6 +246,7 @@ export class Page {
     await cdp.send("Log.enable");
     await cdp.send("Page.enable");
     await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: PROBE_SCRIPT });
+    await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: AUDIT_SCRIPT });
   }
 
   /** 重新加载页面，使探针从文档开始就生效。 */
@@ -230,6 +258,7 @@ export class Page {
     await this.cdp.send("Page.reload", { ignoreCache: true });
     await Promise.race([loaded, sleep(20000)]);
     await this.evaluate(PROBE_SCRIPT);
+    await this.evaluate(AUDIT_SCRIPT);
   }
 
   /** 在页面中执行 fn(...args)（fn 会被序列化，不能引用外部变量）。 */
@@ -366,6 +395,19 @@ export class Page {
 
   escape() {
     return this.key("Escape", "Escape", 27);
+  }
+
+  /** 鼠标滚轮（modifiers：1 Alt、2 Ctrl、4 Meta、8 Shift）。 */
+  async wheel(x, y, deltaY, modifiers = 0) {
+    await this.cdp.send("Input.dispatchMouseEvent", { type: "mouseWheel", x, y, deltaX: 0, deltaY, modifiers, pointerType: "mouse" });
+  }
+
+  /** 在坐标处右键（不经过元素查找，用于空白区域）。 */
+  async rightClickAt(x, y) {
+    await this.cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, button: "none", pointerType: "mouse" });
+    await this.cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "right", buttons: 2, clickCount: 1, pointerType: "mouse" });
+    await this.cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "right", buttons: 0, clickCount: 1, pointerType: "mouse" });
+    await sleep(150);
   }
 
   enter() {

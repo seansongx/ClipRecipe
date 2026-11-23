@@ -8,6 +8,7 @@
 //! - `tool-event`：独立工具运行的 [`crate::jobs::JobEvent`]（见 `commands::tools`）
 //! - `shutdown-countdown`：`{ remaining }`；`shutdown-failed`：错误信息（见 `commands::system`）
 //! - `ffmpeg-download`：应用内下载 FFmpeg 的进度 [`crate::ffmpeg::managed::DownloadProgress`]（见 `commands::ffmpeg`）
+//! - `open-paths`：再次启动程序时命令行里的文件（路径数组，见 `commands::window`）
 
 pub mod app;
 pub mod ffmpeg;
@@ -20,6 +21,7 @@ pub mod recipe;
 pub mod settings;
 pub mod system;
 pub mod tools;
+pub mod window;
 
 use std::path::PathBuf;
 use std::sync::Mutex;

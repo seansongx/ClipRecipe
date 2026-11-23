@@ -40,12 +40,12 @@ function OrientationForm({ value, onChange }: ToolFormProps<OrientationParams>) 
     <>
       <ParamField label="目标尺寸" hint="宽高互换：1920×1080 变成 1080×1920，竖屏同理。">
         <Select value={value.target} onValueChange={(target) => onChange({ target: target as OrientationTarget })}>
-          <SelectTrigger size="sm" aria-label="目标尺寸" className="h-7 w-44 px-2 text-xs">
+          <SelectTrigger aria-label="目标尺寸" className="w-44">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             {TARGETS.map((o) => (
-              <SelectItem key={o.value} value={o.value} className="text-xs">
+              <SelectItem key={o.value} value={o.value}>
                 {o.label}
               </SelectItem>
             ))}

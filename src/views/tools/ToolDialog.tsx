@@ -93,7 +93,7 @@ function Inputs({
             ]}
           />
           {(scope === "selected" ? selectedCount : items.length) === 0 && (
-            <span className="flex items-center gap-1 text-[11px] text-warning">
+            <span className="flex items-center gap-1 text-xs text-warning">
               <CircleAlert className="size-3" /> {items.length === 0 ? "队列为空，请先在“批量处理”中添加视频" : "没有选中的视频"}
             </span>
           )}
@@ -120,36 +120,38 @@ function ItemRow({ item, active }: { item: ToolRunItem; active: boolean }) {
   return (
     <li className="group flex items-start gap-2 px-3 py-2">
       <div className="min-w-0 flex-1">
-        <p className="truncate text-xs" title={item.inputs.join("\n")}>
-          {item.label}
-        </p>
+        <Hint label={item.inputs.join("\n")} side="bottom" align="start">
+          <p className="truncate text-xs">{item.label}</p>
+        </Hint>
         {(item.state === "running" || item.state === "done") && (
           <Progress
             value={toolItemPercent(item)}
-            className={cn("mt-1 h-1", item.state === "done" && "[&>[data-slot=progress-indicator]]:bg-muted-foreground/60")}
+            className="mt-1"
           />
         )}
         {item.state === "failed" && item.error && (
-          <p className="mt-1 line-clamp-2 text-[11px] text-destructive select-text">{item.error}</p>
+          <p className="mt-1 line-clamp-2 text-xs text-destructive select-text">{item.error}</p>
         )}
         {item.state === "done" && item.outputs.length > 0 && (
-          <p className="mt-1 truncate text-[11px] text-muted-foreground select-text" title={item.outputs.join("\n")}>
-            →{" "}
-            {item.outputs.length === 1
-              ? item.outputs[0]
-              : `${dirName(item.outputs[0] ?? "")}（${item.outputs.map(fileName).join("、")}）`}
-          </p>
+          <Hint label={item.outputs.join("\n")} side="bottom" align="start">
+            <p className="mt-1 truncate text-xs text-muted-foreground select-text">
+              →{" "}
+              {item.outputs.length === 1
+                ? item.outputs[0]
+                : `${dirName(item.outputs[0] ?? "")}（${item.outputs.map(fileName).join("、")}）`}
+            </p>
+          </Hint>
         )}
       </div>
-      <span className={cn("shrink-0 text-[11px] tabular-nums", TOOL_STATE_TONE[item.state])}>{toolItemStatus(item)}</span>
+      <span className={cn("shrink-0 text-xs tabular-nums", TOOL_STATE_TONE[item.state])}>{toolItemStatus(item)}</span>
       {active && running && (
         <Hint label="取消此项">
           <Button
             variant="ghost"
-            size="icon-xs"
+            size="icon-sm"
             aria-label={`取消 ${item.label}`}
             onClick={() => void cancelItem(item.id)}
-            className="-my-0.5 size-6 text-muted-foreground"
+            className="-my-0.5"
           >
             <X />
           </Button>
@@ -182,17 +184,17 @@ function LoadedToolBody({ def }: { def: ToolDef }) {
 
   return (
     <>
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border">
         <section className="flex w-[300px] shrink-0 flex-col border-r">
           <header className="flex items-center gap-2 px-4 pt-3 pb-1">
             <SectionTitle>参数</SectionTitle>
             {Form && (
               <Button
                 variant="ghost"
-                size="xs"
+                size="sm"
                 onClick={() => resetParams(id)}
                 disabled={thisRun?.running}
-                className="ml-auto h-6 px-1.5 text-[11px] font-normal text-muted-foreground"
+                className="ml-auto"
               >
                 <RotateCcw /> 恢复默认
               </Button>
@@ -215,7 +217,7 @@ function LoadedToolBody({ def }: { def: ToolDef }) {
             <div>
               <SectionTitle>输出位置</SectionTitle>
               <OutputPicker boxRef={dropBox(OUTPUT_DROP)} dropTarget={dropHover === OUTPUT_DROP} />
-              <p className="mt-1 text-[11px] text-muted-foreground">
+              <p className="mt-1 text-xs text-muted-foreground">
                 与批量处理共用输出位置；视频码率沿用批量处理的“码率”设置（当前：{bitrateNote}）。
               </p>
             </div>
@@ -237,7 +239,7 @@ function LoadedToolBody({ def }: { def: ToolDef }) {
         </section>
       </div>
 
-      <DialogFooter className="items-center border-t px-5 py-3 sm:justify-between">
+      <DialogFooter className="items-center sm:justify-between">
         <span className="text-xs text-muted-foreground tabular-nums">
           {otherRunning
             ? `“${otherName ?? ""}”正在运行，结束后才能开始新的工具`
@@ -252,7 +254,6 @@ function LoadedToolBody({ def }: { def: ToolDef }) {
                 variant="outline"
                 onClick={() => usePreview.getState().previewTool(id, value)}
                 disabled={!isTauri || !ready}
-                className="px-4"
               >
                 <Eye /> 预览
               </Button>
@@ -285,13 +286,15 @@ function RunButton({
   disabledReason: string | undefined;
 }) {
   return running ? (
-    <Button variant="outline" onClick={onStop} className="px-4">
+    <Button variant="outline" onClick={onStop}>
       <Square /> 停止
     </Button>
   ) : (
-    <Button onClick={onStart} disabled={disabled} title={disabledReason} className="px-4">
-      <Play /> 开始
-    </Button>
+    <Hint label={disabledReason ?? null} disabledTrigger>
+      <Button onClick={onStart} disabled={disabled}>
+        <Play /> 开始
+      </Button>
+    </Hint>
   );
 }
 
@@ -319,19 +322,19 @@ function ToolDialogBody({ id }: { id: string }) {
 
 function ToolHeader({ feature }: { feature: Feature }) {
   return (
-    <DialogHeader className="border-b px-5 py-3 pr-12">
-      <DialogTitle className="flex items-center gap-2 text-sm">
+    <DialogHeader>
+      <DialogTitle className="flex items-center gap-2">
         {feature.name}
-        <Badge variant="secondary" className="font-normal text-muted-foreground">
+        <Badge variant="secondary">
           {feature.group}
         </Badge>
         {!isToolReady(feature.id) && (
-          <Badge variant="outline" className="font-normal text-muted-foreground">
+          <Badge variant="outline">
             规划中
           </Badge>
         )}
       </DialogTitle>
-      <DialogDescription className="text-xs">{feature.summary}</DialogDescription>
+      <DialogDescription>{feature.summary}</DialogDescription>
     </DialogHeader>
   );
 }
@@ -344,7 +347,7 @@ export default function ToolDialog() {
 
   return (
     <Dialog open onOpenChange={(open) => !open && close()}>
-      <DialogContent className="flex h-[min(88vh,760px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
+      <DialogContent className="flex h-[min(88vh,760px)] flex-col overflow-hidden sm:max-w-4xl">
         <ToolHeader feature={feature} />
         <ToolDialogBody key={openId} id={openId} />
       </DialogContent>

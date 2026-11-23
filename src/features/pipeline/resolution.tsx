@@ -67,17 +67,17 @@ function ResolutionForm({ value, onChange }: ModuleFormProps<ResolutionParams>) 
               value={STANDARD_HEIGHTS.includes(value.standardHeight) ? String(value.standardHeight) : CUSTOM_HEIGHT}
               onValueChange={(v) => v !== CUSTOM_HEIGHT && onChange({ standardHeight: Number(v) })}
             >
-              <SelectTrigger size="sm" aria-label="标准高度" className="h-7 w-24 px-2 text-xs">
+              <SelectTrigger aria-label="标准高度" className="w-24">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {!STANDARD_HEIGHTS.includes(value.standardHeight) && (
-                  <SelectItem value={CUSTOM_HEIGHT} disabled className="text-xs">
+                  <SelectItem value={CUSTOM_HEIGHT} disabled>
                     自定义
                   </SelectItem>
                 )}
                 {STANDARD_HEIGHTS.map((h) => (
-                  <SelectItem key={h} value={String(h)} className="text-xs">
+                  <SelectItem key={h} value={String(h)}>
                     {h}p
                   </SelectItem>
                 ))}
@@ -128,7 +128,6 @@ function ResolutionForm({ value, onChange }: ModuleFormProps<ResolutionParams>) 
             <ToggleGroup
               type="single"
               variant="outline"
-              size="sm"
               spacing={1}
               aria-label="常用尺寸"
               value={SIZE_PRESETS.find((p) => p.width === value.width && p.height === value.height)?.label ?? ""}
@@ -142,7 +141,6 @@ function ResolutionForm({ value, onChange }: ModuleFormProps<ResolutionParams>) 
                 <ToggleGroupItem
                   key={p.label}
                   value={p.label}
-                  className="h-6 px-1.5 text-[11px] font-normal text-muted-foreground data-[state=on]:border-primary data-[state=on]:bg-primary/12 data-[state=on]:text-foreground"
                 >
                   {p.label}
                 </ToggleGroupItem>

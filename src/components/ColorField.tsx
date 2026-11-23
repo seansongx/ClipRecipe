@@ -55,30 +55,28 @@ export default function ColorField({
         <Button
           type="button"
           variant="outline"
-          size="xs"
+          size="sm"
           disabled={disabled}
           aria-label={`${label}：${value}`}
-          className="h-7 gap-1.5 px-1.5 font-mono text-[11px] font-normal"
         >
           <span className="size-4 rounded-sm ring-1 ring-foreground/20" style={{ backgroundColor: value }} />
           {value}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-auto gap-2 p-2">
+      <PopoverContent align="start" className="w-auto">
         <div className="grid grid-cols-6 gap-1" role="listbox" aria-label={label}>
           {SWATCHES.map((swatch) => (
             <Button
               key={swatch}
               type="button"
               variant="ghost"
-              size="icon-xs"
+              size="icon-sm"
               role="option"
               aria-selected={swatch === value}
               aria-label={swatch}
-              title={swatch}
               onClick={() => onChange(swatch)}
               className={cn(
-                "size-6 rounded-sm p-0 ring-1 ring-foreground/15 hover:opacity-85",
+                "ring-1 ring-foreground/15",
                 swatch === value && "ring-2 ring-ring ring-offset-1 ring-offset-popover",
               )}
               style={{ backgroundColor: swatch }}
@@ -95,7 +93,6 @@ export default function ColorField({
             if (e.key === "Enter") commit();
           }}
           aria-invalid={normalizeHex(text) === null}
-          className="h-7 px-2 font-mono text-xs md:text-xs"
         />
       </PopoverContent>
     </Popover>

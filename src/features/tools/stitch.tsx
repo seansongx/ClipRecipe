@@ -69,12 +69,12 @@ function StitchForm({ value, onChange }: ToolFormProps<StitchParams>) {
     <>
       <ParamField label="布局" hint="文件按名称排序后每 N 个一组，最后一组不足时空位填充背景色。">
         <Select value={value.layout} onValueChange={(layout) => setLayout(layout as StitchLayout)}>
-          <SelectTrigger size="sm" aria-label="拼接布局" className="h-7 w-32 px-2 text-xs">
+          <SelectTrigger aria-label="拼接布局" className="w-32">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             {LAYOUTS.map((o) => (
-              <SelectItem key={o.value} value={o.value} className="text-xs">
+              <SelectItem key={o.value} value={o.value}>
                 {o.label}
               </SelectItem>
             ))}

@@ -1,4 +1,12 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
+} from "react";
 import { Captions, Film, GripVertical, Image, Info, Play, RefreshCw, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,6 +16,7 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuShortcut,
   ContextMenuSub,
   ContextMenuSubContent,
   ContextMenuSubTrigger,
@@ -19,6 +28,7 @@ import { Spinner } from "@/components/ui/spinner";
 import Hint from "@/components/Hint";
 import { COVER_EXTENSIONS, isTauri, pickFile, SUBTITLE_EXTENSIONS } from "@/lib/backend";
 import { dirName, formatBitrate, formatDuration, formatFps, formatSize } from "@/lib/format";
+import { KEYS } from "@/lib/shortcuts";
 import { cn, scrollViewport } from "@/lib/utils";
 import { usePreview } from "@/state/preview";
 import { useQueue, type QueueItem } from "@/state/queue";
@@ -45,8 +55,10 @@ const STATE_TONE: Record<QueueItem["state"], string> = {
   cancelled: "text-muted-foreground",
 };
 
-const rowButton =
-  "size-7 text-muted-foreground opacity-0 hover:bg-card focus-visible:opacity-100 group-hover:opacity-100 dark:hover:bg-card";
+// 行内按钮只在悬停该行（或键盘聚焦）时出现
+const rowButton = "opacity-0 focus-visible:opacity-100 group-hover:opacity-100";
+
+const rowDomId = (id: string) => `queue-row-${id}`;
 
 function mediaSummary(item: QueueItem): string {
   const info = item.info;
@@ -67,22 +79,22 @@ function mediaSummary(item: QueueItem): string {
 
 function StreamBadge({ title, children }: { title: string; children: string }) {
   return (
-    <Badge
-      variant="outline"
-      title={title}
-      className="h-4 rounded-sm px-1 text-[10px] font-normal text-muted-foreground"
-    >
-      {children}
-    </Badge>
+    <Hint label={title}>
+      <Badge variant="outline" aria-label={title}>
+        {children}
+      </Badge>
+    </Hint>
   );
 }
 
 /** 关联的字幕 / 封面（queue.sidecar）：处理时烧录 / 嵌入。 */
 function AttachmentBadge({ title, children }: { title: string; children: string }) {
   return (
-    <Badge variant="secondary" title={title} className="h-4 rounded-sm px-1 text-[10px] font-medium text-primary">
-      {children}
-    </Badge>
+    <Hint label={title}>
+      <Badge variant="secondary" aria-label={title}>
+        {children}
+      </Badge>
+    </Hint>
   );
 }
 
@@ -99,25 +111,25 @@ function SidecarSubmenu() {
   };
   return (
     <ContextMenuSub>
-      <ContextMenuSubTrigger className="text-xs">
+      <ContextMenuSubTrigger>
         <Captions /> 字幕与封面
       </ContextMenuSubTrigger>
       <ContextMenuSubContent className="min-w-40">
-        <ContextMenuItem className="text-xs" disabled={!isTauri} onSelect={() => void choose("subtitle")}>
+        <ContextMenuItem disabled={!isTauri} onSelect={() => void choose("subtitle")}>
           <Captions /> 设置字幕…
         </ContextMenuItem>
-        <ContextMenuItem className="text-xs" onSelect={() => setAttachment(ids(), "subtitle", null)}>
+        <ContextMenuItem onSelect={() => setAttachment(ids(), "subtitle", null)}>
           清除字幕
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem className="text-xs" disabled={!isTauri} onSelect={() => void choose("cover")}>
+        <ContextMenuItem disabled={!isTauri} onSelect={() => void choose("cover")}>
           <Image /> 设置封面…
         </ContextMenuItem>
-        <ContextMenuItem className="text-xs" onSelect={() => setAttachment(ids(), "cover", null)}>
+        <ContextMenuItem onSelect={() => setAttachment(ids(), "cover", null)}>
           清除封面
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem className="text-xs" disabled={!isTauri} onSelect={() => void reloadSidecars()}>
+        <ContextMenuItem disabled={!isTauri} onSelect={() => void reloadSidecars()}>
           <RefreshCw /> 全部重载（同名字幕与封面）
         </ContextMenuItem>
       </ContextMenuSubContent>
@@ -130,16 +142,18 @@ function OutputLine({ item }: { item: QueueItem }) {
   if (item.outputs.length > 1) {
     const folder = dirName(item.outputs[0] ?? "");
     return (
-      <p className="mt-1 truncate text-xs text-muted-foreground select-text" title={item.outputs.join("\n")}>
-        → {item.outputs.length} 个输出：{folder}
-      </p>
+      <Hint label={item.outputs.join("\n")} side="bottom" align="start">
+        <p className="mt-0.5 truncate text-xs text-muted-foreground select-text">
+          → {item.outputs.length} 个输出：{folder}
+        </p>
+      </Hint>
     );
   }
   if (!item.output) return null;
   return (
-    <p className="mt-1 truncate text-xs text-muted-foreground select-text" title={item.output}>
-      → {item.output}
-    </p>
+    <Hint label={item.output} side="bottom" align="start">
+      <p className="mt-0.5 truncate text-xs text-muted-foreground select-text">→ {item.output}</p>
+    </Hint>
   );
 }
 
@@ -161,77 +175,94 @@ function Row({
   item,
   index,
   selected,
+  active,
   dropMark,
+  onRowClick,
   onGripDown,
   onShowInfo,
 }: {
   item: QueueItem;
   index: number;
   selected: boolean;
+  /** 键盘焦点所在的行 */
+  active: boolean;
   dropMark: "before" | "after" | null;
+  onRowClick: (e: ReactMouseEvent, item: QueueItem) => void;
   onGripDown: (e: ReactPointerEvent, id: string) => void;
   onShowInfo: (item: QueueItem) => void;
 }) {
   const { select, cancel } = useQueue.getState();
-  const active = item.state === "running" || item.state === "waiting";
+  const isActive = item.state === "running" || item.state === "waiting";
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <li
+          id={rowDomId(item.id)}
+          role="option"
+          aria-selected={selected}
           data-row-index={index}
-          onClick={(e) => select(item.id, e.ctrlKey || e.metaKey ? "toggle" : "single")}
+          data-active={active || undefined}
+          onClick={(e) => onRowClick(e, item)}
           onContextMenu={() => {
             // 右键未选中的行时改为只选中它，菜单里的操作针对所选视频
             if (!selected) select(item.id, "single");
           }}
           onDoubleClick={() => usePreview.getState().playSource(item)}
-          title="双击播放"
-          className={cn("group relative flex items-start gap-2 py-2.5 pr-3 pl-1.5", selected ? "bg-muted" : "hover:bg-muted/60")}
+          className={cn(
+            "group relative flex items-start gap-2 py-1.5 pr-2 pl-1",
+            selected
+              ? "bg-primary/15 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-primary"
+              : "hover:bg-muted/60",
+            "group-focus-visible/list:data-active:outline group-focus-visible/list:data-active:-outline-offset-1 group-focus-visible/list:data-active:outline-ring",
+          )}
         >
           {dropMark && (
             <span
               className={cn("pointer-events-none absolute inset-x-0 h-0.5 bg-primary", dropMark === "before" ? "-top-px" : "-bottom-px")}
             />
           )}
-          <span
-            onPointerDown={(e) => onGripDown(e, item.id)}
-            onClick={(e) => e.stopPropagation()}
-            title="拖动调整顺序"
-            className="mt-0.5 cursor-grab touch-none text-muted-foreground opacity-40 hover:opacity-100 active:cursor-grabbing"
-          >
-            <GripVertical className="size-4" />
-          </span>
+          <Hint label="拖动调整顺序">
+            <span
+              aria-label="拖动调整顺序"
+              onPointerDown={(e) => onGripDown(e, item.id)}
+              onClick={(e) => e.stopPropagation()}
+              className="mt-0.5 cursor-grab touch-none text-muted-foreground opacity-40 hover:opacity-100 active:cursor-grabbing"
+            >
+              <GripVertical className="size-4" />
+            </span>
+          </Hint>
           <Checkbox
             checked={selected}
+            tabIndex={-1}
             onClick={(e) => e.stopPropagation()}
             onDoubleClick={(e) => e.stopPropagation()}
             onCheckedChange={() => select(item.id, "toggle")}
             aria-label={`选择 ${item.name}`}
-            className="mt-0.5 bg-card"
+            className="mt-0.5"
           />
-          <span className="mt-0.5 w-6 text-right text-xs text-muted-foreground tabular-nums">{index + 1}</span>
+          <span className="mt-px w-6 text-right text-xs text-muted-foreground tabular-nums">{index + 1}</span>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
-              <p className="truncate" title={item.path}>
-                {item.name}
-              </p>
-              {item.subtitle && (
-                <AttachmentBadge title={`烧录字幕：${item.subtitle}`}>CC</AttachmentBadge>
-              )}
+              <Hint label={item.path} side="bottom" align="start">
+                <p className="truncate" data-path={item.path}>
+                  {item.name}
+                </p>
+              </Hint>
+              {item.subtitle && <AttachmentBadge title={`烧录字幕：${item.subtitle}`}>CC</AttachmentBadge>}
               {item.cover && <AttachmentBadge title={`嵌入封面：${item.cover}`}>FC</AttachmentBadge>}
               {!item.subtitle && item.info && item.info.subtitles.length > 0 && (
                 <StreamBadge title="文件内带字幕轨">CC</StreamBadge>
               )}
               {!item.cover && item.info?.hasCover && <StreamBadge title="文件内带封面">FC</StreamBadge>}
             </div>
-            <p className={cn("truncate text-xs", item.probeError ? "text-destructive" : "text-muted-foreground")}>
+            <p className={cn("truncate text-xs", item.probeError ? "text-destructive select-text" : "text-muted-foreground")}>
               {mediaSummary(item)}
             </p>
             {(item.state === "running" || item.state === "done") && (
               <Progress
                 value={Math.max(0, Math.min(100, item.percent))}
                 className={cn(
-                  "mt-1.5 h-1",
+                  "mt-1 h-1",
                   item.state === "done" && "[&>[data-slot=progress-indicator]]:bg-muted-foreground/60",
                 )}
               />
@@ -242,13 +273,14 @@ function Row({
             <OutputLine item={item} />
             <ToolRowProgress queueId={item.id} path={item.path} />
           </div>
-          <span className={cn("mt-0.5 shrink-0 text-xs tabular-nums", STATE_TONE[item.state])}>{stateText(item)}</span>
+          <span className={cn("mt-px shrink-0 text-xs tabular-nums", STATE_TONE[item.state])}>{stateText(item)}</span>
           <div className="-my-0.5 flex shrink-0" onDoubleClick={(e) => e.stopPropagation()}>
             <Hint label="播放">
               <Button
                 variant="ghost"
-                size="icon-xs"
+                size="icon-sm"
                 aria-label="播放"
+                tabIndex={-1}
                 onClick={(e) => {
                   e.stopPropagation();
                   usePreview.getState().playSource(item);
@@ -261,8 +293,9 @@ function Row({
             <Hint label="媒体信息">
               <Button
                 variant="ghost"
-                size="icon-xs"
+                size="icon-sm"
                 aria-label="媒体信息"
+                tabIndex={-1}
                 onClick={(e) => {
                   e.stopPropagation();
                   onShowInfo(item);
@@ -272,14 +305,15 @@ function Row({
                 <Info />
               </Button>
             </Hint>
-            <Hint label={active ? "取消" : "移除"}>
+            <Hint label={isActive ? "取消" : "移除"}>
               <Button
                 variant="ghost"
-                size="icon-xs"
-                aria-label={active ? "取消" : "移除"}
+                size="icon-sm"
+                aria-label={isActive ? "取消" : "移除"}
+                tabIndex={-1}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (active) void cancel(item.id);
+                  if (isActive) void cancel(item.id);
                   else requestRemove({ kind: "ids", ids: [item.id] });
                 }}
                 className={rowButton}
@@ -290,25 +324,26 @@ function Row({
           </div>
         </li>
       </ContextMenuTrigger>
-      <ContextMenuContent className="min-w-40">
-        <ContextMenuItem className="text-xs" onSelect={() => usePreview.getState().playSource(item)}>
+      <ContextMenuContent className="min-w-44">
+        <ContextMenuItem onSelect={() => usePreview.getState().playSource(item)}>
           <Play /> 播放
+          <ContextMenuShortcut>Enter</ContextMenuShortcut>
         </ContextMenuItem>
-        <ContextMenuItem className="text-xs" onSelect={() => onShowInfo(item)}>
+        <ContextMenuItem onSelect={() => onShowInfo(item)}>
           <Info /> 媒体信息
         </ContextMenuItem>
         <QueueToolsSubmenu />
         <SidecarSubmenu />
         <ContextMenuSeparator />
         <ContextMenuItem
-          className="text-xs"
           variant="destructive"
           onSelect={() => {
-            if (active) void cancel(item.id);
+            if (isActive) void cancel(item.id);
             else requestRemove({ kind: "ids", ids: [...useQueue.getState().selected] });
           }}
         >
-          <X /> {active ? "取消处理" : "移除所选"}
+          <X /> {isActive ? "取消处理" : "移除所选"}
+          {!isActive && <ContextMenuShortcut>{KEYS.remove}</ContextMenuShortcut>}
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
@@ -364,53 +399,159 @@ function useDragReorder(container: RefObject<HTMLDivElement | null>) {
   return { dragId, drop, onGripDown };
 }
 
+/**
+ * 键盘操作（列表获得焦点时，像系统的列表控件）：↑↓ / Home / End 移动并选中，Shift 扩展选择，Ctrl 只移动焦点；
+ * 空格切换选中，Enter 播放，Ctrl+A 全选，Delete 移除所选。点击：单选；Ctrl 加选；Shift 连续选择。
+ */
+function useListKeyboard(list: RefObject<HTMLUListElement | null>) {
+  const items = useQueue((s) => s.items);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const active = items.some((i) => i.id === activeId) ? activeId : null;
+
+  useEffect(() => {
+    if (active) document.getElementById(rowDomId(active))?.scrollIntoView({ block: "nearest" });
+  }, [active]);
+
+  const onRowClick = (e: ReactMouseEvent, item: QueueItem) => {
+    const { select } = useQueue.getState();
+    if (e.shiftKey) select(item.id, "range");
+    else select(item.id, e.ctrlKey || e.metaKey ? "toggle" : "single");
+    setActiveId(item.id);
+    list.current?.focus({ preventScroll: true });
+  };
+
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLUListElement>) => {
+    if (e.target !== e.currentTarget) return;
+    const queue = useQueue.getState();
+    const all = queue.items;
+    if (all.length === 0) return;
+    const ctrl = e.ctrlKey || e.metaKey;
+    const index = Math.max(0, all.findIndex((i) => i.id === active));
+    const moveTo = (next: number) => {
+      const target = all[Math.max(0, Math.min(all.length - 1, next))];
+      if (!target) return;
+      setActiveId(target.id);
+      if (e.shiftKey) queue.select(target.id, "range");
+      else if (!ctrl) queue.select(target.id, "single");
+    };
+    const current = all[index];
+    switch (e.key) {
+      case "ArrowDown":
+        moveTo(active ? index + 1 : 0);
+        break;
+      case "ArrowUp":
+        moveTo(active ? index - 1 : 0);
+        break;
+      case "Home":
+        moveTo(0);
+        break;
+      case "End":
+        moveTo(all.length - 1);
+        break;
+      case "PageDown":
+        moveTo(index + 10);
+        break;
+      case "PageUp":
+        moveTo(index - 10);
+        break;
+      case " ":
+        if (current) {
+          queue.select(current.id, "toggle");
+          setActiveId(current.id);
+        }
+        break;
+      case "Enter":
+        if (current && !ctrl) usePreview.getState().playSource(current);
+        else return;
+        break;
+      case "Delete":
+        if (queue.selected.size === 0) return;
+        requestRemove({ kind: "ids", ids: [...queue.selected] });
+        break;
+      case "a":
+      case "A":
+        if (!ctrl || e.shiftKey || e.altKey) return;
+        queue.selectAll();
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+  };
+
+  const onFocus = () => {
+    if (active) return;
+    const { items: all, selected } = useQueue.getState();
+    const first = all.find((i) => selected.has(i.id)) ?? all[0];
+    if (first) setActiveId(first.id);
+  };
+
+  return { active, onRowClick, onKeyDown, onFocus };
+}
+
 export default function QueueList({ hovering }: { hovering: boolean }) {
   const items = useQueue((s) => s.items);
   const selected = useQueue((s) => s.selected);
   const importing = useQueue((s) => s.importing);
   const container = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLUListElement>(null);
   const { dragId, drop, onGripDown } = useDragReorder(container);
+  const { active, onRowClick, onKeyDown, onFocus } = useListKeyboard(list);
   const [infoItem, setInfoItem] = useState<QueueItem | null>(null);
 
   return (
     <div
       className={cn(
-        "relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border-2 border-dashed transition-colors",
-        hovering ? "border-primary bg-muted" : "border-border",
+        "relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border bg-card transition-colors",
+        hovering && "border-dashed border-primary bg-muted",
         dragId && "cursor-grabbing",
       )}
     >
       {importing && (
-        <div className="border-b bg-card px-4 py-2 text-xs text-muted-foreground">
+        <div className="border-b px-3 py-1.5 text-xs text-muted-foreground">
           <div className="flex items-center gap-2">
             <Spinner className="size-3.5" aria-label="导入中" />
             {importing.total > 10 ? `正在导入 ${importing.done} / ${importing.total}` : "正在导入…"}
           </div>
-          {importing.total > 10 && <Progress value={(importing.done / importing.total) * 100} className="mt-1.5 h-1" />}
+          {importing.total > 10 && <Progress value={(importing.done / importing.total) * 100} className="mt-1 h-1" />}
         </div>
       )}
       {items.length === 0 ? (
-        <div className="grid flex-1 place-items-center text-center text-muted-foreground">
-          <div>
-            <Film className="mx-auto mb-3 size-10 opacity-60" />
-            <p className="text-foreground">把视频或文件夹拖到这里</p>
-            <p className="mt-1 text-xs">
-              {isTauri
-                ? "或点击右上角“添加视频”“添加文件夹”；拖入配方文件（.json）可加载参数"
-                : "当前在浏览器中预览，导入功能需要在桌面应用中使用"}
-            </p>
+        <div className="grid flex-1 place-items-center text-muted-foreground">
+          <div className="flex items-center gap-3">
+            <Film className="size-6 shrink-0 opacity-50" />
+            <div>
+              <p className="text-foreground">把视频或文件夹拖到这里</p>
+              <p className="text-xs">
+                {isTauri
+                  ? "或用“添加视频”（Ctrl+O）、“添加文件夹”（Ctrl+Shift+O）；拖入配方文件（.json）可加载参数"
+                  : "当前在浏览器中预览，导入功能需要在桌面应用中使用"}
+              </p>
+            </div>
           </div>
         </div>
       ) : (
         <ScrollArea ref={container} className="min-h-0 flex-1">
-          <ul className="divide-y">
+          <ul
+            ref={list}
+            role="listbox"
+            aria-label="视频队列"
+            aria-multiselectable
+            aria-activedescendant={active ? rowDomId(active) : undefined}
+            tabIndex={0}
+            onKeyDown={onKeyDown}
+            onFocus={onFocus}
+            className="group/list divide-y outline-none"
+          >
             {items.map((item, index) => (
               <Row
                 key={item.id}
                 item={item}
                 index={index}
                 selected={selected.has(item.id)}
+                active={item.id === active}
                 dropMark={dragId && drop?.index === index && dragId !== item.id ? drop.mark : null}
+                onRowClick={onRowClick}
                 onGripDown={onGripDown}
                 onShowInfo={setInfoItem}
               />

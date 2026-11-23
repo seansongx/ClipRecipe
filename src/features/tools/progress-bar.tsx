@@ -124,7 +124,7 @@ function ProgressBarForm({ value, onChange }: ToolFormProps<ProgressBarParams>) 
           onChange={(e) => onChange({ chapters: e.target.value })}
           aria-label="章节配置"
           placeholder={"0,开场\n1:30,第一部分\n75%,总结"}
-          className="min-h-20 text-xs md:text-xs"
+          className="min-h-20"
         />
       </ParamField>
       {value.chapters.trim() !== "" && (

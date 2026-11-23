@@ -54,7 +54,7 @@ function BitrateForm({ value, onChange }: ModuleFormProps<BitrateParams>) {
           />
         </ParamField>
       )}
-      <p className="pt-1 text-[11px] text-muted-foreground">不启用此项时沿用源视频码率。</p>
+      <p className="pt-1 text-xs text-muted-foreground">不启用此项时沿用源视频码率。</p>
     </>
   );
 }

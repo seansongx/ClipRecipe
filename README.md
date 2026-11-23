@@ -23,6 +23,20 @@
 - **设置**：目标格式、重名处理、文件名去除、并行数、H.265、HDR 转 SDR 或保留 HDR、GPU 硬件编码（NVENC / QSV / AMF，
   失败自动回退软件编码，可设核显优先）、体积压缩、版权元数据、完成后打开文件夹 / 提示音 / 关机 / 退出、
   处理后删除源视频（默认移入回收站）或把输出移回源位置、托盘、深浅色主题、检查更新（只提示并打开 GitHub 发布页）。
+- **桌面程序的用法**：标题栏随主题变色（Windows 11），记住窗口位置与大小，只运行一个实例（再次打开会激活已有窗口，
+  拖到程序图标上的文件直接导入），任务栏按钮显示处理进度，底部状态栏显示队列与运行状态。
+
+### 快捷键
+
+| 按键 | 作用 |
+|---|---|
+| Ctrl+O / Ctrl+Shift+O | 添加视频 / 添加文件夹 |
+| Ctrl+Enter / Esc | 开始处理 / 停止处理（Esc 在有对话框时关闭对话框） |
+| Ctrl+1 / 2 / 3、Ctrl+, | 切换到批量处理 / 工具箱 / 设置，打开设置 |
+| F1 | 使用文档 |
+| 队列中：↑ ↓ Home End、Shift / Ctrl + 点击、Ctrl+A、Delete、Enter | 移动与选择、全选、移除所选、播放 |
+
+完整列表在“设置 → 关于”。
 
 ## FFmpeg
 
@@ -89,7 +103,7 @@ cargo test
 
 ```
 src/                      前端（React + TypeScript + Tailwind v4 + shadcn/ui）
-  components/ui/          shadcn/ui 组件（CLI 生成）
+  components/ui/          shadcn/ui 组件（CLI 生成，风格 Mira，不要手改；`npm run check:shadcn` 核对）
   components/             业务控件（范围输入、素材来源、区域框选、颜色、字体……）
   features/pipeline/      每个流水线模块的参数表单
   features/tools/         每个独立工具的参数表单
@@ -105,6 +119,7 @@ src-tauri/resources/      ffmpeg-manifest.json：应用内下载的固定清单�
   jobs/                   导入、输出命名、调度执行、收尾（移回 / 删除源）、队列保存
   tools/                  独立工具框架与 34 个工具；common/ 为工具共用的引擎
   commands/               暴露给前端的命令
+  desktop.rs              主窗口：首帧后显示、标题栏配色、任务栏进度、单实例、窗口位置
 src-tauri/tests/          集成测试
 docs/FEATURES.md          功能清单与状态
 docs/PLAN.md              架构约定、验收标准、模块 / 工具编写指南、各里程碑的实现说明

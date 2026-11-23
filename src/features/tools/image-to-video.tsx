@@ -119,12 +119,12 @@ function ImageToVideoForm({ value, onChange }: ToolFormProps<ImageToVideoParams>
           value={value.animation}
           onValueChange={(animation) => onChange({ animation: animation as ImageAnimation })}
         >
-          <SelectTrigger size="sm" aria-label="入场动画" className="h-7 w-32 px-2 text-xs">
+          <SelectTrigger aria-label="入场动画" className="w-32">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             {ANIMATIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value} className="text-xs">
+              <SelectItem key={o.value} value={o.value}>
                 {o.label}
               </SelectItem>
             ))}

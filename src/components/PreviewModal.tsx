@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { RefreshCw, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import Hint from "@/components/Hint";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
@@ -32,12 +33,12 @@ function PreviewDialog() {
   return (
     <DialogContent
       aria-describedby={undefined}
-      className="flex max-h-[calc(100vh-3rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl"
+      className="flex max-h-[calc(100vh-3rem)] flex-col overflow-hidden sm:max-w-4xl"
     >
-      <DialogHeader className="border-b px-4 py-3 pr-12">
-        <DialogTitle className="truncate text-sm">{title}</DialogTitle>
+      <DialogHeader>
+        <DialogTitle className="truncate">{title}</DialogTitle>
       </DialogHeader>
-      <div className="grid min-h-[320px] place-items-center bg-black">
+      <div className="grid min-h-[320px] place-items-center overflow-hidden rounded-lg bg-black">
         {status === "ready" && url && (
           <video key={url} src={url} controls autoPlay loop={pipeline} muted={mutePreview} className="max-h-[65vh] w-full" />
         )}
@@ -45,7 +46,7 @@ function PreviewDialog() {
           <div className="w-64 text-center text-sm text-white/80">
             <Spinner className="mx-auto mb-3 size-7" aria-label="加载中" />
             {pipeline ? "正在生成预览…" : "正在打开…"}
-            {pipeline && percent > 0 && <Progress value={percent} className="mt-3 h-1 bg-white/15" />}
+            {pipeline && percent > 0 && <Progress value={percent} className="mt-3" />}
           </div>
         )}
         {status === "error" && (
@@ -56,7 +57,7 @@ function PreviewDialog() {
         )}
       </div>
       {pipeline && result && status === "ready" && (
-        <div className="space-y-1 px-4 py-2 text-xs text-muted-foreground select-text">
+        <div className="space-y-1 text-xs text-muted-foreground select-text">
           <p>
             {result.width}×{result.height} · {formatDuration(result.duration)} · 参与预览的步骤：
             {result.modules.length > 0 ? result.modules.map(stepName).join("、") : "无（仅缩小画面）"}
@@ -73,7 +74,7 @@ function PreviewDialog() {
         </div>
       )}
       {pipeline && (
-        <DialogFooter className="border-t px-4 py-2.5 sm:justify-start">
+        <DialogFooter className="sm:justify-start">
           <PreviewControls
             start={start}
             duration={duration}
@@ -112,19 +113,14 @@ function PreviewControls({
       秒起，时长
       <NumberInput value={length} onChange={setLength} min={0.5} max={60} step="any" className="w-16" label="时长（秒）" />
       秒
-      <Button variant="outline" size="xs" onClick={() => onApply(from, length)} disabled={busy} className="h-7 px-2.5">
+      <Button variant="outline" size="sm" onClick={() => onApply(from, length)} disabled={busy}>
         应用
       </Button>
-      <Button
-        variant="outline"
-        size="xs"
-        onClick={onRerender}
-        disabled={busy}
-        className="ml-auto h-7 px-2.5"
-        title="用新的随机种子重新生成"
-      >
-        <RefreshCw /> 换一组随机值
-      </Button>
+      <Hint label="用新的随机种子重新生成" disabledTrigger>
+        <Button variant="outline" size="sm" onClick={onRerender} disabled={busy}>
+          <RefreshCw /> 换一组随机值
+        </Button>
+      </Hint>
     </div>
   );
 }

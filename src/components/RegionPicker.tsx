@@ -5,6 +5,7 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Crosshair, SquareDashedMousePointer, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import Hint from "@/components/Hint";
 import {
   Dialog,
   DialogContent,
@@ -229,7 +230,7 @@ function FrameEditor({
                 boxShadow: "0 0 0 1px rgba(0,0,0,.6)",
               }}
             >
-              <span className="pointer-events-none absolute left-0 top-0 bg-black/70 px-1 text-[10px] leading-4 text-white">
+              <span className="pointer-events-none absolute left-0 top-0 bg-black/70 px-1 text-xs leading-4 text-white">
                 {i + 1}
               </span>
               {i === active &&
@@ -252,13 +253,12 @@ function FrameEditor({
                   type="button"
                   size="icon-xs"
                   aria-label="删除此区域"
-                  title="删除此区域"
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => {
                     onRects(rects.filter((_, j) => j !== i));
                     setActive(null);
                   }}
-                  className="absolute -top-2.5 right-3 size-5 rounded-full bg-black/80 text-white hover:bg-black"
+                  className="absolute -top-2.5 right-3"
                 >
                   <X />
                 </Button>
@@ -308,12 +308,12 @@ function FrameDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         aria-describedby={undefined}
-        className="flex max-h-[calc(100vh-3rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
+        className="flex max-h-[calc(100vh-3rem)] flex-col overflow-hidden sm:max-w-5xl"
       >
-        <DialogHeader className="border-b px-4 py-3 pr-12">
-          <DialogTitle className="truncate text-sm">{`${title}${item ? ` · ${item.name}` : ""}`}</DialogTitle>
+        <DialogHeader>
+          <DialogTitle className="truncate">{`${title}${item ? ` · ${item.name}` : ""}`}</DialogTitle>
         </DialogHeader>
-        <div className="grid min-h-[300px] place-items-center bg-black/90 p-3">
+        <div className="grid min-h-[300px] place-items-center rounded-lg bg-black/90 p-3">
           {frame ? (
             children(frame)
           ) : (
@@ -322,7 +322,7 @@ function FrameDialog({
             </div>
           )}
         </div>
-        <div className="flex items-center gap-3 px-4 py-2.5 text-xs text-muted-foreground">
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span className="shrink-0">画面位置</span>
           <Slider
             min={0}
@@ -344,7 +344,7 @@ function FrameDialog({
             </span>
           )}
         </div>
-        <DialogFooter className="items-center border-t px-4 py-2.5 sm:justify-start">
+        <DialogFooter className="items-center sm:justify-start">
           <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{hint}</span>
           {onClear && (
             <Button variant="outline" size="sm" onClick={onClear}>
@@ -379,17 +379,17 @@ function PickerButton({
 }) {
   const selected = useSelectedVideo();
   return (
-    <Button
-      type="button"
-      variant="outline"
-      size="xs"
-      onClick={onClick}
-      disabled={disabled || !selected}
-      title={selected ? undefined : "先在队列中添加视频"}
-      className="h-7 px-2 text-xs font-normal"
-    >
-      {icon} {label}
-    </Button>
+    <Hint label={selected ? null : "先在队列中添加视频"} disabledTrigger>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={onClick}
+        disabled={disabled || !selected}
+      >
+        {icon} {label}
+      </Button>
+    </Hint>
   );
 }
 
@@ -430,7 +430,7 @@ export default function RegionPicker({
           setOpen(true);
         }}
       />
-      <span className="min-w-0 truncate text-[11px] text-muted-foreground tabular-nums">
+      <span className="min-w-0 truncate text-xs text-muted-foreground tabular-nums">
         {value.length === 0 ? "未框选" : value.map(describeRect).join("；")}
       </span>
       {open && (
@@ -477,7 +477,7 @@ export function PointPicker({
           setOpen(true);
         }}
       />
-      <span className="text-[11px] text-muted-foreground tabular-nums">
+      <span className="text-xs text-muted-foreground tabular-nums">
         {value ? `(${value.x}, ${value.y})` : "未选择"}
       </span>
       {open && (

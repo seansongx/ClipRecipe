@@ -14,6 +14,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use super::{blocking, config_dir};
+use crate::desktop::show_main;
 use crate::fsutil::has_extension;
 use crate::system::{self, Countdown, UpdateInfo, SHUTDOWN_COUNTDOWN_SECS};
 
@@ -69,7 +70,7 @@ pub fn cancel_shutdown(state: State<'_, SystemState>) -> Result<(), String> {
 /// 退出程序（`set.after-all` 为“退出程序”，或托盘菜单“退出”）。
 #[tauri::command]
 pub fn quit_app(app: AppHandle) {
-    app.exit(0);
+    crate::desktop::quit(&app);
 }
 
 /// 要打开的文件夹：文件夹本身，或文件所在的文件夹。
@@ -145,14 +146,6 @@ pub fn hide_instead_of_close(app: &AppHandle) -> bool {
         .is_some_and(|w| w.hide().is_ok())
 }
 
-fn show_main(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
-}
-
 /// 按设置创建或移除托盘图标（菜单：显示主窗口 / 退出）。
 pub fn sync_tray(app: &AppHandle, enabled: bool) -> Result<(), String> {
     if let Some(state) = app.try_state::<SystemState>() {
@@ -176,7 +169,7 @@ pub fn sync_tray(app: &AppHandle, enabled: bool) -> Result<(), String> {
             .show_menu_on_left_click(false)
             .on_menu_event(|app, event| match event.id.as_ref() {
                 "tray-show" => show_main(app),
-                "tray-quit" => app.exit(0),
+                "tray-quit" => crate::desktop::quit(app),
                 _ => {}
             })
             .on_tray_icon_event(|tray, event| {

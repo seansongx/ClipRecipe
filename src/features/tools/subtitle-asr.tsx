@@ -65,13 +65,12 @@ export function FilePathInput({
   placeholder?: string;
 }) {
   return (
-    <InputGroup className="h-7">
+    <InputGroup>
       <InputGroupInput
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder ?? `选择或粘贴${label}路径`}
         aria-label={label}
-        className="h-7 px-2 text-xs md:text-xs"
       />
       <InputGroupAddon align="inline-end">
         {value && (
@@ -106,7 +105,7 @@ function WhisperFilterNotice({ engine }: { engine: AsrEngine }) {
     <p
       role="note"
       className={cn(
-        "mb-1 flex gap-1.5 rounded-md border px-2 py-1.5 text-[11px] leading-snug",
+        "mb-1 flex gap-1.5 rounded-md border px-2 py-1.5 text-xs leading-snug",
         engine === "builtin" ? "border-warning/40 bg-warning/10" : "text-muted-foreground",
       )}
     >
@@ -126,7 +125,7 @@ function SubtitleAsrForm({ value, onChange }: ToolFormProps<SubtitleAsrParams>) 
   return (
     <>
       <WhisperFilterNotice engine={value.engine} />
-      <p className="pb-1 text-[11px] leading-snug text-muted-foreground">
+      <p className="pb-1 text-xs leading-snug text-muted-foreground">
         在本机用 whisper.cpp 识别语音，不上传任何数据。需要先自行下载 ggml 模型文件（如 ggml-base.bin、ggml-small.bin），
         下载地址：huggingface.co/ggerganov/whisper.cpp（本程序不会自动下载）。模型越大越准、越慢。
       </p>
@@ -145,7 +144,7 @@ function SubtitleAsrForm({ value, onChange }: ToolFormProps<SubtitleAsrParams>) 
           onChange={(e) => onChange({ language: e.target.value })}
           placeholder="auto"
           aria-label="识别语言"
-          className="h-7 w-24 px-2 text-xs md:text-xs"
+          className="w-24"
         />
       </ParamField>
       <ParamField

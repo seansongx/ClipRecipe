@@ -112,7 +112,7 @@ function SpeedForm({ value, onChange }: ModuleFormProps<SpeedParams>) {
           <span className="text-xs text-muted-foreground">秒</span>
         </div>
       </ParamField>
-      <p className="pt-1 text-[11px] text-muted-foreground">变速不支持即时预览。</p>
+      <p className="pt-1 text-xs text-muted-foreground">变速不支持即时预览。</p>
     </>
   );
 }

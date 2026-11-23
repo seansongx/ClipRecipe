@@ -263,3 +263,98 @@ export function listFiles(dir) {
   walk(dir);
   return out.sort();
 }
+
+// ------------------------------------------------------------------ 原生窗口（Win32，经 PowerShell）
+
+/** 声明 user32 函数；先 SetProcessDPIAware，坐标都是物理像素（与 Tauri 的 PhysicalPosition 一致）。 */
+const WIN32 = `
+Add-Type -Namespace E2E -Name Win -MemberDefinition @'
+[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+[DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+[DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h, int x, int y, int w, int hh, bool repaint);
+[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+[DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+[DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr h);
+[DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
+[StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+public delegate bool EnumProc(IntPtr h, IntPtr l);
+[DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc f, IntPtr l);
+[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
+/// 进程的主窗口：该进程面积最大的顶层窗口（单实例插件的消息窗口、输入法窗口都很小；最小化的主窗口仍比它们大）。
+public static IntPtr MainWindow(uint target) {
+  IntPtr best = IntPtr.Zero; long bestArea = -1;
+  EnumWindows((h, l) => {
+    uint pid; GetWindowThreadProcessId(h, out pid);
+    if (pid != target) return true;
+    RECT r; GetWindowRect(h, out r);
+    long area = (long)(r.Right - r.Left) * (r.Bottom - r.Top);
+    if (area > bestArea) { bestArea = area; best = h; }
+    return true;
+  }, IntPtr.Zero);
+  return best;
+}
+'@
+[void][E2E.Win]::SetProcessDPIAware()
+`;
+
+function powershell(script) {
+  return execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 30000,
+  });
+}
+
+/** 进程的主窗口句柄（PowerShell 表达式）。不用 MainWindowHandle：单实例插件的消息窗口可能被当成主窗口。 */
+const hwndOf = (pid) => `$h = [E2E.Win]::MainWindow(${Number(pid)})`;
+
+/**
+ * 进程主窗口的原生信息：标题、位置大小（物理像素）、是否最小化 / 最大化 / 可见。
+ * 找不到窗口时返回 null。
+ */
+export function nativeWindow(pid) {
+  if (process.platform !== "win32" || !pid) return null;
+  const out = powershell(`${WIN32}
+${hwndOf(pid)}
+if ($h -eq 0) { 'null'; exit }
+$r = New-Object E2E.Win+RECT
+[void][E2E.Win]::GetWindowRect($h, [ref]$r)
+$sb = New-Object System.Text.StringBuilder 256
+[void][E2E.Win]::GetWindowText($h, $sb, 256)
+@{ title = $sb.ToString(); x = $r.Left; y = $r.Top; width = $r.Right - $r.Left; height = $r.Bottom - $r.Top;
+   minimized = [E2E.Win]::IsIconic($h); maximized = [E2E.Win]::IsZoomed($h); visible = [E2E.Win]::IsWindowVisible($h) } | ConvertTo-Json -Compress`);
+  const text = out.trim();
+  return text === "null" || !text ? null : JSON.parse(text);
+}
+
+/** 移动并缩放主窗口（物理像素），模拟用户拖动窗口。 */
+export function moveNativeWindow(pid, x, y, width, height) {
+  powershell(`${WIN32}
+${hwndOf(pid)}
+[void][E2E.Win]::ShowWindow($h, 9)
+[void][E2E.Win]::MoveWindow($h, ${x}, ${y}, ${width}, ${height}, $true)`);
+}
+
+/** 最小化主窗口。 */
+export function minimizeNativeWindow(pid) {
+  powershell(`${WIN32}
+${hwndOf(pid)}
+[void][E2E.Win]::ShowWindow($h, 6)`);
+}
+
+/** 截取屏幕上主窗口所在的矩形（含系统标题栏，真实显示的像素），保存为 PNG。 */
+export function captureNativeWindow(pid, file) {
+  powershell(`${WIN32}
+Add-Type -AssemblyName System.Drawing
+${hwndOf(pid)}
+$r = New-Object E2E.Win+RECT
+[void][E2E.Win]::GetWindowRect($h, [ref]$r)
+$w = $r.Right - $r.Left; $hh = $r.Bottom - $r.Top
+$bmp = New-Object System.Drawing.Bitmap $w, $hh
+$g = [System.Drawing.Graphics]::FromImage($bmp)
+$g.CopyFromScreen($r.Left, $r.Top, 0, 0, $bmp.Size)
+$bmp.Save('${file.replace(/'/g, "''")}', [System.Drawing.Imaging.ImageFormat]::Png)
+$g.Dispose(); $bmp.Dispose()`);
+}

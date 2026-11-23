@@ -17,11 +17,11 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import Hint from "@/components/Hint";
 import NumberInput from "@/components/NumberInput";
 import { PIPELINE_DEFS, PREVIEW_EXCLUDED } from "@/features/pipeline";
 import { PIPELINE_MODULES, groupBy, type Feature } from "@/features/registry";
 import { isTauri, MAX_FISSION, previewCommand } from "@/lib/backend";
-import { cn } from "@/lib/utils";
 import { useLog } from "@/state/log";
 import { usePreview } from "@/state/preview";
 import { useRecipe } from "@/state/recipe";
@@ -29,8 +29,6 @@ import { getSelectedVideo, useSelectedVideo } from "@/state/selection";
 import { useSettings } from "@/state/settings";
 
 const MODULE_GROUPS = groupBy(PIPELINE_MODULES);
-
-const headerButton = "h-7 px-2 text-xs font-normal text-muted-foreground";
 
 /** 该模块能否单独预览：有表单（已实现）且不在预览排除列表中。 */
 function canPreview(id: string): boolean {
@@ -43,17 +41,17 @@ function ModulePreviewButton({ id }: { id: string }) {
     <>
       <Separator className="mt-2" />
       <div className="flex items-center gap-2 pt-2">
-        <Button
-          variant="outline"
-          size="xs"
-          onClick={() => usePreview.getState().previewPipeline(id)}
-          disabled={!isTauri || !video}
-          title={video ? `只启用此步骤，预览「${video.item.name}」` : "先在队列中添加视频"}
-          className={headerButton}
-        >
-          <Eye /> 预览此步骤
-        </Button>
-        {video && <span className="min-w-0 truncate text-[11px] text-muted-foreground">{video.item.name}</span>}
+        <Hint label={video ? `只启用此步骤，预览「${video.item.name}」` : "先在队列中添加视频"} disabledTrigger>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => usePreview.getState().previewPipeline(id)}
+            disabled={!isTauri || !video}
+          >
+            <Eye /> 预览此步骤
+          </Button>
+        </Hint>
+        {video && <span className="min-w-0 truncate text-muted-foreground">{video.item.name}</span>}
       </div>
     </>
   );
@@ -68,8 +66,8 @@ function ModuleRow({ feature, open, onToggleOpen }: { feature: Feature; open: bo
   const Form = def?.Form;
 
   return (
-    <Collapsible open={open} onOpenChange={onToggleOpen} className={cn("rounded-lg", open && "bg-muted/60")}>
-      <div className="flex items-center gap-1 rounded-lg pl-2 hover:bg-muted">
+    <Collapsible open={open} onOpenChange={onToggleOpen}>
+      <div className="flex items-center gap-1 rounded-md pl-2 hover:bg-muted">
         <Switch
           checked={enabled}
           disabled={planned && !enabled}
@@ -79,13 +77,14 @@ function ModuleRow({ feature, open, onToggleOpen }: { feature: Feature; open: bo
         <CollapsibleTrigger asChild>
           <Button
             variant="ghost"
-            className="h-auto min-w-0 flex-1 justify-start gap-2 rounded-lg px-2 py-2 text-left font-normal whitespace-normal hover:bg-transparent aria-expanded:bg-transparent dark:hover:bg-transparent"
+            // 两行内容（名称 + 摘要）：高度随内容（Mira 的按钮是固定高度 h-7）
+            className="h-auto min-w-0 flex-1 justify-start text-left whitespace-normal"
           >
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-1.5">
                 {feature.name}
                 {planned && (
-                  <Badge variant="secondary" className="h-4 px-1.5 text-[10px] font-normal text-muted-foreground">
+                  <Badge variant="secondary">
                     规划中
                   </Badge>
                 )}
@@ -93,9 +92,9 @@ function ModuleRow({ feature, open, onToggleOpen }: { feature: Feature; open: bo
               <span className="block truncate text-xs text-muted-foreground">{feature.summary}</span>
             </span>
             {open ? (
-              <ChevronDown className="text-muted-foreground" />
+              <ChevronDown />
             ) : (
-              <ChevronRight className="text-muted-foreground" />
+              <ChevronRight />
             )}
           </Button>
         </CollapsibleTrigger>
@@ -120,29 +119,34 @@ function RecipeFooter() {
   const video = useSelectedVideo();
 
   return (
-    <footer className="space-y-2 border-t px-5 py-3">
+    <footer className="space-y-2 border-t px-4 py-2.5">
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground">裂变次数</span>
         <NumberInput value={fission} onChange={setFission} min={1} max={MAX_FISSION} integer className="w-16" label="裂变次数" />
-        <span className="min-w-0 flex-1 text-[11px] leading-tight text-muted-foreground">
+        <span className="min-w-0 flex-1 text-muted-foreground">
           {fission > 1
             ? `每个视频输出 ${fission} 个，放在视频同名文件夹${fissionFolder ? "的“第 x 次裂变”子文件夹" : ""}中`
             : "每个视频输出 1 个"}
         </span>
       </div>
-      <Button
-        variant="outline"
-        onClick={() => usePreview.getState().previewPipeline(null)}
-        disabled={!isTauri || !video}
-        title={
+      <Hint
+        label={
           video
             ? `用当前配方预览「${video.item.name}」（变速、背景音、加头尾、帧率、码率除外）`
             : "先在队列中添加视频"
         }
-        className="w-full"
+        disabledTrigger
       >
-        <Eye /> 生成预览
-      </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => usePreview.getState().previewPipeline(null)}
+          disabled={!isTauri || !video}
+          className="w-full"
+        >
+          <Eye /> 生成预览
+        </Button>
+      </Hint>
     </footer>
   );
 }
@@ -152,11 +156,13 @@ function ResetButton() {
   const reset = useRecipe((s) => s.reset);
   return (
     <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <Button variant="outline" size="xs" title="恢复默认参数（仅启用帧率）" className={cn(headerButton, "ml-auto")}>
-          <RotateCcw /> 重置
-        </Button>
-      </AlertDialogTrigger>
+      <Hint label="恢复默认参数（仅启用帧率）">
+        <AlertDialogTrigger asChild>
+          <Button variant="outline" size="sm" className="ml-auto">
+            <RotateCcw /> 重置
+          </Button>
+        </AlertDialogTrigger>
+      </Hint>
       <AlertDialogContent size="sm">
         <AlertDialogHeader>
           <AlertDialogTitle>参数重置</AlertDialogTitle>
@@ -205,53 +211,44 @@ export default function RecipePanel() {
 
   return (
     <aside className="flex w-[360px] shrink-0 flex-col border-l bg-card">
-      <header className="border-b px-5 py-3">
+      <header className="border-b px-4 py-2">
         <div className="flex items-center gap-2">
           <div>
-            <h2 className="text-base font-semibold">配方</h2>
+            <h2 className="text-sm font-semibold">配方</h2>
             <p className="text-xs text-muted-foreground">
               已启用 {enabledCount} / {PIPELINE_MODULES.length} 个步骤
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="xs"
-            onClick={() => void showCommand()}
-            disabled={!isTauri}
-            title="在处理记录中显示选中（或第一个）视频将执行的 FFmpeg 命令"
-            className={cn(headerButton, "ml-auto")}
-          >
-            <Terminal /> 查看命令
-          </Button>
+          <Hint label="在处理记录中显示选中（或第一个）视频将执行的 FFmpeg 命令">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void showCommand()}
+              disabled={!isTauri}
+              className="ml-auto"
+            >
+              <Terminal /> 查看命令
+            </Button>
+          </Hint>
         </div>
-        <div className="mt-2 flex gap-1.5">
-          <Button
-            variant="outline"
-            size="xs"
-            onClick={() => void importFile()}
-            disabled={!isTauri}
-            title="从配方文件导入全部参数（也可以把配方文件拖进窗口）"
-            className={headerButton}
-          >
-            <FileUp /> 导入
-          </Button>
-          <Button
-            variant="outline"
-            size="xs"
-            onClick={() => void exportFile()}
-            disabled={!isTauri}
-            title="把当前全部参数保存为配方文件"
-            className={headerButton}
-          >
-            <FileDown /> 导出
-          </Button>
+        <div className="mt-1.5 flex gap-1.5">
+          <Hint label="从配方文件导入全部参数（也可以把配方文件拖进窗口）">
+            <Button variant="outline" size="sm" onClick={() => void importFile()} disabled={!isTauri}>
+              <FileUp /> 导入
+            </Button>
+          </Hint>
+          <Hint label="把当前全部参数保存为配方文件">
+            <Button variant="outline" size="sm" onClick={() => void exportFile()} disabled={!isTauri}>
+              <FileDown /> 导出
+            </Button>
+          </Hint>
           <ResetButton />
         </div>
       </header>
       <ScrollArea className="min-h-0 flex-1">
-        <div className="px-3 py-2">
+        <div className="px-2 py-1.5">
           {MODULE_GROUPS.map(([group, features]) => (
-            <div key={group} className="mb-3">
+            <div key={group} className="mb-2">
               <h3 className="px-2 py-1 text-xs font-medium text-muted-foreground">{group}</h3>
               {features.map((feature) => (
                 <ModuleRow

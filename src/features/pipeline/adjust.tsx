@@ -105,7 +105,7 @@ function TweakRow({
 }
 
 function SectionTitle({ children }: { children: string }) {
-  return <h4 className="mt-2 border-t pt-2 text-[11px] font-medium text-muted-foreground first:mt-0 first:border-0 first:pt-0">{children}</h4>;
+  return <h4 className="mt-2 border-t pt-2 text-xs font-medium text-muted-foreground first:mt-0 first:border-0 first:pt-0">{children}</h4>;
 }
 
 function AdjustForm({ value, onChange }: ModuleFormProps<AdjustParams>) {
@@ -194,7 +194,7 @@ function AdjustForm({ value, onChange }: ModuleFormProps<AdjustParams>) {
                     checked={border.randomColor}
                     onCheckedChange={(randomColor) => setBorder({ randomColor })}
                   />
-                  <Label htmlFor={randomColorId} className="text-xs font-normal text-muted-foreground">
+                  <Label htmlFor={randomColorId}>
                     每个视频随机颜色
                   </Label>
                 </span>

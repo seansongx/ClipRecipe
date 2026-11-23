@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Range } from "@/lib/backend";
+import Hint from "./Hint";
 import NumberInput from "./NumberInput";
 
 /**
@@ -54,21 +55,21 @@ export default function RangeInput({
       />
       {unit && <span className="text-xs text-muted-foreground">{unit}</span>}
       {fixed ? (
-        <Badge variant="secondary" className="h-5 rounded-sm px-1.5 text-[11px] font-normal text-muted-foreground">
+        <Badge variant="secondary">
           固定
         </Badge>
       ) : (
-        <Button
-          type="button"
-          variant="ghost"
-          size="xs"
-          disabled={disabled}
-          onClick={() => onChange({ min: value.min, max: value.min })}
-          className="h-5 px-1.5 text-[11px] font-normal text-muted-foreground"
-          title="把最大值设为与最小值相同"
-        >
-          设为固定
-        </Button>
+        <Hint label="把最大值设为与最小值相同">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={disabled}
+            onClick={() => onChange({ min: value.min, max: value.min })}
+          >
+            设为固定
+          </Button>
+        </Hint>
       )}
     </div>
   );

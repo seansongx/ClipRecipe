@@ -41,11 +41,11 @@ function RotateFlipForm({ value, onChange }: ModuleFormProps<RotateFlipParams>) 
       </ParamField>
       <ParamField label="翻转">
         <div className="flex h-7 flex-wrap items-center gap-4">
-          <Label className="text-xs font-normal">
+          <Label>
             <Switch aria-label="水平翻转" checked={value.hflip} onCheckedChange={(hflip) => onChange({ hflip })} />
             水平
           </Label>
-          <Label className="text-xs font-normal">
+          <Label>
             <Switch aria-label="垂直翻转" checked={value.vflip} onCheckedChange={(vflip) => onChange({ vflip })} />
             垂直
           </Label>

@@ -127,7 +127,7 @@ function RectField({ value, onChange }: ModuleFormProps<PipParams>) {
       <CanvasRegionPicker value={value} onChange={onChange} />
       <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
         {RECT_FIELDS.map(([key, label]) => (
-          <Label key={key} className="gap-1.5 text-xs font-normal text-muted-foreground">
+          <Label key={key}>
             <span className="w-4">{label}</span>
             <NumberInput
               className="w-[72px]"
@@ -211,7 +211,6 @@ function PipForm(props: ModuleFormProps<PipParams>) {
             <ToggleGroup
               type="single"
               variant="outline"
-              size="sm"
               spacing={1}
               aria-label="常用画布尺寸"
               value={
@@ -228,7 +227,6 @@ function PipForm(props: ModuleFormProps<PipParams>) {
                 <ToggleGroupItem
                   key={p.label}
                   value={p.label}
-                  className="h-6 px-1.5 text-[11px] font-normal text-muted-foreground data-[state=on]:border-primary data-[state=on]:bg-primary/12 data-[state=on]:text-foreground"
                 >
                   {p.label}
                 </ToggleGroupItem>

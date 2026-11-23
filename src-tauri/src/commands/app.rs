@@ -53,15 +53,27 @@ pub async fn encoder_info(refresh: bool) -> Result<EncoderInfo, String> {
         } else {
             encoders::cached(&paths.ffmpeg)
         };
+        EncoderInfo::of(&caps)
+    })
+    .await
+}
+
+/// 已经探测过的编码器信息（不触发探测；还没探测过时为 null）。状态栏据此显示实际会用的编码器。
+#[tauri::command]
+pub async fn encoder_info_cached() -> Result<Option<EncoderInfo>, String> {
+    blocking(|| encoders::peek(&ffmpeg::locate().ffmpeg).map(|caps| EncoderInfo::of(&caps))).await
+}
+
+impl EncoderInfo {
+    fn of(caps: &encoders::EncoderCaps) -> Self {
         EncoderInfo {
             hardware: caps.names(),
             h264: caps.select(VideoCodec::H264, true).name().to_owned(),
             hevc: caps.select(VideoCodec::Hevc, true).name().to_owned(),
-            failed_vendors: encoders::failed_vendors(&caps, encoders::driver_present)
+            failed_vendors: encoders::failed_vendors(caps, encoders::driver_present)
                 .iter()
                 .map(|v| v.label().to_owned())
                 .collect(),
         }
-    })
-    .await
+    }
 }

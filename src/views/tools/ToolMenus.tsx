@@ -46,7 +46,7 @@ const preload = () => preloadToolDefs(DONE_TOOL_IDS);
 
 function LoadingLabel() {
   return (
-    <span className="flex items-center gap-1.5 px-2 py-1.5 text-[11px] text-muted-foreground">
+    <span className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground">
       <Spinner className="size-3" /> 加载中…
     </span>
   );
@@ -58,15 +58,15 @@ function QueueToolsMenuItems() {
   const { groups, loading } = useQueueToolGroups();
   return (
     <>
-      <DropdownMenuLabel className="text-[11px] font-normal text-muted-foreground">
+      <DropdownMenuLabel>
         {selected.size > 0 ? `处理选中的 ${selected.size} 个视频` : `处理全部 ${items.length} 个视频`}
       </DropdownMenuLabel>
       {groups.map(([group, tools]) => (
         <div key={group}>
           <DropdownMenuSeparator />
-          <DropdownMenuLabel className="text-[11px] text-muted-foreground">{group}</DropdownMenuLabel>
+          <DropdownMenuLabel>{group}</DropdownMenuLabel>
           {tools.map((tool) => (
-            <DropdownMenuItem key={tool.id} onSelect={() => openFromQueue(tool.id)} className="text-xs">
+            <DropdownMenuItem key={tool.id} onSelect={() => openFromQueue(tool.id)}>
               {tool.name}
             </DropdownMenuItem>
           ))}
@@ -74,7 +74,7 @@ function QueueToolsMenuItems() {
       ))}
       {loading && <LoadingLabel />}
       {!loading && groups.length === 0 && (
-        <p className="px-2 py-1.5 text-[11px] text-muted-foreground">没有可处理队列视频的工具</p>
+        <p className="px-2 py-1.5 text-xs text-muted-foreground">没有可处理队列视频的工具</p>
       )}
     </>
   );
@@ -87,7 +87,7 @@ export function QueueToolsMenu({ className }: { className?: string }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild disabled={items.length === 0}>
-        <Button variant="ghost" size="xs" className={className} onPointerEnter={preload} onFocus={preload}>
+        <Button variant="ghost" size="sm" className={className} onPointerEnter={preload} onFocus={preload}>
           <Wrench /> 工具
         </Button>
       </DropdownMenuTrigger>
@@ -104,16 +104,16 @@ export function QueueToolsSubmenu() {
   if (DONE_TOOLS.length === 0 || (!loading && groups.length === 0)) return null;
   return (
     <ContextMenuSub>
-      <ContextMenuSubTrigger className="text-xs">
+      <ContextMenuSubTrigger>
         <Wrench /> 独立工具
       </ContextMenuSubTrigger>
       <ContextMenuSubContent className="min-w-36">
         {groups.map(([group, tools], index) => (
           <div key={group}>
             {index > 0 && <ContextMenuSeparator />}
-            <ContextMenuLabel className="text-[11px] text-muted-foreground">{group}</ContextMenuLabel>
+            <ContextMenuLabel>{group}</ContextMenuLabel>
             {tools.map((tool) => (
-              <ContextMenuItem key={tool.id} onSelect={() => openFromQueue(tool.id)} className="text-xs">
+              <ContextMenuItem key={tool.id} onSelect={() => openFromQueue(tool.id)}>
                 {tool.name}
               </ContextMenuItem>
             ))}

@@ -42,7 +42,7 @@ function DedupeFramesForm({ value, onChange }: ModuleFormProps<DedupeFramesParam
           <span className="text-xs text-muted-foreground">帧</span>
         </div>
       </ParamField>
-      <p className="pt-1 text-[11px] text-muted-foreground">
+      <p className="pt-1 text-xs text-muted-foreground">
         去掉的帧由前一帧延长显示，时长和音频不变；启用“帧率”或“变速”时会重新输出恒定帧率。
       </p>
     </>

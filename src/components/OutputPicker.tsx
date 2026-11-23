@@ -73,18 +73,18 @@ export default function OutputPicker({
     <div className={cn("min-w-0 flex-1", className)}>
       <InputGroup
         ref={boxRef}
-        className={cn("bg-background", dropTarget && "border-primary ring-3 ring-primary/40")}
+        className={cn(dropTarget && "border-ring ring-2 ring-ring/30")}
       >
-        <InputGroupAddon align="inline-start" className="border-r pr-1">
-          <InputGroupButton
-            size="sm"
-            onClick={() => void pickFolder().then((dir) => dir && update({ outputDir: dir }))}
-            disabled={!isTauri}
-            title="选择输出文件夹"
-            className="h-7 px-2 text-muted-foreground"
-          >
-            <FolderOpen /> 输出到
-          </InputGroupButton>
+        <InputGroupAddon align="inline-start">
+          <Hint label="选择输出文件夹">
+            <InputGroupButton
+              size="sm"
+              onClick={() => void pickFolder().then((dir) => dir && update({ outputDir: dir }))}
+              disabled={!isTauri}
+            >
+              <FolderOpen /> 输出到
+            </InputGroupButton>
+          </Hint>
         </InputGroupAddon>
         <InputGroupInput
           value={outputDir}
@@ -114,7 +114,7 @@ export default function OutputPicker({
         </InputGroupAddon>
       </InputGroup>
       {warning && (
-        <p className="mt-1 flex items-center gap-1 text-[11px] text-warning">
+        <p className="mt-1 flex items-center gap-1 text-xs text-warning">
           <TriangleAlert className="size-3" /> {warning}
         </p>
       )}

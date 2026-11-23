@@ -71,12 +71,12 @@ function ScreenshotsForm({ value, onChange }: ToolFormProps<ScreenshotsParams>) 
     <>
       <ParamField label="截图方式">
         <Select value={value.mode} onValueChange={(mode) => onChange({ mode: mode as ShotMode })}>
-          <SelectTrigger size="sm" aria-label="截图方式" className="h-7 w-32 px-2 text-xs">
+          <SelectTrigger aria-label="截图方式" className="w-32">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             {MODES.map((o) => (
-              <SelectItem key={o.value} value={o.value} className="text-xs">
+              <SelectItem key={o.value} value={o.value}>
                 {o.label}
               </SelectItem>
             ))}
@@ -116,7 +116,7 @@ function ScreenshotsForm({ value, onChange }: ToolFormProps<ScreenshotsParams>) 
             onChange={(e) => onChange({ timestamps: e.target.value })}
             aria-label="截图时间"
             placeholder={"1.5, 30, 1:20\n0:02:03.5"}
-            className="min-h-16 text-xs md:text-xs"
+            className="min-h-16"
           />
         </ParamField>
       )}
@@ -190,12 +190,12 @@ function ScreenshotsForm({ value, onChange }: ToolFormProps<ScreenshotsParams>) 
               value={value.namePosition}
               onValueChange={(namePosition) => onChange({ namePosition: namePosition as NamePosition })}
             >
-              <SelectTrigger size="sm" aria-label="文件名位置" className="h-7 w-28 px-2 text-xs">
+              <SelectTrigger aria-label="文件名位置" className="w-28">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {POSITIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value} className="text-xs">
+                  <SelectItem key={o.value} value={o.value}>
                     {o.label}
                   </SelectItem>
                 ))}

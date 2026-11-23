@@ -31,7 +31,7 @@ function ChangeDurationForm({ value, onChange }: ToolFormProps<ChangeDurationPar
   const { min, max } = value.seconds;
   return (
     <>
-      <p className="pb-1 text-[11px] leading-snug text-muted-foreground">
+      <p className="pb-1 text-xs leading-snug text-muted-foreground">
         只改写 MP4 / MOV 文件头里记录的总时长（mvhd），画面和声音逐字节保持不变、不重编码。
         资源管理器、MediaInfo 等读取文件头的程序会显示新时长；FFmpeg / ffprobe（以及用它解析的网站）按实际数据计算，
         仍显示真实时长。其它格式（mkv 等）不支持。

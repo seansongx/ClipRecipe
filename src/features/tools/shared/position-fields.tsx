@@ -73,7 +73,7 @@ export function NumberListInput({
       onKeyDown={(e) => {
         if (e.key === "Enter") commit();
       }}
-      className="h-7 px-2 text-xs tabular-nums md:text-xs"
+      className="tabular-nums"
     />
   );
 }

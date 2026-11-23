@@ -329,6 +329,15 @@ pub fn cached(ffmpeg: &Path) -> EncoderCaps {
     caps
 }
 
+/// 已缓存的探测结果（不探测）。
+pub fn peek(ffmpeg: &Path) -> Option<EncoderCaps> {
+    cache()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(ffmpeg)
+        .cloned()
+}
+
 /// 清空全部缓存（下载 / 删除 FFmpeg 后，下次使用时重新探测）。
 pub fn clear_cache() {
     cache().lock().unwrap_or_else(|e| e.into_inner()).clear();
@@ -457,6 +466,21 @@ pub fn failed_vendors(caps: &EncoderCaps, present: impl Fn(HwVendor) -> bool) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn peek_never_probes() {
+        let missing = Path::new("Z:/definitely/missing/ffmpeg-peek.exe");
+        assert!(peek(missing).is_none());
+        cache()
+            .lock()
+            .unwrap()
+            .insert(missing.to_path_buf(), EncoderCaps::software_only());
+        assert_eq!(
+            peek(missing).map(|c| c.select(VideoCodec::H264, true).name()),
+            Some("libx264")
+        );
+        cache().lock().unwrap().remove(missing);
+    }
 
     #[test]
     fn default_bitrate_keeps_source_rate_with_quality_floor() {

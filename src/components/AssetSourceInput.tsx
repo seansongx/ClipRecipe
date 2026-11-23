@@ -3,6 +3,7 @@ import { FileInput, FolderOpen } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Label } from "@/components/ui/label";
+import Hint from "@/components/Hint";
 import { isTauri, pickFile, pickFolder, type AssetSource, type PickOrder } from "@/lib/backend";
 import { useSettings } from "@/state/settings";
 import ChoiceGroup from "./ChoiceGroup";
@@ -51,24 +52,19 @@ export default function AssetSourceInput({
           { value: "directory", label: "目录" },
         ]}
       />
-      <InputGroup className="h-7">
+      <InputGroup>
         <InputGroupInput
           value={value.path}
           onChange={(e) => onChange({ ...value, path: e.target.value })}
           placeholder={value.mode === "file" ? `${kindLabel}文件路径` : `${kindLabel}目录路径`}
           aria-label={value.mode === "file" ? `${kindLabel}文件路径` : `${kindLabel}目录路径`}
-          className="h-7 px-2 text-xs md:text-xs"
         />
         <InputGroupAddon align="inline-end">
-          <InputGroupButton
-            size="icon-xs"
-            onClick={() => void browse()}
-            disabled={!isTauri}
-            aria-label="浏览"
-            title="浏览"
-          >
-            {value.mode === "file" ? <FileInput /> : <FolderOpen />}
-          </InputGroupButton>
+          <Hint label="浏览">
+            <InputGroupButton size="icon-xs" onClick={() => void browse()} disabled={!isTauri} aria-label="浏览">
+              {value.mode === "file" ? <FileInput /> : <FolderOpen />}
+            </InputGroupButton>
+          </Hint>
         </InputGroupAddon>
       </InputGroup>
       {value.mode === "directory" && (
@@ -88,7 +84,7 @@ export default function AssetSourceInput({
               checked={value.recursive}
               onCheckedChange={(checked) => onChange({ ...value, recursive: checked === true })}
             />
-            <Label htmlFor={recursiveId} className="text-xs font-normal text-muted-foreground">
+            <Label htmlFor={recursiveId}>
               包含子目录
             </Label>
           </div>

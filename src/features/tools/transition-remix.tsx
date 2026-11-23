@@ -49,15 +49,15 @@ function TransitionRemixForm({ value, onChange }: ToolFormProps<TransitionRemixP
       />
       <ParamField label="转场" hint="“每处随机”时每个衔接处各随机选一种（随种子可复现）。">
         <Select value={value.transition} onValueChange={(transition) => onChange({ transition })}>
-          <SelectTrigger size="sm" aria-label="转场效果" className="h-7 w-36 px-2 text-xs">
+          <SelectTrigger aria-label="转场效果" className="w-36">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="random" className="text-xs">
+            <SelectItem value="random">
               每处随机
             </SelectItem>
             {TRANSITIONS.map((t) => (
-              <SelectItem key={t.value} value={t.value} className="text-xs">
+              <SelectItem key={t.value} value={t.value}>
                 {t.label}
               </SelectItem>
             ))}

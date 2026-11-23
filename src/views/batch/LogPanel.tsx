@@ -54,10 +54,10 @@ export default function LogPanel({
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} asChild>
-      <section className={cn("mx-4 mb-3 flex flex-col rounded-xl border bg-card", className)}>
-        <header className="flex items-center gap-2 px-2 py-1">
+      <section className={cn("mx-3 mb-2 flex flex-col rounded-md border bg-card", className)}>
+        <header className="flex items-center gap-2 px-1.5 py-0.5">
           <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="xs" className="h-7 gap-1 px-1.5 text-xs aria-expanded:bg-transparent hover:aria-expanded:bg-muted">
+            <Button variant="ghost" size="sm">
               {open ? <ChevronDown /> : <ChevronRight />}
               处理记录
               <span className="font-normal text-muted-foreground">
@@ -67,18 +67,17 @@ export default function LogPanel({
           </CollapsibleTrigger>
           <div className="ml-auto flex items-center gap-1.5">
             <Checkbox id={debugId} checked={showDebug} onCheckedChange={(v) => setShowDebug(v === true)} />
-            <Label htmlFor={debugId} className="text-xs font-normal text-muted-foreground">
+            <Label htmlFor={debugId}>
               显示命令行
             </Label>
           </div>
           <Hint label="清空记录">
             <Button
               variant="ghost"
-              size="icon-xs"
+              size="icon-sm"
               aria-label="清空记录"
               onClick={clear}
               disabled={entries.length === 0}
-              className="size-7 text-muted-foreground"
             >
               <Trash2 />
             </Button>
@@ -86,7 +85,7 @@ export default function LogPanel({
         </header>
         <CollapsibleContent>
           <ScrollArea ref={scroller} className={cn("border-t", bodyClassName)}>
-            <div className="px-3 py-1.5 font-mono text-[11px] leading-5 select-text">
+            <div className="px-3 py-1.5 font-mono text-xs leading-5 select-text">
               {visible.length === 0 ? (
                 <p className="text-muted-foreground">暂无记录</p>
               ) : (

@@ -4,6 +4,7 @@
 
 import { Wrench } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import Hint from "@/components/Hint";
 import { cn } from "@/lib/utils";
 import { toolName, useTools, type ToolRunItem } from "@/state/tools";
 import { TOOL_STATE_TONE, toolItemPercent, toolItemStatus } from "./itemStatus";
@@ -23,12 +24,18 @@ export default function ToolRowProgress({ queueId, path }: { queueId: string; pa
   if (!item || !toolId) return null;
   const active = item.state === "running" || item.state === "done";
   return (
-    <div className="mt-1.5" title={item.inputs.length > 1 ? `${item.label}（共 ${item.inputs.length} 个输入）` : undefined}>
-      <div className="flex items-center gap-1 text-[11px]">
-        <Wrench className="size-3 shrink-0 text-muted-foreground" />
-        <span className="truncate text-muted-foreground">{toolName(toolId)}</span>
-        <span className={cn("ml-auto shrink-0 tabular-nums", TOOL_STATE_TONE[item.state])}>{toolItemStatus(item)}</span>
-      </div>
+    <div className="mt-1.5">
+      <Hint
+        label={item.inputs.length > 1 ? `${item.label}（共 ${item.inputs.length} 个输入）` : null}
+        side="bottom"
+        align="start"
+      >
+        <div className="flex items-center gap-1 text-xs">
+          <Wrench className="size-3 shrink-0 text-muted-foreground" />
+          <span className="truncate text-muted-foreground">{toolName(toolId)}</span>
+          <span className={cn("ml-auto shrink-0 tabular-nums", TOOL_STATE_TONE[item.state])}>{toolItemStatus(item)}</span>
+        </div>
+      </Hint>
       {active && (
         <Progress
           value={toolItemPercent(item)}
@@ -36,7 +43,7 @@ export default function ToolRowProgress({ queueId, path }: { queueId: string; pa
         />
       )}
       {item.state === "failed" && item.error && (
-        <p className="mt-1 line-clamp-2 text-[11px] text-destructive select-text">{item.error}</p>
+        <p className="mt-1 line-clamp-2 text-xs text-destructive select-text">{item.error}</p>
       )}
     </div>
   );

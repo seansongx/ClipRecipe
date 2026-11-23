@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import AssetSourceInput from "@/components/AssetSourceInput";
 import ColorField from "@/components/ColorField";
+import Hint from "@/components/Hint";
 import NumberInput from "@/components/NumberInput";
 import ParamField from "@/components/ParamField";
 import RangeInput from "@/components/RangeInput";
@@ -111,7 +112,6 @@ function AnchorGrid({ value, onChange, label }: { value: Anchor; onChange: (anch
     <ToggleGroup
       type="single"
       variant="outline"
-      size="sm"
       spacing={1}
       aria-label={label}
       value={value}
@@ -121,15 +121,14 @@ function AnchorGrid({ value, onChange, label }: { value: Anchor; onChange: (anch
       className="grid w-fit grid-cols-3"
     >
       {ANCHORS.map(({ value: anchor, label: name, icon: Icon }) => (
-        <ToggleGroupItem
-          key={anchor}
-          value={anchor}
-          aria-label={name}
-          title={name}
-          className="size-7 min-w-0 p-0 text-muted-foreground data-[state=on]:border-primary data-[state=on]:bg-primary/12 data-[state=on]:text-foreground"
-        >
-          <Icon className="size-3.5" />
-        </ToggleGroupItem>
+        <Hint key={anchor} label={name}>
+          <ToggleGroupItem
+            value={anchor}
+            aria-label={name}
+          >
+            <Icon />
+          </ToggleGroupItem>
+        </Hint>
       ))}
     </ToggleGroup>
   );
@@ -149,7 +148,7 @@ function SwitchRow({
   return (
     <div className="flex items-center gap-1.5">
       <Switch id={id} checked={checked} onCheckedChange={onChange} />
-      <Label htmlFor={id} className="text-xs font-normal text-muted-foreground">
+      <Label htmlFor={id}>
         {children}
       </Label>
     </div>
@@ -282,12 +281,12 @@ function AddWatermarkForm({ value, onChange }: ModuleFormProps<AddWatermarkParam
       </ParamField>
       <ParamField label="滚动">
         <Select value={value.scroll} onValueChange={(scroll) => onChange({ scroll: scroll as ScrollMode })}>
-          <SelectTrigger size="sm" aria-label="滚动效果" className="h-7 w-32 px-2 text-xs">
+          <SelectTrigger aria-label="滚动效果" className="w-32">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             {SCROLL_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value} className="text-xs">
+              <SelectItem key={o.value} value={o.value}>
                 {o.label}
               </SelectItem>
             ))}

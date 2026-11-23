@@ -39,7 +39,6 @@ function SubtitleExtractForm({ value, onChange }: ToolFormProps<SubtitleExtractP
             onChange={(e) => onChange({ selection: e.target.value })}
             placeholder="如 1, chi, eng"
             aria-label="字幕轨选择"
-            className="h-7 px-2 text-xs md:text-xs"
           />
         </ParamField>
       )}

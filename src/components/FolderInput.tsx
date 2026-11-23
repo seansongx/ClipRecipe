@@ -28,17 +28,17 @@ export default function FolderInput({
   dropTarget?: boolean;
 }) {
   return (
-    <InputGroup ref={boxRef} className={cn("bg-background", dropTarget && "border-primary ring-3 ring-primary/40", className)}>
-      <InputGroupAddon align="inline-start" className="border-r pr-1">
-        <InputGroupButton
-          size="sm"
-          onClick={() => void pickFolder().then((dir) => dir && onChange(dir))}
-          disabled={!isTauri}
-          title={`选择${label}`}
-          className="h-7 px-2 text-muted-foreground"
-        >
-          <FolderOpen /> {label}
-        </InputGroupButton>
+    <InputGroup ref={boxRef} className={cn(dropTarget && "border-ring ring-2 ring-ring/30", className)}>
+      <InputGroupAddon align="inline-start">
+        <Hint label={`选择${label}`}>
+          <InputGroupButton
+            size="sm"
+            onClick={() => void pickFolder().then((dir) => dir && onChange(dir))}
+            disabled={!isTauri}
+          >
+            <FolderOpen /> {label}
+          </InputGroupButton>
+        </Hint>
       </InputGroupAddon>
       <InputGroupInput
         value={value}

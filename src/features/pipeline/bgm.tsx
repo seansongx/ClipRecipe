@@ -99,7 +99,7 @@ function BgmForm({ value, onChange }: ModuleFormProps<BgmParams>) {
           <span>秒</span>
         </div>
       </ParamField>
-      <p className="pt-1 text-[11px] text-muted-foreground">输出时长始终与视频相同；背景音不支持即时预览。</p>
+      <p className="pt-1 text-xs text-muted-foreground">输出时长始终与视频相同；背景音不支持即时预览。</p>
     </>
   );
 }

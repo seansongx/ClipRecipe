@@ -1,6 +1,14 @@
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
-import { TOOLS, groupBy, type FeatureStatus } from "../features/registry";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Spinner } from "@/components/ui/spinner";
+import { TOOLS, groupBy, type FeatureStatus } from "@/features/registry";
+import { cn } from "@/lib/utils";
+import { toolName, useTools } from "@/state/tools";
 
 const STATUS_LABEL: Record<FeatureStatus, string> = {
   planned: "规划中",
@@ -8,8 +16,28 @@ const STATUS_LABEL: Record<FeatureStatus, string> = {
   done: "可用",
 };
 
+/** 正在运行的工具：关闭对话框后在这里重新打开。 */
+function RunningBanner() {
+  const run = useTools((s) => s.run);
+  const open = useTools((s) => s.open);
+  if (!run?.running) return null;
+  const done = run.items.filter((i) => i.state === "done").length;
+  return (
+    <div className="flex items-center gap-2 border-b bg-card px-5 py-2 text-xs">
+      <Spinner className="size-3.5 text-primary" aria-label="运行中" />
+      <span>
+        “{toolName(run.toolId)}”正在运行 · 完成 {done}/{run.items.length}
+      </span>
+      <Button variant="outline" size="xs" className="ml-auto" onClick={() => open(run.toolId)}>
+        查看进度
+      </Button>
+    </div>
+  );
+}
+
 export default function ToolboxView() {
   const [query, setQuery] = useState("");
+  const open = useTools((s) => s.open);
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -21,45 +49,70 @@ export default function ToolboxView() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center gap-4 border-b border-line px-5 py-3">
+      <header className="flex items-center gap-4 border-b px-5 py-3">
         <h1 className="text-base font-semibold">工具箱</h1>
-        <span className="text-muted">{TOOLS.length} 个独立工具</span>
-        <label className="ml-auto flex w-64 items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5">
-          <Search size={16} className="text-muted" />
-          <input
+        <span className="text-muted-foreground">
+          {TOOLS.length} 个独立工具 · {TOOLS.filter((t) => t.status === "done").length} 个可用
+        </span>
+        <InputGroup className="ml-auto w-64 bg-card">
+          <InputGroupAddon>
+            <Search />
+          </InputGroupAddon>
+          <InputGroupInput
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="搜索工具"
-            className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted"
+            aria-label="搜索工具"
           />
-        </label>
+        </InputGroup>
       </header>
+      <RunningBanner />
 
-      <div className="flex-1 overflow-y-auto px-5 py-4">
-        {groups.length === 0 && <p className="py-16 text-center text-muted">没有匹配的工具</p>}
-        {groups.map(([group, tools]) => (
-          <section key={group} className="mb-6">
-            <h2 className="mb-2 text-xs font-medium text-muted">{group}</h2>
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-3">
-              {tools.map((tool) => (
-                <button
-                  key={tool.id}
-                  disabled={tool.status !== "done"}
-                  className="rounded-xl border border-line bg-surface p-3 text-left enabled:hover:border-accent disabled:opacity-70"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium">{tool.name}</span>
-                    <span className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-muted">
-                      {STATUS_LABEL[tool.status]}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-muted">{tool.summary}</p>
-                </button>
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="px-5 py-4">
+          {groups.length === 0 && <p className="py-16 text-center text-muted-foreground">没有匹配的工具</p>}
+          {groups.map(([group, tools]) => (
+            <section key={group} className="mb-6">
+              <h2 className="mb-2 text-xs font-medium text-muted-foreground">{group}</h2>
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-3">
+                {tools.map((tool) => (
+                  <Card
+                    key={tool.id}
+                    size="sm"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`打开 ${tool.name}`}
+                    onClick={() => open(tool.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        open(tool.id);
+                      }
+                    }}
+                    className={cn(
+                      "cursor-pointer py-3 shadow-none outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      tool.status === "done" ? "hover:ring-primary" : "opacity-70 hover:opacity-100",
+                    )}
+                  >
+                    <CardHeader className="px-3">
+                      <CardTitle className="flex items-center justify-between gap-2 font-medium">
+                        {tool.name}
+                        <Badge
+                          variant={tool.status === "done" ? "default" : "secondary"}
+                          className={cn("font-normal", tool.status !== "done" && "text-muted-foreground")}
+                        >
+                          {STATUS_LABEL[tool.status]}
+                        </Badge>
+                      </CardTitle>
+                      <CardDescription className="text-xs">{tool.summary}</CardDescription>
+                    </CardHeader>
+                  </Card>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      </ScrollArea>
     </div>
   );
 }

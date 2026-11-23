@@ -1,63 +1,124 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
+/* 深色模式：App.tsx 在 <html> 上设置 data-theme="dark"，shadcn 组件里的 dark: 变体据此生效。 */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
+/*
+ * 主题变量（shadcn/ui 的标准命名）。整个界面只用这一套：
+ *   background 页面底色 · card / popover 面板 · foreground 正文
+ *   muted / secondary / accent 次级底色（悬停、选中） · muted-foreground 次要文字
+ *   primary 琥珀色强调 · border / input 描边 · ring 焦点环
+ *   success / warning / destructive 状态色
+ */
 :root {
-  --bg: #f5f5f2;
-  --surface: #ffffff;
-  --surface-2: #ecebe6;
-  --line: #dddbd3;
-  --ink: #1b1c1f;
-  --muted: #6c6e75;
-  --accent: #c9820a;
-  --accent-ink: #ffffff;
   color-scheme: light;
+  --radius: 0.5rem;
+  --background: #f5f5f2;
+  --foreground: #1b1c1f;
+  --card: #ffffff;
+  --card-foreground: #1b1c1f;
+  --popover: #ffffff;
+  --popover-foreground: #1b1c1f;
+  --primary: #c9820a;
+  --primary-foreground: #ffffff;
+  --secondary: #ecebe6;
+  --secondary-foreground: #1b1c1f;
+  --muted: #ecebe6;
+  --muted-foreground: #66686f;
+  --accent: #ecebe6;
+  --accent-foreground: #1b1c1f;
+  --destructive: #d23b2f;
+  --success: #15803d;
+  --warning: #b45309;
+  --border: #dddbd3;
+  --input: #c9c6bc;
+  --ring: #c9820a;
 }
 
 [data-theme="dark"] {
-  --bg: #121317;
-  --surface: #1a1c21;
-  --surface-2: #23262d;
-  --line: #2e323a;
-  --ink: #ececec;
-  --muted: #8d919b;
-  --accent: #f4b740;
-  --accent-ink: #1b1400;
   color-scheme: dark;
+  --background: #121317;
+  --foreground: #ececec;
+  --card: #1a1c21;
+  --card-foreground: #ececec;
+  --popover: #1d2025;
+  --popover-foreground: #ececec;
+  --primary: #f4b740;
+  --primary-foreground: #1b1400;
+  --secondary: #23262d;
+  --secondary-foreground: #ececec;
+  --muted: #23262d;
+  --muted-foreground: #9599a3;
+  --accent: #2a2d35;
+  --accent-foreground: #ececec;
+  --destructive: #f87171;
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --border: #2e323a;
+  --input: #3a3e47;
+  --ring: #f4b740;
 }
 
 @theme inline {
-  --color-bg: var(--bg);
-  --color-surface: var(--surface);
-  --color-surface-2: var(--surface-2);
-  --color-line: var(--line);
-  --color-ink: var(--ink);
-  --color-muted: var(--muted);
-  --color-accent: var(--accent);
-  --color-accent-ink: var(--accent-ink);
   --font-sans: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-heading: var(--font-sans);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-html,
-body,
-#root {
-  height: 100%;
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground;
+    margin: 0;
+    font-size: 14px;
+    user-select: none;
+    overflow: hidden;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--ink);
-  font-family: var(--font-sans);
-  font-size: 14px;
-  user-select: none;
-  overflow: hidden;
-}
-
-button {
-  cursor: pointer;
-}
-
-button:disabled {
-  cursor: not-allowed;
+/* Radix ScrollArea 的内容包装层默认是 display: table，会让子元素的 truncate 失效、撑出横向滚动。 */
+[data-slot="scroll-area-viewport"] > div {
+  display: block !important;
 }

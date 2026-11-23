@@ -1,73 +1,770 @@
-import { useEffect, useState } from "react";
+// 设置页：左侧分组列表 + 右侧当前分组。每个设置项对应 FEATURES.md 第 4 节的一个 ID（set.*），
+// 字段定义见 lib/backend.ts 的 Settings（与后端 model/settings.rs 一致）。
+
+import { useEffect, useId, useState, type ReactNode } from "react";
+import { BookOpen, FileInput, FolderOpen, Play, RefreshCw, TriangleAlert, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import ChoiceGroup from "@/components/ChoiceGroup";
+import ColorField from "@/components/ColorField";
+import FontSelect from "@/components/FontSelect";
+import NumberInput from "@/components/NumberInput";
 import {
   getAppInfo,
+  getDataDir,
+  getEncoderInfo,
   getFfmpegStatus,
   isTauri,
+  openDataDir,
+  openProjectPage,
+  pickFile,
+  type AfterAll,
   type AppInfo,
+  type EncoderInfo,
   type FfmpegStatus,
-} from "../lib/backend";
+  type OnExists,
+  type Settings,
+  type SubtitleStyle,
+  type TargetFormat,
+  type ThemeSetting,
+} from "@/lib/backend";
+import { playCompletionSound } from "@/state/finish";
+import { useLog } from "@/state/log";
+import { useSettings } from "@/state/settings";
+import { useUpdate } from "@/state/update";
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+type BooleanSettingKey = {
+  [K in keyof Settings]: Settings[K] extends boolean ? K : never;
+}[keyof Settings];
+
+const GROUPS = [
+  { id: "convert", label: "转换" },
+  { id: "subtitle", label: "字幕与封面" },
+  { id: "general", label: "通用" },
+  { id: "finish", label: "完成后" },
+  { id: "advanced", label: "高级" },
+  { id: "about", label: "关于" },
+] as const;
+type GroupId = (typeof GROUPS)[number]["id"];
+
+function Row({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex items-start gap-4 border-b border-line px-4 py-3 last:border-b-0">
-      <span className="w-28 shrink-0 text-muted">{label}</span>
+    <div className="flex items-start gap-4 border-b px-4 py-3 last:border-b-0">
+      <div className="w-44 shrink-0">
+        <p>{label}</p>
+        {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
+      </div>
       <div className="min-w-0 flex-1 select-text break-words">{children}</div>
     </div>
   );
 }
 
-export default function SettingsView() {
+function Section({ title, children }: { title?: string; children: ReactNode }) {
+  return (
+    <section className="mb-6">
+      {title && <h2 className="mb-2 text-xs font-medium text-muted-foreground">{title}</h2>}
+      <Card className="gap-0 py-0 shadow-none">{children}</Card>
+    </section>
+  );
+}
+
+function useToggle() {
+  const settings = useSettings((s) => s.settings);
+  const update = useSettings((s) => s.update);
+  return (key: BooleanSettingKey, label: string, disabled = false) => (
+    <Switch
+      aria-label={label}
+      checked={settings[key]}
+      disabled={disabled}
+      onCheckedChange={(v) => {
+        const patch: Partial<Settings> = {};
+        patch[key] = v;
+        update(patch);
+      }}
+    />
+  );
+}
+
+function useCpuCores() {
+  const [cpuCores, setCpuCores] = useState(16);
+  useEffect(() => {
+    if (isTauri) getAppInfo().then((i) => setCpuCores(i.cpuCores)).catch(() => {});
+  }, []);
+  return cpuCores;
+}
+
+// ---------------------------------------------------------------- 转换
+
+function ConvertGroup() {
+  const settings = useSettings((s) => s.settings);
+  const update = useSettings((s) => s.update);
+  const toggle = useToggle();
+  const cpuCores = useCpuCores();
+  const regexId = useId();
+
+  return (
+    <>
+      <Section>
+        <Row label="目标格式" hint="不支持 H.264/H.265 的源格式会改用 MP4">
+          <ChoiceGroup<TargetFormat>
+            label="目标格式"
+            value={settings.targetFormat}
+            onChange={(targetFormat) => update({ targetFormat })}
+            options={[
+              { value: "mp4", label: "MP4" },
+              { value: "source", label: "保持源格式" },
+            ]}
+          />
+        </Row>
+        <Row label="目标已存在时" hint="也用于“输出移回源位置”；永远不会覆盖源视频本身">
+          <ChoiceGroup<OnExists>
+            label="目标已存在时"
+            value={settings.onExists}
+            onChange={(onExists) => update({ onExists })}
+            options={[
+              { value: "rename", label: "重命名" },
+              { value: "overwrite", label: "覆盖" },
+            ]}
+          />
+        </Row>
+        <Row label="文件名去除" hint="从输出文件名中去掉这些内容，每行一项">
+          <Textarea
+            aria-label="文件名去除"
+            value={settings.nameStrip.text}
+            onChange={(e) => update({ nameStrip: { ...settings.nameStrip, text: e.target.value } })}
+            rows={2}
+            placeholder="例如：_原片"
+            className="min-h-14 resize-y px-2 py-1 font-mono text-xs md:text-xs"
+          />
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <Checkbox
+              id={regexId}
+              checked={settings.nameStrip.regex}
+              onCheckedChange={(v) => update({ nameStrip: { ...settings.nameStrip, regex: v === true } })}
+            />
+            <Label htmlFor={regexId} className="text-xs font-normal text-muted-foreground">
+              按正则表达式匹配
+            </Label>
+          </div>
+        </Row>
+        <Row label="并行任务数" hint={`上限为 CPU 核心数（${cpuCores}）`}>
+          <NumberInput
+            label="并行任务数"
+            value={settings.parallel}
+            min={1}
+            max={cpuCores}
+            integer
+            onChange={(parallel) => update({ parallel })}
+          />
+        </Row>
+        <Row label="使用 H.265" hint="体积更小；部分平台和旧设备可能无法播放">
+          {toggle("hevc", "使用 H.265")}
+        </Row>
+        <Row
+          label="HDR 转 SDR"
+          hint="源视频为 HDR（PQ / HLG）时转换为普通 SDR 画面。关闭则保留 HDR：输出 10 bit H.265 并保留色彩信息（选了 H.264 时会自动改用 H.265）"
+        >
+          {toggle("hdrToSdr", "HDR 转 SDR")}
+        </Row>
+        <Row
+          label="虚化背景取画面中间"
+          hint="分辨率、画中画的虚化背景：开为等比放大后取中间，关为整幅拉伸。模块里选了“取中 / 拉伸”时以模块为准"
+        >
+          {toggle("blurCenter", "虚化背景取画面中间")}
+        </Row>
+        <Row label="跳过已完成" hint="重新开始时跳过队列中已完成的视频；改了参数想重跑时关闭">
+          {toggle("skipDone", "跳过已完成")}
+        </Row>
+      </Section>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- 字幕与封面
+
+function SubtitleGroup() {
+  const settings = useSettings((s) => s.settings);
+  const update = useSettings((s) => s.update);
+  const toggle = useToggle();
+  const style = settings.subtitleStyle;
+  const setStyle = (patch: Partial<SubtitleStyle>) => update({ subtitleStyle: { ...style, ...patch } });
+
+  return (
+    <>
+      <Section title="字幕">
+        <Row
+          label="自动加载同名字幕"
+          hint="导入时自动关联视频同目录下的同名字幕（srt / ass / ssa / vtt），处理时烧录进画面。也可在队列右键菜单中手动设置"
+        >
+          {toggle("autoSubtitle", "自动加载同名字幕")}
+        </Row>
+        <Row label="字体" hint="默认自动选择支持中文的系统字体">
+          <FontSelect value={style.font} onChange={(font) => setStyle({ font })} />
+        </Row>
+        <Row label="字号" hint="以 1080 高的画面为基准，按实际画面等比缩放（下同）">
+          <NumberInput label="字号" value={style.size} min={8} max={400} integer onChange={(size) => setStyle({ size })} />
+        </Row>
+        <Row label="文字颜色">
+          <ColorField label="文字颜色" value={style.color} onChange={(color) => setStyle({ color })} />
+        </Row>
+        <Row label="描边" hint="描边宽度，0 为不描边">
+          <div className="flex items-center gap-2">
+            <NumberInput
+              label="描边宽度"
+              value={style.outline}
+              min={0}
+              max={20}
+              step={0.5}
+              onChange={(outline) => setStyle({ outline })}
+            />
+            <ColorField label="描边颜色" value={style.outlineColor} onChange={(outlineColor) => setStyle({ outlineColor })} />
+          </div>
+        </Row>
+        <Row label="底部边距">
+          <NumberInput
+            label="底部边距"
+            value={style.marginBottom}
+            min={0}
+            max={1000}
+            integer
+            onChange={(marginBottom) => setStyle({ marginBottom })}
+          />
+        </Row>
+        <p className="border-t px-4 py-2 text-xs text-muted-foreground">
+          样式用于 srt / vtt 字幕；ass / ssa 字幕保留文件自带的样式（只使用这里的字体）。字幕跟随源视频的画面与时间烧录，
+          之后的裁剪、缩放、变速等模块一并作用于字幕；片头片尾上没有字幕。
+        </p>
+      </Section>
+      <Section title="封面">
+        <Row
+          label="自动加载同名封面"
+          hint="导入时自动关联同目录下的同名图片（jpg / png / webp / bmp），处理时嵌入输出"
+        >
+          {toggle("autoCover", "自动加载同名封面")}
+        </Row>
+        <Row
+          label="封面帧数"
+          hint="不超过视频帧率时，开头这几帧显示封面；超过帧率时，用图片生成这么多帧的片段接在视频开头（音频相应延后）。MP4 还会写入封面图"
+        >
+          <NumberInput
+            label="封面帧数"
+            value={settings.coverFrames}
+            min={1}
+            max={100000}
+            integer
+            onChange={(coverFrames) => update({ coverFrames })}
+          />
+        </Row>
+        <Row label="拉伸至视频尺寸" hint="关闭时等比缩放，空白处填黑">
+          {toggle("coverStretch", "封面拉伸至视频尺寸")}
+        </Row>
+      </Section>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- 通用
+
+function GpuHint() {
+  const dismissed = useSettings((s) => s.settings.gpuHintDismissed);
+  const gpu = useSettings((s) => s.settings.gpu);
+  const update = useSettings((s) => s.update);
+  const [failed, setFailed] = useState<string[]>([]);
+  useEffect(() => {
+    if (!isTauri || !gpu) return;
+    let alive = true;
+    getFfmpegStatus()
+      .then((status) => (status.available ? getEncoderInfo(false) : null))
+      .then((info) => alive && info && setFailed(info.failedVendors))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [gpu]);
+  if (dismissed || !gpu || failed.length === 0) return null;
+  return (
+    <div className="mt-2 flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-2 py-1.5 text-xs">
+      <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-warning" />
+      <p className="flex-1">
+        检测到 {failed.join("、")} 的显卡驱动，但硬件编码试编码失败，可能是驱动版本过低或显卡不支持编码，已改用软件编码。
+        更新显卡驱动后可在“关于”中重新检测。
+      </p>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label="不再提示"
+        title="不再提示"
+        onClick={() => update({ gpuHintDismissed: true })}
+      >
+        <X />
+      </Button>
+    </div>
+  );
+}
+
+function GeneralGroup() {
+  const settings = useSettings((s) => s.settings);
+  const update = useSettings((s) => s.update);
+  const toggle = useToggle();
+  const checking = useUpdate((s) => s.checking);
+  const updateInfo = useUpdate((s) => s.info);
+  const updateError = useUpdate((s) => s.error);
+
+  return (
+    <>
+      <Section title="编码与导入">
+        <Row label="GPU 硬件加速" hint="使用 NVENC / QSV / AMF；失败时自动改用软件编码">
+          {toggle("gpu", "GPU 硬件加速")}
+          <GpuHint />
+        </Row>
+        <Row label="核显优先" hint="有多个可用的硬件编码器时，优先用核显（Intel QSV、AMD AMF），独显留给其它工作">
+          {toggle("preferIntegratedGpu", "核显优先", !settings.gpu)}
+        </Row>
+        <Row label="文件名加队列序号" hint="如 01_视频名.mp4">
+          {toggle("numberPrefix", "文件名加队列序号")}
+        </Row>
+        <Row
+          label="目录包含子目录"
+          hint="导入文件夹时包含子目录；也是新建“目录”素材（水印、背景音等）时“包含子目录”的初始值，之后以素材自己的勾选为准"
+        >
+          {toggle("recursive", "目录包含子目录")}
+        </Row>
+        <Row label="按来源文件夹输出" hint="文件夹方式导入时，输出到与来源文件夹同名的目录，保持分类结构">
+          {toggle("outByFolder", "按来源文件夹输出")}
+        </Row>
+        <Row label="输出到视频同名文件夹" hint="裂变次数大于 1 时总是如此">
+          {toggle("outByName", "输出到视频同名文件夹")}
+        </Row>
+      </Section>
+      <Section title="队列">
+        <Row label="保留未完成任务" hint="退出时保存未完成的任务，下次启动自动载入（已不存在的文件会被移除）">
+          {toggle("keepQueue", "保留未完成任务")}
+        </Row>
+        <Row label="完成后从队列移除" hint="处理成功的任务自动移出队列">
+          {toggle("removeFinished", "完成后从队列移除")}
+        </Row>
+        <Row label="删除任务时确认" hint="从队列删除任务（不删除文件）前弹出确认">
+          {toggle("confirmRemove", "删除任务时确认")}
+        </Row>
+      </Section>
+      <Section title="界面">
+        <Row label="主题" hint="左侧导航栏底部的按钮可快速切换浅色 / 深色">
+          <ChoiceGroup<ThemeSetting>
+            label="主题"
+            value={settings.theme}
+            onChange={(theme) => update({ theme })}
+            options={[
+              { value: "system", label: "跟随系统" },
+              { value: "light", label: "浅色" },
+              { value: "dark", label: "深色" },
+            ]}
+          />
+        </Row>
+        <Row label="关闭窗口时最小化到托盘" hint="点托盘图标显示窗口；托盘菜单里可退出">
+          {toggle("tray", "关闭窗口时最小化到托盘")}
+        </Row>
+        <Row label="静音预览" hint="预览与播放时默认静音">
+          {toggle("mutePreview", "静音预览")}
+        </Row>
+        <Row label="启动时检查更新" hint="只访问 GitHub 公开的发布信息，发现新版本时询问是否打开发布页">
+          {toggle("autoUpdate", "启动时检查更新")}
+          <div className="mt-1.5 flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="xs"
+              disabled={!isTauri || checking}
+              onClick={() => void useUpdate.getState().check(true)}
+              className="text-xs font-normal"
+            >
+              <RefreshCw /> {checking ? "检查中…" : "立即检查"}
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {updateError
+                ? `检查失败：${updateError}`
+                : updateInfo && !updateInfo.newer
+                  ? `已是最新版本（${updateInfo.current}）`
+                  : ""}
+            </span>
+          </div>
+        </Row>
+      </Section>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- 完成后
+
+function SoundRow() {
+  const settings = useSettings((s) => s.settings);
+  const update = useSettings((s) => s.update);
+  const toggle = useToggle();
+  const browse = async () => {
+    const path = await pickFile("提示音", ["wav"]);
+    if (path) update({ soundPath: path });
+  };
+  return (
+    <Row label="完成提示音" hint="全部任务结束时播放；不选文件时使用内置提示音">
+      {toggle("sound", "完成提示音")}
+      <div className="mt-1.5 flex items-center gap-2">
+        <InputGroup className="h-7 max-w-96">
+          <InputGroupInput
+            value={settings.soundPath}
+            onChange={(e) => update({ soundPath: e.target.value })}
+            placeholder="内置提示音（可选择 wav 文件）"
+            aria-label="提示音文件"
+            disabled={!settings.sound}
+            className="h-7 px-2 text-xs md:text-xs"
+          />
+          <InputGroupAddon align="inline-end">
+            <InputGroupButton
+              size="icon-xs"
+              onClick={() => void browse()}
+              disabled={!isTauri || !settings.sound}
+              aria-label="选择 wav 文件"
+              title="选择 wav 文件"
+            >
+              <FileInput />
+            </InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
+        <Button
+          variant="outline"
+          size="xs"
+          disabled={!settings.sound}
+          onClick={() => void playCompletionSound(settings.soundPath)}
+          className="text-xs font-normal"
+        >
+          <Play /> 试听
+        </Button>
+      </div>
+    </Row>
+  );
+}
+
+function DeleteSourceRow() {
+  const settings = useSettings((s) => s.settings);
+  const update = useSettings((s) => s.update);
+  const [confirming, setConfirming] = useState(false);
+  const trashId = useId();
+  return (
+    <Row
+      label="处理后删除源视频"
+      hint="任务成功、输出文件已写完并校验后才删除；失败或取消时不动源视频；输出与源视频是同一个文件时不删除"
+    >
+      <Switch
+        aria-label="处理后删除源视频"
+        checked={settings.deleteSource}
+        onCheckedChange={(v) => (v ? setConfirming(true) : update({ deleteSource: false }))}
+      />
+      <div className="mt-1.5 flex items-center gap-1.5">
+        <Checkbox
+          id={trashId}
+          checked={settings.deleteToTrash}
+          onCheckedChange={(v) => update({ deleteToTrash: v === true })}
+        />
+        <Label htmlFor={trashId} className="text-xs font-normal text-muted-foreground">
+          移入回收站（取消勾选则永久删除，无法恢复）
+        </Label>
+      </div>
+      <AlertDialog open={confirming} onOpenChange={setConfirming}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>开启“处理后删除源视频”？</AlertDialogTitle>
+            <AlertDialogDescription>
+              每个任务处理成功后，源视频会被
+              {settings.deleteToTrash ? "移入回收站" : "永久删除（无法恢复）"}。
+              只在输出文件完整写入后才会删除；失败或取消的任务不受影响。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                update({ deleteSource: true });
+                setConfirming(false);
+              }}
+            >
+              开启
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Row>
+  );
+}
+
+function FinishGroup() {
+  const settings = useSettings((s) => s.settings);
+  const update = useSettings((s) => s.update);
+  const toggle = useToggle();
+  return (
+    <>
+      <Section title="全部完成后">
+        <Row label="全部完成后" hint="只对下一次运行有效，触发后（以及每次启动时）自动恢复为“无操作”；关机前有 30 秒倒计时可取消">
+          <ChoiceGroup<AfterAll>
+            label="全部完成后"
+            value={settings.afterAll}
+            onChange={(afterAll) => update({ afterAll })}
+            options={[
+              { value: "none", label: "无操作" },
+              { value: "shutdown", label: "关机" },
+              { value: "quit", label: "退出程序" },
+            ]}
+          />
+        </Row>
+        <Row label="打开输出文件夹" hint="全部结束后打开输出位置（未设置输出目录时为第一个输出所在的文件夹）">
+          {toggle("openOutput", "完成后打开输出文件夹")}
+        </Row>
+        <SoundRow />
+      </Section>
+      <Section title="每个任务成功后">
+        <Row label="输出移回源位置" hint="把输出移到源视频所在的文件夹；同名时按“目标已存在时”重命名或覆盖（不会覆盖源视频本身）">
+          {toggle("moveBack", "输出移回源位置")}
+        </Row>
+        <DeleteSourceRow />
+      </Section>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- 高级
+
+function AdvancedGroup() {
+  const settings = useSettings((s) => s.settings);
+  const update = useSettings((s) => s.update);
+  const toggle = useToggle();
+  return (
+    <Section>
+      <Row label="裂变独立文件夹" hint="裂变次数大于 1 时，每次裂变输出到视频同名文件夹下的“第 x 次裂变”目录">
+        {toggle("fissionFolder", "裂变独立文件夹")}
+      </Row>
+      <Row
+        label="体积压缩"
+        hint="“瘦身”：不再沿用源码率，改用更高的恒定质量值（H.264 CRF 28、H.265 CRF 32，软件编码用 slow 预设），并以源码率为上限。启用码率模块时以码率模块为准"
+      >
+        {toggle("reduceSize", "体积压缩")}
+      </Row>
+      <Row label="变速适应" hint="音视频合成：视频变速到配对音频的时长（重编码视频）；截取合并：有目标时长时整体变速到目标时长，代替截断。变速 0.25～4 倍，超出时按原方式处理">
+        {toggle("speedFit", "变速适应")}
+      </Row>
+      <Row label="版权信息" hint="写入输出视频的元数据（copyright），批量处理与独立工具都会写入；留空不写">
+        <Input
+          aria-label="版权信息"
+          value={settings.copyright}
+          onChange={(e) => update({ copyright: e.target.value })}
+          placeholder="例如：© 2026 某某工作室"
+          className="h-7 max-w-96 px-2 text-xs md:text-xs"
+        />
+      </Row>
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------- 关于
+
+function EnvironmentSection() {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [ffmpeg, setFfmpeg] = useState<FfmpegStatus | null>(null);
+  const [encoders, setEncoders] = useState<EncoderInfo | null>(null);
+  const [detecting, setDetecting] = useState(false);
+  const [dataDir, setDataDir] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const detect = (refresh: boolean) => {
+    setDetecting(true);
+    getEncoderInfo(refresh)
+      .then(setEncoders)
+      .catch((e) => setError(String(e)))
+      .finally(() => setDetecting(false));
+  };
 
   useEffect(() => {
     if (!isTauri) return;
     getAppInfo().then(setInfo).catch((e) => setError(String(e)));
-    getFfmpegStatus().then(setFfmpeg).catch((e) => setError(String(e)));
+    getDataDir().then(setDataDir).catch(() => {});
+    getFfmpegStatus()
+      .then((status) => {
+        setFfmpeg(status);
+        if (status.available) detect(false);
+      })
+      .catch((e) => setError(String(e)));
   }, []);
 
   return (
-    <div className="h-full overflow-y-auto">
-      <header className="border-b border-line px-5 py-3">
+    <Section title="运行环境">
+      {!isTauri ? (
+        <Row label="状态">当前在浏览器中预览，环境信息需要在桌面应用中查看。</Row>
+      ) : (
+        <>
+          <Row label="CPU 核心">{info ? info.cpuCores : "读取中…"}</Row>
+          <Row label="FFmpeg">
+            {!ffmpeg && "检测中…"}
+            {ffmpeg?.available && (
+              <>
+                <p>{ffmpeg.version}</p>
+                <p className="text-xs text-muted-foreground">{ffmpeg.path}</p>
+                <p className="text-xs text-muted-foreground">{ffmpeg.ffprobePath}</p>
+              </>
+            )}
+            {ffmpeg && !ffmpeg.available && (
+              <>
+                <p>未找到可用的 FFmpeg</p>
+                <p className="text-xs text-muted-foreground">
+                  {ffmpeg.error}。请安装 FFmpeg 并加入 PATH，或设置环境变量 CLIPRECIPE_FFMPEG 指向
+                  ffmpeg 可执行文件（ffprobe 需在同一目录）。
+                </p>
+              </>
+            )}
+          </Row>
+          <Row label="硬件编码器" hint="通过实际试编码检测">
+            {detecting && <p className="text-muted-foreground">检测中…</p>}
+            {!detecting && encoders && (
+              <>
+                <p>{encoders.hardware.length > 0 ? encoders.hardware.join("、") : "未检测到可用的硬件编码器"}</p>
+                <p className="text-xs text-muted-foreground">
+                  开启 GPU 加速时使用：H.264 → {encoders.h264}，H.265 → {encoders.hevc}
+                </p>
+                {encoders.failedVendors.length > 0 && (
+                  <p className="text-xs text-warning">
+                    {encoders.failedVendors.join("、")}：已安装驱动但试编码失败，可能需要更新显卡驱动
+                  </p>
+                )}
+              </>
+            )}
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={() => detect(true)}
+              disabled={detecting || !ffmpeg?.available}
+              className="mt-1 text-xs font-normal text-muted-foreground"
+            >
+              <RefreshCw /> 重新检测
+            </Button>
+          </Row>
+          {dataDir && (
+            <Row label="数据目录" hint="设置、保存的队列">
+              <p>{dataDir}</p>
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => openDataDir().catch((e) => setError(String(e)))}
+                className="mt-1 text-xs font-normal text-muted-foreground"
+              >
+                <FolderOpen /> 打开数据目录
+              </Button>
+            </Row>
+          )}
+          {error && <Row label="错误">{error}</Row>}
+        </>
+      )}
+    </Section>
+  );
+}
+
+function AboutGroup() {
+  const [info, setInfo] = useState<AppInfo | null>(null);
+  useEffect(() => {
+    if (isTauri) getAppInfo().then(setInfo).catch(() => {});
+  }, []);
+  const openDocs = () =>
+    openProjectPage().catch((e) => useLog.getState().add("error", `无法打开使用文档：${String(e)}`));
+  return (
+    <>
+      <Section title="关于">
+        <Row label="ClipRecipe">
+          <p>{info ? `版本 ${info.version}` : "开源的视频批量处理桌面工具"}</p>
+          <p className="mt-1 text-xs text-muted-foreground">以 MIT 许可证开源，免费使用，无需注册。</p>
+          <Button
+            variant="outline"
+            size="xs"
+            disabled={!isTauri}
+            onClick={() => void openDocs()}
+            className="mt-1.5 text-xs font-normal"
+          >
+            <BookOpen /> 使用文档（GitHub）
+          </Button>
+        </Row>
+        <Row label="FFmpeg 说明">
+          <p className="text-xs text-muted-foreground">
+            本程序调用系统中安装的 FFmpeg / FFprobe 完成全部音视频处理，本身不包含也不分发 FFmpeg。FFmpeg 是
+            FFmpeg 项目的商标，依其构建方式按 LGPL 或 GPL 授权；请从可信来源获取并遵守相应许可。
+          </p>
+        </Row>
+      </Section>
+      <EnvironmentSection />
+    </>
+  );
+}
+
+const GROUP_VIEWS: Record<GroupId, () => ReactNode> = {
+  convert: () => <ConvertGroup />,
+  subtitle: () => <SubtitleGroup />,
+  general: () => <GeneralGroup />,
+  finish: () => <FinishGroup />,
+  advanced: () => <AdvancedGroup />,
+  about: () => <AboutGroup />,
+};
+
+export default function SettingsView() {
+  const [group, setGroup] = useState<GroupId>("convert");
+  return (
+    <div className="flex h-full flex-col">
+      <header className="border-b px-5 py-3">
         <h1 className="text-base font-semibold">设置</h1>
       </header>
-
-      <div className="max-w-2xl px-5 py-4">
-        <h2 className="mb-2 text-xs font-medium text-muted">运行环境</h2>
-        <div className="rounded-xl border border-line bg-surface">
-          {!isTauri ? (
-            <Row label="状态">当前在浏览器中预览，环境信息需要在桌面应用中查看。</Row>
-          ) : (
-            <>
-              <Row label="版本">{info ? `${info.name} ${info.version}` : "读取中…"}</Row>
-              <Row label="CPU 核心">{info ? info.cpuCores : "读取中…"}</Row>
-              <Row label="FFmpeg">
-                {!ffmpeg && "检测中…"}
-                {ffmpeg?.available && (
-                  <>
-                    <p>{ffmpeg.version}</p>
-                    <p className="text-xs text-muted">{ffmpeg.path}</p>
-                  </>
-                )}
-                {ffmpeg && !ffmpeg.available && (
-                  <>
-                    <p>未找到可用的 FFmpeg</p>
-                    <p className="text-xs text-muted">
-                      {ffmpeg.error}。请安装 FFmpeg 并加入 PATH，或设置环境变量 CLIPRECIPE_FFMPEG。
-                    </p>
-                  </>
-                )}
-              </Row>
-              {error && <Row label="错误">{error}</Row>}
-            </>
-          )}
+      <Tabs
+        value={group}
+        onValueChange={(v) => setGroup(v as GroupId)}
+        orientation="vertical"
+        className="min-h-0 flex-1 gap-0"
+      >
+        <div className="w-36 shrink-0 border-r px-2 py-3">
+          <TabsList variant="line" aria-label="设置分组" className="w-full gap-0.5 p-0">
+          {GROUPS.map((g) => (
+            <TabsTrigger
+              key={g.id}
+              value={g.id}
+              className="h-8 w-full flex-none justify-start px-3 text-sm font-normal after:hidden data-active:bg-muted data-active:text-primary dark:data-active:border-transparent dark:data-active:bg-muted"
+            >
+              {g.label}
+            </TabsTrigger>
+          ))}
+          </TabsList>
         </div>
-
-        <p className="mt-6 text-xs text-muted">
-          转换与通用设置项尚未实现，规划见 docs/FEATURES.md 第 4 节。
-        </p>
-      </div>
+        {GROUPS.map((g) => (
+          <TabsContent key={g.id} value={g.id} className="min-h-0 min-w-0">
+            <ScrollArea className="h-full">
+              <div className="max-w-3xl px-5 py-4">
+                {!isTauri && (
+                  <p className="mb-4 rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground">
+                    浏览器预览模式：设置只在本次页面中生效，不会保存。
+                  </p>
+                )}
+                {GROUP_VIEWS[g.id]()}
+              </div>
+            </ScrollArea>
+          </TabsContent>
+        ))}
+      </Tabs>
     </div>
   );
 }

@@ -22,7 +22,7 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import ChoiceGroup from "@/components/ChoiceGroup";
 import ColorField from "@/components/ColorField";
@@ -30,6 +30,7 @@ import { FfmpegDownloadControl, FfmpegDownloadNote } from "@/components/FfmpegDo
 import FontSelect from "@/components/FontSelect";
 import Hint from "@/components/Hint";
 import NumberInput from "@/components/NumberInput";
+import VerticalTabsList from "@/components/VerticalTabsList";
 import {
   getAppInfo,
   getDataDir,
@@ -875,7 +876,7 @@ export default function SettingsView() {
         className="min-h-0 flex-1 gap-0"
       >
         <div className="w-36 shrink-0 border-r px-2 py-2">
-          <TabsList aria-label="设置分组" className="w-full">
+          <VerticalTabsList aria-label="设置分组" className="w-full">
           {GROUPS.map((g) => (
             <TabsTrigger
               key={g.id}
@@ -885,7 +886,7 @@ export default function SettingsView() {
               {g.label}
             </TabsTrigger>
           ))}
-          </TabsList>
+          </VerticalTabsList>
         </div>
         {GROUPS.map((g) => (
           <TabsContent key={g.id} value={g.id} className="min-h-0 min-w-0">

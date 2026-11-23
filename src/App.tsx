@@ -2,12 +2,13 @@ import { lazy, Suspense, useEffect } from "react";
 import { Layers, Moon, Settings, Sun, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Hint from "./components/Hint";
 import PreviewModal from "./components/PreviewModal";
 import ShutdownDialog from "./components/ShutdownDialog";
 import UpdateDialog from "./components/UpdateDialog";
+import VerticalTabsList from "./components/VerticalTabsList";
 import { isTauri, onOpenPaths, openProjectPage, takeLaunchPaths } from "./lib/backend";
 import { browserKeyEvents, isEditable } from "./lib/desktop";
 import { matchShortcut, useShortcutLabels, type ShortcutId } from "./lib/shortcuts";
@@ -163,7 +164,7 @@ export default function App() {
               >
                 CR
               </div>
-              <TabsList aria-label="主导航" className="w-full">
+              <VerticalTabsList aria-label="主导航" className="w-full">
                 {NAV.map(({ id, label, icon: Icon, shortcut }) => (
                   <Hint key={id} label={label} keys={keys[shortcut]} side="right">
                     <TabsTrigger
@@ -177,7 +178,7 @@ export default function App() {
                     </TabsTrigger>
                   </Hint>
                 ))}
-              </TabsList>
+              </VerticalTabsList>
               <Hint label={theme === "dark" ? "切换到浅色" : "切换到深色"} side="right">
                 <Button
                   variant="ghost"

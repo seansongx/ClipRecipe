@@ -11,8 +11,13 @@
  *
  * 1. shadcn 主题变量（style：base-mira，即 Base UI 版的 Mira；基础色 neutral）：
  *    与 `shadcn init --base base --preset b1D0dv72`（Mira + neutral）写出的变量、取值、@theme inline 映射、圆角刻度完全相同，
- *    只是深色挂在 [data-theme="dark"] 上（CLI 写的是 .dark）。不要改这些值；src/components/ui/ 是 CLI 原版
- *    （`npm run check:shadcn` 核对），也不要用全局规则覆盖组件外观。
+ *    只是深色挂在 [data-theme="dark"] 上（CLI 写的是 .dark）。src/components/ui/ 是 CLI 原版（`npm run check:shadcn` 核对），
+ *    不要用全局规则覆盖组件外观。
+ *    例外：为通过界面审计（scripts/e2e-audit-page.js：控件 / 输入框边界与焦点环对比 ≥ 3、选中项底色对比 ≥ 1.2、文字 ≥ 4.5），
+ *    浅色的 --muted / --muted-foreground / --input / --ring 与深色的 --muted / --input / --ring 在 CLI 默认值上做了最小调整
+ *    （行尾注明默认值），仍是中性灰。调整时同时满足：--input 与 background / card 对比 ≥ 3（深色按开关的 bg-input/80 算），
+ *    --muted 与 background / card ≥ 1.2，--ring 与 --muted（标签栏底色）≥ 3，占位符 --muted-foreground 与输入框的
+ *    bg-input/20（深色 /30）底色 ≥ 4.5。--background 不要动（见下方“窗口颜色”）。
  * 2. 本应用自有 token（shadcn 没有的语义）：写法与 shadcn 变量相同（:root 与 [data-theme="dark"] 各一组 oklch 值），
  *    在 @theme inline 里暴露成 Tailwind 颜色（bg-success、text-warning、bg-media…）。新颜色先找已有 token，确实没有再加在这里。
  *
@@ -33,14 +38,14 @@
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  --muted: oklch(0.925 0 0); /* CLI 默认 0.97，见上方说明 */
+  --muted-foreground: oklch(0.51 0 0); /* CLI 默认 0.556 */
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --input: oklch(0.64 0 0); /* CLI 默认 0.922 */
+  --ring: oklch(0.6 0 0); /* CLI 默认 0.708 */
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -69,14 +74,14 @@
   --primary-foreground: oklch(0.205 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
+  --muted: oklch(0.29 0 0); /* CLI 默认 0.269 */
   --muted-foreground: oklch(0.708 0 0);
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --input: oklch(1 0 0 / 45%); /* CLI 默认 15% */
+  --ring: oklch(0.6 0 0); /* CLI 默认 0.556 */
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);

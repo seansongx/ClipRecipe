@@ -10,7 +10,7 @@
 // 4. 文字（含占位符）与实际背景（逐层叠加半透明背景与 opacity）的对比：正文 ≥ 4.5、大字 ≥ 3（WCAG 1.4.3）；
 //    禁用的控件按 WCAG 豁免，只计数。
 // 调用前应把鼠标移开、取消焦点，避免悬停 / 焦点样式干扰（测试脚本的 ui.audit 会做）。
-// 返回 { problems, warnings, stats, pairs }：problems 让用例失败；warnings 是 SOFT_RULES 里暂时降级的规则，照常计算、只报告。
+// 返回 { problems, warnings, stats, pairs }：problems 让用例失败；warnings 是 SOFT_RULES 里暂时降级的规则（目前没有），照常计算、只报告。
 (() => {
   const e2e = window.__e2e;
   if (!e2e || e2e.audit) return;
@@ -149,23 +149,12 @@
 
   /** 每种控件的 aria 状态属性，以及它为 true（或 mixed）/ false 时应有的 Base UI 状态。 */
   /**
-   * 暂时降级为“警告”的对比度规则（照常计算、e2e 输出里逐条打印实测值，但不让用例失败）。
-   * 原因：暂用 shadcn 默认主题（base-mira + neutral，项目所有者的决定），它的 --muted / --input 达不到这些门槛；
-   * 这些门槛是为旧的自定义配色定的。换回自定义主题时把对应项从这里删掉（或清空）即可恢复为硬失败。门槛数字不要改。
-   * 不在这里的规则（文字对比 ≥ 4.5 / 3、aria 与状态属性一致、data-slot 未被改写等）始终是硬失败。
+   * 暂时降级为“警告”的规则：{ 规则名: 原因 }。列在这里的规则照常计算、e2e 输出里逐条打印实测值，但不让用例失败。
+   * 现在为空：所有规则都是硬失败。规则名是 report() 的第一个参数（selected-distinct、toggle-distinct、control-boundary、
+   * input-border），以及 e2e-smoke.mjs 里的导航选中底色（selected-distinct）与侧栏焦点环描边对比（focus-ring-contrast）。
+   * 只在确有必要时临时加一项并写明原因；门槛数字不要改。颜色不达标时改 src/index.css 的令牌（见那里的说明）。
    */
-  const SOFT_RULES = {
-    // 1. 同组选项里选中项与未选中项的底色对比 ≥ 1.2（或有只属于选中项的指示条 / 边框）：默认主题的选中底是 muted / background
-    "selected-distinct": "暂用 shadcn 默认主题",
-    // 3. 开关、复选框的选中与未选中外观不同（同一判定）
-    "toggle-distinct": "暂用 shadcn 默认主题",
-    // 3. 开关、复选框与背景的边界对比 ≥ 3（默认主题的 --input 约 1.26 / 1.42）
-    "control-boundary": "暂用 shadcn 默认主题",
-    // 3. 输入框边框与背景对比 ≥ 3（同上）
-    "input-border": "暂用 shadcn 默认主题",
-    // 键盘焦点环的实色描边与背景对比 ≥ 3（默认主题的 --ring 在浅色下约 2.4）；焦点环“存在且 :focus-visible”仍是硬失败
-    "focus-ring-contrast": "暂用 shadcn 默认主题",
-  };
+  const SOFT_RULES = {};
   e2e.softRules = SOFT_RULES;
 
   const STATE_MAP = {

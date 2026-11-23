@@ -62,8 +62,10 @@ debug/                   开发环境的调试面板（生产构建不含，见�
   - `npm run check:shadcn`（`scripts/check-shadcn-stock.mjs`）逐个用 `shadcn add <组件> --diff` 与注册表比较，应当输出“全部与原版一致”。
   - 原版组件里个别用不到的导入（如 `scroll-area.tsx` 的 `import * as React`）会撞上 `noUnusedLocals`；`npm run typecheck`
     （`scripts/typecheck.mjs`）只对 `components/ui/` 忽略这一类（TS6133），业务代码照常检查。
-  - **组件与配色都用默认值**：`index.css` 的 shadcn 主题变量就是 CLI 为 Mira + neutral 写出的默认值（oklch），不改；
-    也**不要**用全局 CSS（按 `data-slot` 等）覆盖组件外观。使用处只写排版类（flex / grid、宽度、外边距、元素之间的 gap、截断、滚动），
+  - **组件与配色都用默认值**：`index.css` 的 shadcn 主题变量是 CLI 为 Mira + neutral 写出的默认值（oklch），只有为通过界面审计
+    （见下方“选中态与对比度”）做的最小调整：浅色 `--muted` 0.97→0.925、`--muted-foreground` 0.556→0.51、`--input` 0.922→0.64、
+    `--ring` 0.708→0.6，深色 `--muted` 0.269→0.29、`--input` 白 15%→45%、`--ring` 0.556→0.6（仍是中性灰，`index.css` 行尾注明默认值）。
+    其它变量不改，`--background` 尤其不能动（`desktop.rs` 的启动底色按它核对）。也**不要**用全局 CSS（按 `data-slot` 等）覆盖组件外观。使用处只写排版类（flex / grid、宽度、外边距、元素之间的 gap、截断、滚动），
     **不要**给 shadcn 组件写改外观的类（颜色、底色、边框、圆角、字号字重、内边距、高度、阴影、选中 / 悬停样式）；尺寸用组件自带的
     `size` 变体（Mira：按钮 `default` h-7、`sm` h-6、`xs` h-5 且 10 px 字，图标按钮 `icon` / `icon-sm` / `icon-xs`；输入框与 Select 默认 h-7），
     选中态用组件自带的（Tabs 的 `default` 变体、Toggle 的 muted 底）。唯一的例外是字体：Mira 预设的 Inter 是远程 / 打包字体，
@@ -74,10 +76,16 @@ debug/                   开发环境的调试面板（生产构建不含，见�
     Select 要传 `items`（`{ value, label }[]`），否则 SelectValue 显示原始值，`onValueChange` 可能给 `null`；
     菜单项用 `onClick`（没有 `onSelect`，写了不会报错也不会触发）；菜单的 Label 必须放在 `DropdownMenuGroup` / `ContextMenuGroup` 里；
     `AlertDialogAction` 只是按钮，不会关闭对话框（用受控的 `open`，在 onClick 里关闭）；Slider 的值传数组（`[value]`）。
-  - **已知问题：竖向 Tabs 的方向键是左右而不是上下。** shadcn（base-mira）的 `Tabs` 把 `orientation` 解构出来，只写成 `data-orientation`
-    （决定竖向样式），没有传给 Base UI 的 `Tabs.Root`，所以 Base UI 的键盘导航仍按横向处理（侧栏、设置分组都受影响）。
-    应用代码无法透传：这个 prop 在组件内被取走；用 `render` 再套一层带 `orientation` 的 `Tabs.Root` 需要把 value / onValueChange
-    重复写两遍、出现两层 Root，不采用。等 shadcn 上游修正后 `npx shadcn@latest add tabs --overwrite` 即可。
+  - **竖向 Tabs 的标签栏用 `components/VerticalTabsList.tsx`**（代替 `TabsList`，外层仍是 `<Tabs orientation="vertical">`）。
+    原因：shadcn（base-mira）的 `Tabs` 把 `orientation` 解构出来，只写成 `data-orientation`（决定竖向样式），没有传给 Base UI 的
+    `Tabs.Root`，Base UI 因此按横向处理：方向键是 ← / →，没有 `aria-orientation`（2026-11 时注册表里最新的 base-mira `tabs` 仍如此，
+    `npx shadcn@latest add tabs --diff` 无差异）。`VerticalTabsList` 在 TabsList 上补 `aria-orientation="vertical"`（Base UI 把使用处的属性
+    合并在默认属性之后），并在 onKeyDown 里只改按键映射：它先于 Base UI 的处理执行、拿到同一个事件对象，把 ↑ / ↓ 改成 ← / → 交给
+    Base UI，← / → 用 `preventBaseUIHandler` 拦下。移动焦点、首尾循环、Home / End、回车 / 空格选中都仍由 Base UI 完成，所以它记录的
+    高亮项、roving tabindex 与焦点始终一致（Tab 离开再回来落在刚才的标签上）。不要改成自己调用 `focus()`：Base UI 只在收到 focus 事件时
+    同步高亮项，窗口不在前台时 `focus()` 不发事件，之后 Home 等按键会以旧的高亮项为准。横向 Tabs 照常用 `TabsList`。不采用的做法：用 `render` 再套一层带
+    `orientation` 的 `Tabs.Root`（value / onValueChange 写两遍、两层 Root）；直接用 Base UI 的 `Tabs.Root` 重写 shadcn 的 `Tabs`（等于手写
+    shadcn 已有的控件）。上游修正后删掉 `VerticalTabsList`、改回 `TabsList`，再 `npx shadcn@latest add tabs --overwrite`。
 - 页面自己的普通元素（队列行、状态栏、日志行、标题、说明文字）只用 `index.css` 里的一套 token：shadcn 的语义变量（`background`、`foreground`、
   `card`、`popover`、`primary`、`secondary`、`muted`、`muted-foreground`、`accent`、`border`、`input`、`ring`、`destructive`），
   另加本应用自有的 `success`、`warning`（状态色）、`titlebar`（系统标题栏底色，= card）、`media` / `media-foreground`（视频画面区的底色与
@@ -113,10 +121,12 @@ debug/                   开发环境的调试面板（生产构建不含，见�
   shadcn 触发器套在另一个 shadcn 控件上时也要注意这一点（e2e 的界面状态审计会检查带状态的控件的 data-slot 没有变成 tooltip-trigger）。
 - **选中态与对比度**：用 Mira 组件自带的选中样式：导航（侧栏、设置分组）是竖向 Tabs 的 `default` 变体（muted 列表底上的选中项
   有底色，深色主题另有 input 色边框；键盘焦点是 ring 色的描边 + 光晕），分段选择 / 按钮组是 ToggleGroup 的 `outline` 变体（选中项 muted 底）。
-  目标仍是：选中项与未选中项的底色亮度对比 ≥ 1.2（只改文字颜色不算选中态），文字对比满足 WCAG AA（正文 4.5:1、大字 3:1），
-  控件边界（输入框、复选框、开关）与背景 3:1，禁用的控件按 WCAG 豁免；e2e 的界面状态审计（`scripts/e2e-audit-page.js`）逐组检查这些规则。
-  **注意**：目前用的是 shadcn 默认配色，它的 `--input` / `--muted` 达不到这些门槛（浅色主题输入框与开关边界约 1.26:1，竖向 Tabs 选中项约 1.09），
-  审计会报出来；要通过只能调整主题变量，这需要项目所有者决定。
+  规则：选中项与未选中项的底色亮度对比 ≥ 1.2（只改文字颜色不算选中态），文字对比满足 WCAG AA（正文 4.5:1、大字 3:1），
+  控件边界（输入框、复选框、开关）与背景 3:1，键盘焦点环描边与背景 3:1，禁用的控件按 WCAG 豁免；e2e 的界面状态审计
+  （`scripts/e2e-audit-page.js`）逐组检查，全部是硬失败（`SOFT_RULES` 为空）。shadcn 默认配色达不到其中几条（浅色输入框与开关边界
+  约 1.26:1、竖向 Tabs 选中项约 1.09、焦点环约 2.4），所以 `index.css` 调整了 `--muted` / `--muted-foreground` / `--input` / `--ring`
+  （取值见上方“组件与配色”；调整后浅色 / 深色：边界 3.36 / ≥ 3.26，选中底 1.25 / ≥ 1.27，焦点环对标签栏底 3.16 / 3.59，占位符 ≥ 4.65）。
+  改这些令牌时要同时满足 `index.css` 注释里列的几组对比。
 - **快捷键**：`lib/shortcuts.ts` 是唯一来源：每个快捷键定义一次按键组合（主修饰键 `mod`、Shift、Alt、主键），
   按当前平台（`lib/platform.ts`）生成显示文字（macOS 用符号 `⇧⌘O`，其余 `Ctrl+Shift+O`）并匹配按键事件（`matchShortcut`：macOS 的主修饰键是
   metaKey，其余是 ctrlKey，另一个修饰键必须没按）。按钮提示的 `keys`、菜单里的 `ContextMenuShortcut`、设置 → 关于里的快捷键表（`shortcutGroups`）

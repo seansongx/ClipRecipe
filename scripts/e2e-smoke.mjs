@@ -828,7 +828,7 @@ async function assertNavSelected(page, listSelector, expectText) {
   const others = r.filter((t) => !t.selected);
   assert(others.every((t) => t.state === "inactive"), `${listSelector} 未选中项的状态：${JSON.stringify(others.map((t) => t.state))}`);
   // 选中项有可见的底色（不透明度 > 20/255），未选中项没有底色。属于“选中项底色对比”规则：
-  // 它在 SOFT_RULES 里（暂用 shadcn 默认主题）时只记警告，否则是硬失败
+  // 它是硬失败；只有被临时放进 e2e-audit-page.js 的 SOFT_RULES（目前为空）时才只记警告
   const bgVisible = selected[0].bg[3] > 20 && others.every((t) => t.bg[3] < 5);
   if (!bgVisible) {
     const soft = await page.evaluate(() => window.__e2e.softRules?.["selected-distinct"]);

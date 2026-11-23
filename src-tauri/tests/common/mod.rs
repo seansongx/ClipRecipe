@@ -17,7 +17,7 @@ pub fn ffmpeg_paths() -> FfmpegPaths {
     let status = ffmpeg::status();
     assert!(
         status.available,
-        "集成测试需要 FFmpeg：{}。请把 ffmpeg 和 ffprobe 加入 PATH，或设置环境变量 {} 指向 ffmpeg 可执行文件（ffprobe 需在同一目录）。",
+        "集成测试需要 FFmpeg：{}。在仓库根目录运行 npm install（自动使用 node_modules/@seankit 里的 FFmpeg），或把 ffmpeg 和 ffprobe 加入 PATH，或设置环境变量 {} 指向 ffmpeg 可执行文件（ffprobe 需在同一目录）。",
         status.error.unwrap_or_default(),
         ffmpeg::FFMPEG_ENV
     );

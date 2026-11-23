@@ -9,7 +9,10 @@
 //   npm run e2e -- --no-build       # 生产形态不重新构建，直接用 src-tauri/target/debug/cliprecipe.exe
 //   npm run e2e -- --keep           # 保留临时目录（素材、输出、隔离的配置）便于排查
 //
-// 需要：Windows + WebView2；FFmpeg（环境变量 CLIPRECIPE_FFMPEG 指向 ffmpeg.exe，或在 PATH 中）。
+// 需要：Windows + WebView2；FFmpeg：`npm install` 装好的 node_modules/@seankit 包（调试构建的程序自己找到它），
+// 或环境变量 CLIPRECIPE_FFMPEG 指向 ffmpeg.exe（设置了就优先使用）。
+// 生产形态以 `--features e2e-hooks` 构建：最后一组场景（[ffmpeg]）在一个模拟“没有 FFmpeg”的隔离会话里，
+// 通过界面从本机假服务器（scripts/e2e-ffmpeg-server.mjs）真实地下载、取消、安装、删除 FFmpeg。
 // 应用窗口会出现在桌面上，测试结束（含失败、Ctrl+C）时关闭。
 //
 // 隔离：CLIPRECIPE_CONFIG_DIR（设置、队列）与 WEBVIEW2_USER_DATA_FOLDER（localStorage：配方、工具参数、主题）
@@ -18,13 +21,15 @@
 // 拖放：通过 Tauri 事件 tauri://drag-enter / drag-over / drag-drop 模拟（与系统拖放进入前端的路径相同，
 // 但不经过操作系统的 OLE 拖放）。
 //
-// 不会触发：关机 / 退出倒计时、删除源视频、移回源位置、永久删除、托盘、检查更新（联网）、打开文件夹 / 网页。
+// 不会触发：关机 / 退出倒计时、删除源视频、移回源位置、永久删除、托盘、检查更新（联网）、打开文件夹 / 网页；
+// 应用内下载 FFmpeg 只访问本机假服务器，不联网。
 
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync, execSync } from "node:child_process";
 import { Cdp, Page, sleep, waitForPage } from "./e2e-cdp.mjs";
+import { startFakeFfmpegServer } from "./e2e-ffmpeg-server.mjs";
 import {
   DEBUG_EXE,
   E2E_TARGET_DIR,
@@ -84,7 +89,7 @@ class Skip extends Error {}
 
 async function saveArtifacts(session, label) {
   const files = [];
-  const base = `${session.mode}-${String(++shotIndex).padStart(2, "0")}-${label.replace(/[^\w一-龥-]+/g, "_")}`;
+  const base = `${session.label}-${String(++shotIndex).padStart(2, "0")}-${label.replace(/[^\w一-龥-]+/g, "_")}`;
   if (session.page && !session.page.cdp.closed) {
     try {
       const png = path.join(REPORT, `${base}.png`);
@@ -144,7 +149,7 @@ async function markOf(session) {
  * allow：{ console: RegExp[], csp: RegExp[], ipc: 命令名[] } —— 场景里故意制造的错误。
  */
 async function scenario(session, name, fn, allow = {}) {
-  log(`▶ [${session.mode}] ${name}`);
+  log(`▶ [${session.label}] ${name}`);
   const started = Date.now();
   let status = "pass";
   let details = "";
@@ -177,9 +182,9 @@ async function scenario(session, name, fn, allow = {}) {
     }
   }
   const secs = ((Date.now() - started) / 1000).toFixed(1);
-  results.push({ mode: session.mode, name, status, details, artifacts, secs });
+  results.push({ mode: session.label, name, status, details, artifacts, secs });
   const icon = status === "pass" ? "✔" : status === "skip" ? "–" : "✘";
-  log(`${icon} [${session.mode}] ${name} (${secs}s)${details ? `\n    ${details.split("\n").join("\n    ")}` : ""}`);
+  log(`${icon} [${session.label}] ${name} (${secs}s)${details ? `\n    ${details.split("\n").join("\n    ")}` : ""}`);
   for (const a of artifacts) log(`    → ${a}`);
   return status === "pass";
 }
@@ -209,27 +214,38 @@ function assert(cond, message) {
 // ------------------------------------------------------------------ 应用会话
 
 class Session {
-  constructor(mode, exe) {
+  /**
+   * @param {"prod"|"dev"} mode 程序形态
+   * @param {string} exe
+   * @param {{ label?: string, env?: Record<string, string> }} options label：报告里的名字（也区分配置目录）；env：额外的环境变量
+   */
+  constructor(mode, exe, { label, env } = {}) {
     this.mode = mode;
+    this.label = label ?? mode;
+    this.extraEnv = env ?? {};
     this.exe = exe;
     this.proc = null;
     this.page = null;
     this.cdp = null;
     this.appPids = new Set();
     this.launches = 0;
-    // 每种形态一个隔离的配置目录；关闭完成提示音（测试时不出声），其余为默认设置
-    this.configDir = w(`config-${mode}`);
+    // 每个会话一个隔离的配置目录；关闭完成提示音（测试时不出声），其余为默认设置
+    this.configDir = w(`config-${this.label}`);
     fs.mkdirSync(this.configDir, { recursive: true });
     fs.writeFileSync(path.join(this.configDir, "settings.json"), JSON.stringify({ version: 1, sound: false }));
   }
 
   env(port) {
-    const { ffmpeg } = ffmpegPaths();
+    // FFmpeg：设置了 CLIPRECIPE_FFMPEG 就传给程序；否则调试构建的程序自己找到 node_modules 里的 @seankit 包。
+    // 隔离会话（CLIPRECIPE_E2E_ISOLATE_FFMPEG）模拟没有 FFmpeg 的电脑，不传。
+    const env = { ...process.env };
+    delete env.CLIPRECIPE_FFMPEG;
+    if (process.env.CLIPRECIPE_FFMPEG && !this.extraEnv.CLIPRECIPE_E2E_ISOLATE_FFMPEG) env.CLIPRECIPE_FFMPEG = process.env.CLIPRECIPE_FFMPEG;
     return {
-      ...process.env,
-      CLIPRECIPE_FFMPEG: ffmpeg,
+      ...env,
+      ...this.extraEnv,
       CLIPRECIPE_CONFIG_DIR: this.configDir,
-      WEBVIEW2_USER_DATA_FOLDER: w(`webview-${this.mode}`),
+      WEBVIEW2_USER_DATA_FOLDER: w(`webview-${this.label}`),
       WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
       NO_PROXY,
       no_proxy: NO_PROXY,
@@ -240,14 +256,14 @@ class Session {
 
   async start() {
     const port = await freePort();
-    const logFile = path.join(REPORT, `${this.mode}-app-${++this.launches}.log`);
+    const logFile = path.join(REPORT, `${this.label}-app-${++this.launches}.log`);
     if (this.mode === "prod") {
       this.proc = startProc("app", this.exe, [], this.env(port), logFile);
     } else {
       if (await portInUse(1420)) throw new Error("端口 1420 已被占用（Vite 需要它），请先结束占用它的进程");
       this.proc = startProc("tauri-dev", "npm run tauri dev", null, this.env(port), logFile);
     }
-    log(`  启动 ${this.mode}（调试端口 ${port}，日志 ${logFile}）`);
+    log(`  启动 ${this.label}（调试端口 ${port}，日志 ${logFile}）`);
     const accept = this.mode === "prod" ? (u) => u.startsWith("http://tauri.localhost") : (u) => /^http:\/\/(localhost|127\.0\.0\.1):1420/.test(u);
     let target;
     try {
@@ -571,7 +587,10 @@ async function bootScenarios(s, media) {
     await page.waitFor("运行环境显示 FFmpeg 版本", (v) => document.querySelector("main").innerText.includes(v), [ff.value.version.split(" ")[0]], { timeout: 60000 });
     await page.waitFor("硬件编码器检测完成", () => document.querySelector("main").innerText.includes("开启 GPU 加速时使用"), [], { timeout: 120000 });
     await ui.nav(page, "batch", "视频队列");
-    return `v${app.value.version}，${app.value.cpuCores} 核；${ff.value.version}；硬件：${enc.value.hardware.join("、") || "无"}，H.264 → ${enc.value.h264}`;
+    const expectSource = process.env.CLIPRECIPE_FFMPEG ? "env" : "dev";
+    assert(ff.value.source === expectSource, `FFmpeg 来源应为 ${expectSource}：${JSON.stringify(ff.value).slice(0, 400)}`);
+    assert(ff.value.managed?.supported && ff.value.managed.downloadSize > 0, `应用内下载状态：${JSON.stringify(ff.value.managed)}`);
+    return `v${app.value.version}，${app.value.cpuCores} 核；${ff.value.version}（来源 ${ff.value.source}，whisper 滤镜 ${ff.value.whisper ? "有" : "无"}）；硬件：${enc.value.hardware.join("、") || "无"}，H.264 → ${enc.value.h264}`;
   });
 
   await scenario(s, "导入：拖放 + 添加视频按钮 → 行显示媒体信息；拖到输出位置设为输出目录", async () => {
@@ -1103,10 +1122,136 @@ async function persistenceScenarios(s, media) {
   });
 }
 
+/**
+ * 应用内下载 FFmpeg 的真实界面流程（假服务器，不联网）：
+ * 隔离会话（CLIPRECIPE_E2E_ISOLATE_FFMPEG=1）不查找程序目录、PATH、node_modules，空的配置目录里也没有下载过的副本，
+ * 相当于一台没有 FFmpeg 的电脑；CLIPRECIPE_E2E_FFMPEG_MANIFEST 指向假服务器的清单。这两个环境变量只在
+ * `--features e2e-hooks` 构建的调试版中存在（正式构建编译时就没有这些代码，见 ffmpeg/managed.rs 的 compile_error!）。
+ */
+async function ffmpegDownloadScenarios(exe, media) {
+  const { ffmpeg, ffprobe, source } = ffmpegPaths();
+  if (source === "PATH") {
+    results.push({ mode: "ffmpeg", name: "应用内下载 FFmpeg", status: "skip", details: "需要 node_modules 里的 @seankit 包或 CLIPRECIPE_FFMPEG（用来打包假服务器的 tgz）", artifacts: [], secs: "-" });
+    return;
+  }
+  log("  准备假的 FFmpeg 下载服务器（打包 tgz）…");
+  const server = await startFakeFfmpegServer({ dir: w("fake-ffmpeg"), ffmpeg, ffprobe });
+  const s = new Session("prod", exe, {
+    label: "ffmpeg",
+    env: { CLIPRECIPE_E2E_ISOLATE_FFMPEG: "1", CLIPRECIPE_E2E_FFMPEG_MANIFEST: server.manifestPath },
+  });
+  sessions.push(s);
+  try {
+    try {
+      await s.start();
+    } catch (e) {
+      results.push({ mode: s.label, name: "启动应用", status: "fail", details: e.message, artifacts: await saveArtifacts(s, "start"), secs: "-" });
+      return;
+    }
+    const { page } = s;
+    const managedRoot = path.join(s.configDir, "ffmpeg");
+    const BANNER = "[role=region][aria-label='未找到 FFmpeg']";
+    const bannerShown = () => page.evaluate((sel) => !!document.querySelector(sel), BANNER);
+    const rootEntries = () => (fs.existsSync(managedRoot) ? fs.readdirSync(managedRoot) : []);
+    const total = server.sizes.ffmpeg + server.sizes.ffprobe;
+
+    await scenario(s, "缺少 FFmpeg：批量处理页提示一键下载；导入被引导到下载入口；不会自动下载", async () => {
+      const st = await page.invoke("ffmpeg_status");
+      assert(st.ok && !st.value.available && st.value.source === "missing", `ffmpeg_status：${JSON.stringify(st).slice(0, 400)}`);
+      assert(st.value.managed.supported && st.value.managed.downloadSize === total, `managed：${JSON.stringify(st.value.managed)}`);
+      await page.waitFor("下载提示", (sel) => !!document.querySelector(sel), [BANNER]);
+      const text = await page.evaluate((sel) => document.querySelector(sel).innerText, BANNER);
+      assert(/下载 FFmpeg/.test(text) && text.includes("GPL"), `提示内容：${text}`);
+      // 关掉提示后拖入视频：不导入，提示重新出现，处理记录说明原因
+      await page.click({ selector: "button", label: "关闭 FFmpeg 提示" });
+      await page.waitFor("提示关闭", (sel) => !document.querySelector(sel), [BANNER]);
+      await ui.dropOnQueue(page, [media.a]);
+      await page.waitFor("提示重新出现", (sel) => !!document.querySelector(sel), [BANNER]);
+      const logText = await ui.logText(page);
+      assert(logText.includes("未找到可用的 FFmpeg"), `处理记录：${logText.slice(0, 300)}`);
+      assert((await ui.rows(page)).length === 0, "没有 FFmpeg 时不应导入");
+      const imports = await page.evaluate(() => window.__e2e.ipc.filter((r) => r.cmd === "import_paths").length);
+      assert(imports === 0, "不应调用 import_paths");
+      // 设置页：未找到 + 下载按钮
+      await ui.nav(page, "settings", "设置");
+      await page.click({ selector: "[role=tab]", text: "关于" });
+      await page.waitFor("设置页显示未找到", (v) => {
+        const t = document.querySelector("main").innerText;
+        return t.includes("未找到可用的 FFmpeg") && t.includes(`下载 FFmpeg ${v}`);
+      }, [server.version]);
+      await saveShot(s, "ffmpeg-missing-settings");
+      await ui.nav(page, "batch", "视频队列");
+      assert(server.hits.length === 0, `未点击下载时不应有请求：${server.hits}`);
+      return `提示：${text.split("\n")[0]}；下载大小 ${(total / 1048576).toFixed(1)} MB；导入被拦截并说明原因`;
+    });
+    await saveShot(s, "ffmpeg-banner");
+
+    await scenario(s, "下载 FFmpeg：进度与速度显示，取消后临时文件清理", async () => {
+      await page.click({ selector: `${BANNER} button`, textIncludes: "下载 FFmpeg" });
+      const progress = await page.waitFor("下载进度", () => {
+        const el = document.querySelector("[data-testid=ffmpeg-download-progress]");
+        return el && /正在下载 ffmpeg：.+ \/ .+/.test(el.innerText) ? el.innerText.replace(/\s+/g, " ") : null;
+      }, [], { timeout: 30000, interval: 100 });
+      await saveShot(s, "ffmpeg-downloading");
+      await page.click({ selector: `${BANNER} button`, text: "取消" });
+      await page.waitFor("取消后回到下载按钮", (sel) => {
+        const b = document.querySelector(sel);
+        return b && !b.querySelector("[data-testid=ffmpeg-download-progress]") && [...b.querySelectorAll("button")].some((x) => x.textContent.includes("下载 FFmpeg"));
+      }, [BANNER], { timeout: 60000 });
+      const left = rootEntries();
+      assert(left.length === 0, `取消后不应留下文件：${left}`);
+      const logText = await ui.logText(page);
+      assert(logText.includes("已取消下载 FFmpeg"), "处理记录没有“已取消”");
+      return `取消前：${progress}；取消后下载目录为空`;
+    });
+
+    await scenario(s, "下载 FFmpeg：第一个地址失败换下一个，校验后立即使用（不重启）", async () => {
+      server.hits.length = 0;
+      const started = Date.now();
+      await page.click({ selector: `${BANNER} button`, textIncludes: "下载 FFmpeg" });
+      await page.waitFor("下载完成、提示消失", (sel) => !document.querySelector(sel), [BANNER], { timeout: 240000, interval: 300 });
+      const secs = ((Date.now() - started) / 1000).toFixed(1);
+      const st = await page.invoke("ffmpeg_status");
+      assert(st.ok && st.value.available && st.value.source === "managed", `ffmpeg_status：${JSON.stringify(st).slice(0, 400)}`);
+      assert(st.value.managed.installedVersion === server.version && !st.value.managed.updateAvailable, `managed：${JSON.stringify(st.value.managed)}`);
+      const receipt = JSON.parse(fs.readFileSync(path.join(managedRoot, server.version, "receipt.json"), "utf8"));
+      assert(receipt.tools.map((t) => t.url.replace(/^.*\/(\w+\/\w+\.tgz)$/, "$1")).join(",") === "npm/ffmpeg.tgz,npm/ffprobe.tgz", `安装记录：${JSON.stringify(receipt)}`);
+      assert(server.hits.join(",") === "/mirror/ffmpeg.tgz,/npm/ffmpeg.tgz,/mirror/ffprobe.tgz,/npm/ffprobe.tgz", `请求：${server.hits}`);
+      assert(rootEntries().join(",") === server.version, `下载目录：${rootEntries()}`);
+      // 不重启：导入马上可用
+      await ui.dropOnQueue(page, [media.a]);
+      await ui.waitRows(page, "下载后导入", (r) => r.length === 1 && r[0].summary.includes("640×360"));
+      await ui.nav(page, "settings", "设置");
+      await page.click({ selector: "[role=tab]", text: "关于" });
+      await page.waitFor("设置页显示应用内下载", (v) => {
+        const t = document.querySelector("main").innerText;
+        return t.includes("来源：应用内下载") && t.includes(`已下载 FFmpeg ${v}`);
+      }, [server.version], { timeout: 30000 });
+      // 换了 FFmpeg 后设置页重新探测硬件编码器（试编码结束前删除会因为文件占用而被拒绝）
+      await page.waitFor("硬件编码器检测完成", () => document.querySelector("main").innerText.includes("开启 GPU 加速时使用"), [], { timeout: 120000 });
+      await saveShot(s, "ffmpeg-installed-settings");
+      return `${secs}s；${st.value.version}；${st.value.path}；请求顺序 ${server.hits.join(" → ")}`;
+    });
+
+    await scenario(s, "删除已下载的 FFmpeg（确认对话框），回到缺少 FFmpeg 的状态", async () => {
+      await page.click({ selector: "main button", textIncludes: "删除已下载的 FFmpeg" });
+      await page.click({ selector: "[role=alertdialog] button", text: "删除" });
+      await page.waitFor("设置页显示未找到", () => document.querySelector("main").innerText.includes("未找到可用的 FFmpeg"), [], { timeout: 30000 });
+      assert(!fs.existsSync(path.join(managedRoot, server.version)), "版本目录应已删除");
+      await ui.nav(page, "batch", "视频队列");
+      await page.waitFor("下载提示重新出现", (sel) => !!document.querySelector(sel), [BANNER]);
+      return `已删除 ${path.join(managedRoot, server.version)}`;
+    });
+    await s.stop({ graceful: true });
+  } finally {
+    await server.close();
+  }
+}
+
 async function saveShot(s, label) {
   if (!s.page) return;
   try {
-    const file = path.join(REPORT, `${s.mode}-shot-${label}.png`);
+    const file = path.join(REPORT, `${s.label}-shot-${label}.png`);
     fs.writeFileSync(file, await s.page.screenshot());
     s.shots = [...(s.shots ?? []), file];
   } catch {
@@ -1145,8 +1290,9 @@ process.on("SIGINT", () => {
 process.on("exit", () => killAllChildren());
 
 function build() {
-  log("构建生产形态（tauri build --debug --no-bundle：内嵌前端、正式 CSP）…");
-  execSync("npm run tauri -- build --debug --no-bundle", {
+  // e2e-hooks：只用于本测试的调试构建，允许用环境变量换成假服务器的 FFmpeg 下载清单（见 e2e-ffmpeg-server.mjs）
+  log("构建生产形态（tauri build --debug --no-bundle --features e2e-hooks：内嵌前端、正式 CSP）…");
+  execSync("npm run tauri -- build --debug --no-bundle --features e2e-hooks", {
     cwd: REPO,
     stdio: "inherit",
     env: { ...process.env, NO_PROXY, no_proxy: NO_PROXY, CARGO_TARGET_DIR: E2E_TARGET_DIR },
@@ -1182,6 +1328,7 @@ async function runMode(mode, media) {
   if (mode === "prod") await persistenceScenarios(s, media);
   await saveShot(s, "final");
   await s.stop({ graceful: true });
+  if (mode === "prod") await ffmpegDownloadScenarios(exe, media);
 }
 
 function printReport() {

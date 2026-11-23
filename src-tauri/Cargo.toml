@@ -22,6 +22,15 @@ regex = "1"
 trash = "5"
 tauri-plugin-opener = "2"
 ureq = { version = "2", default-features = false, features = ["tls"] }
+# 应用内下载 FFmpeg：校验 npm 包（tgz）的 SHA-256，只解出其中一个可执行文件
+sha2 = "0.10"
+flate2 = "1"
+tar = { version = "0.4", default-features = false }
+
+[features]
+# 只用于端到端测试（scripts/e2e-smoke.mjs 以 `--features e2e-hooks` 构建调试版）：允许用环境变量替换内嵌的
+# FFmpeg 下载清单（本机假服务器）并隔离 FFmpeg 查找。只能用于调试构建（见 ffmpeg/managed.rs 的 compile_error!）。
+e2e-hooks = []
 
 [profile.release]
 codegen-units = 1

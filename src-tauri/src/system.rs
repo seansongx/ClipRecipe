@@ -202,13 +202,10 @@ pub fn check_update(
 }
 
 /// 最简单的 HTTPS GET：GitHub 要求带 User-Agent，这里只写程序名；10 秒超时；离线时返回错误。
+/// 代理按环境变量（`HTTPS_PROXY` / `NO_PROXY` 等），与下载 FFmpeg 相同，见 [`crate::net`]。
 pub fn http_get(url: &str) -> Result<String, String> {
-    let agent = ureq::AgentBuilder::new()
-        .timeout(Duration::from_secs(10))
-        .build();
-    let response = agent
+    let response = crate::net::agent(url, crate::net::Timeouts::SHORT, true)
         .get(url)
-        .set("User-Agent", "ClipRecipe")
         .set("Accept", "application/vnd.github+json")
         .call()
         .map_err(|e| match e {

@@ -304,45 +304,27 @@ pub fn tone(paths: &FfmpegPaths, out: &Path, freq: u32, seconds: f64) {
 /// 每条流的编码名（按流顺序），如 `["h264", "aac"]`。
 pub fn codecs(paths: &FfmpegPaths, file: &Path) -> Vec<String> {
     probe_entries(paths, file, "all-stream=codec_name")
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .map(str::to_owned)
+        .into_iter()
+        .filter(|c| !c.is_empty())
         .collect()
 }
 
 /// 某类流（`v` / `a` / `s`）的数量。
 pub fn stream_count(paths: &FfmpegPaths, file: &Path, kind: &str) -> usize {
-    let output = ffmpeg::command(&paths.ffprobe)
-        .args([
-            "-v",
-            "error",
-            "-select_streams",
-            kind,
-            "-show_entries",
-            "stream=index",
-            "-of",
-            "csv=p=0",
-        ])
-        .arg(file)
-        .output()
-        .expect("无法启动 ffprobe");
-    String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .count()
+    probe_json(paths, file, Some(kind), "stream=index")["streams"]
+        .as_array()
+        .map_or(0, Vec::len)
 }
 
 /// 视频流时长（秒，ffprobe 直接读取）。
 pub fn video_duration(paths: &FfmpegPaths, file: &Path) -> f64 {
     probe_entries(paths, file, "stream=duration")
-        .lines()
+        .iter()
         .find_map(|l| l.trim().parse::<f64>().ok())
         .or_else(|| {
             probe_entries(paths, file, "format=duration")
-                .trim()
-                .parse()
-                .ok()
+                .first()
+                .and_then(|d| d.trim().parse().ok())
         })
         .unwrap_or_else(|| panic!("读不到 {} 的时长", file.display()))
 }
@@ -546,23 +528,57 @@ pub fn tone_db(paths: &FfmpegPaths, file: &Path, freq: u32) -> f64 {
         .unwrap_or(f64::NEG_INFINITY)
 }
 
-/// ffprobe `-show_entries` 的 CSV 输出；`stream=…` 只看第一条视频流，`all-streams=…` 看全部流。
-fn probe_entries(paths: &FfmpegPaths, file: &Path, entries: &str) -> String {
+/// ffprobe `-show_entries` 的 JSON 输出。
+fn probe_json(
+    paths: &FfmpegPaths,
+    file: &Path,
+    select: Option<&str>,
+    entries: &str,
+) -> serde_json::Value {
     let mut cmd = ffmpeg::command(&paths.ffprobe);
     cmd.args(["-v", "error"]);
-    let entries = match entries.strip_prefix("all-") {
-        Some(all) => all,
-        None => {
-            cmd.args(["-select_streams", "v:0"]);
-            entries
-        }
-    };
+    if let Some(select) = select {
+        cmd.args(["-select_streams", select]);
+    }
     let output = cmd
-        .args(["-show_entries", entries, "-of", "csv=p=0"])
+        .args(["-show_entries", entries, "-of", "json"])
         .arg(file)
         .output()
         .expect("无法启动 ffprobe");
-    String::from_utf8_lossy(&output.stdout).into_owned()
+    serde_json::from_slice(&output.stdout).unwrap_or_else(|e| {
+        panic!(
+            "ffprobe 输出无法解析（{}）：{e}\n{}",
+            file.display(),
+            String::from_utf8_lossy(&output.stderr)
+        )
+    })
+}
+
+/// ffprobe `-show_entries` 的取值（每条流一项）；`stream=键` 只看第一条视频流，`all-stream=键` 看全部流，
+/// `format=键` 为容器的值。
+///
+/// 只读取顶层的 `streams` / `format`：ffprobe 9.0 对带节目（program）的容器（MPEG-TS、HLS 分片）在
+/// `-show_entries stream=…` 时还会输出 `programs[].streams`，按 CSV 逐行读取会把每条流数两次。
+fn probe_entries(paths: &FfmpegPaths, file: &Path, entries: &str) -> Vec<String> {
+    let (select, entries) = match entries.strip_prefix("all-") {
+        Some(all) => (None, all),
+        None if entries.starts_with("stream=") => (Some("v:0"), entries),
+        None => (None, entries),
+    };
+    let (section, key) = entries.split_once('=').expect("键=值");
+    let json = probe_json(paths, file, select, entries);
+    let text = |v: &serde_json::Value| match v {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Null => String::new(),
+        other => other.to_string(),
+    };
+    match section {
+        "format" => vec![text(&json["format"][key])],
+        _ => json["streams"]
+            .as_array()
+            .map(|list| list.iter().map(|s| text(&s[key])).collect())
+            .unwrap_or_default(),
+    }
 }
 
 /// 目录下（递归）的全部文件。

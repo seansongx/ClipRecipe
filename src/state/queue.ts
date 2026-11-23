@@ -24,6 +24,7 @@ import {
   type TaskState,
 } from "../lib/backend";
 import { fileName, pathKey } from "../lib/format";
+import { requireFfmpeg } from "./ffmpeg";
 import { useLog } from "./log";
 import { useSettings } from "./settings";
 
@@ -118,6 +119,8 @@ export const useQueue = create<QueueState>((set, get) => ({
 
   addPaths: async (paths) => {
     if (paths.length === 0 || get().importing) return;
+    // 导入要用 ffprobe 读取媒体信息：没有 FFmpeg 时指向下载入口，而不是逐个报“无法启动 ffprobe”
+    if (!(await requireFfmpeg("导入视频"))) return;
     const log = useLog.getState();
     set({ importing: { done: 0, total: 0 } });
     try {
@@ -293,6 +296,7 @@ export const useQueue = create<QueueState>((set, get) => ({
   start: async (recipe) => {
     const { items, running } = get();
     if (running) return;
+    if (!(await requireFfmpeg("开始处理"))) return;
     const log = useLog.getState();
     const { settings } = useSettings.getState();
 

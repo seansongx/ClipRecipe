@@ -329,6 +329,11 @@ pub fn cached(ffmpeg: &Path) -> EncoderCaps {
     caps
 }
 
+/// 清空全部缓存（下载 / 删除 FFmpeg 后，下次使用时重新探测）。
+pub fn clear_cache() {
+    cache().lock().unwrap_or_else(|e| e.into_inner()).clear();
+}
+
 /// 丢弃缓存重新探测（例如更新驱动后）。
 pub fn refresh(ffmpeg: &Path) -> EncoderCaps {
     cache()

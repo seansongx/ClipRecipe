@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
+import { FfmpegMissingBanner } from "@/components/FfmpegDownload";
 import Hint from "@/components/Hint";
 import OutputPicker from "@/components/OutputPicker";
 import { folderFromDrop } from "@/components/useFolderDrop";
@@ -231,6 +232,7 @@ export default function BatchView() {
           </div>
         </header>
 
+        <FfmpegMissingBanner />
         <QueueToolbar />
 
         <div className="relative flex min-h-0 flex-1 flex-col p-4 pt-2">

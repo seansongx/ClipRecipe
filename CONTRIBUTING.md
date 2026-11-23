@@ -33,4 +33,11 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
-集成测试需要 FFmpeg（`PATH` 或环境变量 `CLIPRECIPE_FFMPEG`）与 Node.js（`npm install` 之后）。
+集成测试需要 FFmpeg 与 Node.js。`npm install` 会装上开发依赖 `@seankit/ffmpeg` / `@seankit/ffprobe`
+（FFmpeg 9.0.2 essentials），`cargo test` 与调试构建找不到别的 FFmpeg 时自动使用 `node_modules` 里的这份，不必另装；
+也可以用 `PATH` 或环境变量 `CLIPRECIPE_FFMPEG` 指定其它构建（例如带 whisper / flite 的 full 构建）。改动与 FFmpeg
+构建有关的代码时，请分别用这两种 FFmpeg 跑一遍 `cargo test`。
+
+升级应用内下载的 FFmpeg 版本见 PLAN.md 的“应用内下载 FFmpeg”（改 npm 包版本后运行 `npm run sync-ffmpeg-manifest`，
+提交生成的 `src-tauri/resources/ffmpeg-manifest.json`；不一致时 `cargo test` 会失败）。端到端冒烟测试 `npm run e2e`
+同样直接使用 `node_modules` 里的 FFmpeg。

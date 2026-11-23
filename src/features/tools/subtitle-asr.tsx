@@ -1,6 +1,6 @@
 // tool.subtitle-asr 语音生成字幕（本机 whisper.cpp）。后端：src-tauri/src/tools/subtitle_asr.rs
 
-import { FileInput, X } from "lucide-react";
+import { FileInput, TriangleAlert, X } from "lucide-react";
 import ChoiceGroup from "@/components/ChoiceGroup";
 import ColorField from "@/components/ColorField";
 import Hint from "@/components/Hint";
@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { isTauri, pickFile } from "@/lib/backend";
+import { cn } from "@/lib/utils";
+import { useFfmpegStatus } from "@/state/ffmpeg";
 import { WithUnit } from "./merge";
 import { defineTool, VIDEO_INPUTS, type ToolFormProps } from "./types";
 
@@ -96,9 +98,34 @@ export function FilePathInput({
 
 const EXE_EXTENSIONS = ["exe", "*"];
 
+/** 当前 FFmpeg 没有 whisper 滤镜时提前说明（应用内下载的 essentials 构建就没有）。 */
+function WhisperFilterNotice({ engine }: { engine: AsrEngine }) {
+  const status = useFfmpegStatus();
+  if (!status?.available || status.whisper || engine === "cli") return null;
+  return (
+    <p
+      role="note"
+      className={cn(
+        "mb-1 flex gap-1.5 rounded-md border px-2 py-1.5 text-[11px] leading-snug",
+        engine === "builtin" ? "border-warning/40 bg-warning/10" : "text-muted-foreground",
+      )}
+    >
+      <TriangleAlert className="mt-px size-3.5 shrink-0 text-warning" />
+      <span>
+        当前 FFmpeg 没有 whisper 滤镜（应用内下载的精简构建不含它），
+        {engine === "builtin"
+          ? "“FFmpeg 内置”引擎无法使用："
+          : "“自动”会改用 whisper-cli，必须选择 whisper-cli 程序；"}
+        也可以通过 PATH 或环境变量 CLIPRECIPE_FFMPEG 使用带 whisper 的完整版 FFmpeg（如 gyan.dev full 构建）。
+      </span>
+    </p>
+  );
+}
+
 function SubtitleAsrForm({ value, onChange }: ToolFormProps<SubtitleAsrParams>) {
   return (
     <>
+      <WhisperFilterNotice engine={value.engine} />
       <p className="pb-1 text-[11px] leading-snug text-muted-foreground">
         在本机用 whisper.cpp 识别语音，不上传任何数据。需要先自行下载 ggml 模型文件（如 ggml-base.bin、ggml-small.bin），
         下载地址：huggingface.co/ggerganov/whisper.cpp（本程序不会自动下载）。模型越大越准、越慢。

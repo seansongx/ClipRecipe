@@ -1,7 +1,8 @@
 // 把后端事件接到各个状态仓库。在 App 挂载时调用一次。
 
-import { isTauri, jobsRunning, onImportProgress, onJobEvent } from "../lib/backend";
+import { isTauri, jobsRunning, onFfmpegDownload, onImportProgress, onJobEvent } from "../lib/backend";
 import { onToolEvent } from "../lib/tools";
+import { useFfmpeg } from "./ffmpeg";
 import { handleRunFinished } from "./finish";
 import { persistQueue, useQueue } from "./queue";
 import { useSettings } from "./settings";
@@ -29,7 +30,10 @@ export function initBackend(): () => void {
   });
   const stopTool = onToolEvent((event) => useTools.getState().applyEvent(event));
   const stopImport = onImportProgress((progress) => useQueue.getState().setImportProgress(progress));
+  const stopFfmpeg = onFfmpegDownload((progress) => useFfmpeg.getState().setProgress(progress));
   if (isTauri) {
+    // 启动时检测 FFmpeg：没有时批量处理页提示一键下载（不会自动下载）
+    void useFfmpeg.getState().refresh();
     // 页面重新加载后同步“是否正在处理”
     jobsRunning()
       .then((running) => useQueue.setState({ running }))
@@ -41,5 +45,6 @@ export function initBackend(): () => void {
     stopJob();
     stopTool();
     stopImport();
+    stopFfmpeg();
   };
 }

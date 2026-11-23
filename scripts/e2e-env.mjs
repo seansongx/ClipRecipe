@@ -19,12 +19,25 @@ export const DEBUG_EXE = path.join(E2E_TARGET_DIR, "debug", "cliprecipe.exe");
  */
 export const PROD_EXE = path.join(E2E_TARGET_DIR, "cliprecipe-prod.exe");
 
-/** ffmpeg 路径：CLIPRECIPE_FFMPEG，否则 PATH 中的 ffmpeg。 */
+const EXE = process.platform === "win32" ? ".exe" : "";
+/** `npm install` 装好的 @seankit 开发依赖（本平台）。 */
+export const DEV_FFMPEG = path.join(REPO, "node_modules", "@seankit", `ffmpeg-${process.platform}-${process.arch}`, "bin", `ffmpeg${EXE}`);
+export const DEV_FFPROBE = path.join(REPO, "node_modules", "@seankit", `ffprobe-${process.platform}-${process.arch}`, "bin", `ffprobe${EXE}`);
+
+/**
+ * 测试脚本自己用的 ffmpeg / ffprobe（生成素材、检查输出）：CLIPRECIPE_FFMPEG，否则 node_modules 里的 @seankit 包
+ * （与调试构建的程序找到的相同），都没有时用 PATH。
+ */
 export function ffmpegPaths() {
-  const ffmpeg = process.env.CLIPRECIPE_FFMPEG || "ffmpeg";
-  const dir = path.dirname(ffmpeg);
-  const probe = path.join(dir, process.platform === "win32" ? "ffprobe.exe" : "ffprobe");
-  return { ffmpeg, ffprobe: process.env.CLIPRECIPE_FFMPEG && fs.existsSync(probe) ? probe : "ffprobe" };
+  const env = process.env.CLIPRECIPE_FFMPEG;
+  if (env) {
+    const probe = path.join(path.dirname(env), `ffprobe${EXE}`);
+    return { ffmpeg: env, ffprobe: fs.existsSync(probe) ? probe : "ffprobe", source: "CLIPRECIPE_FFMPEG" };
+  }
+  if (fs.existsSync(DEV_FFMPEG) && fs.existsSync(DEV_FFPROBE)) {
+    return { ffmpeg: DEV_FFMPEG, ffprobe: DEV_FFPROBE, source: "node_modules" };
+  }
+  return { ffmpeg: "ffmpeg", ffprobe: "ffprobe", source: "PATH" };
 }
 
 const children = new Set();

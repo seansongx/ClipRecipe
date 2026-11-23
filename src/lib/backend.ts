@@ -298,12 +298,53 @@ export interface AppInfo {
   cpuCores: number;
 }
 
+/** 实际使用的 FFmpeg 从哪里找到（顺序见 src-tauri/src/ffmpeg/mod.rs 的 locate_detailed）。 */
+export type FfmpegSource = "env" | "managed" | "bundled" | "path" | "dev" | "missing";
+
+/** 应用内下载 FFmpeg 的状态（ffmpeg::ManagedStatus）。 */
+export interface ManagedFfmpegStatus {
+  /** 本平台能否下载 */
+  supported: boolean;
+  unsupportedReason: string | null;
+  /** 本程序固定的 FFmpeg 版本与 npm 包版本 */
+  pinnedVersion: string;
+  packageVersion: string;
+  /** 需要下载的字节数（两个压缩包） */
+  downloadSize: number;
+  /** 已下载的副本（不论是否正在使用） */
+  installedVersion: string | null;
+  installedDir: string | null;
+  /** 已下载的副本比固定版本旧 */
+  updateAvailable: boolean;
+  root: string | null;
+}
+
 export interface FfmpegStatus {
   available: boolean;
   path: string;
   ffprobePath: string;
   version: string | null;
   error: string | null;
+  source: FfmpegSource;
+  /** 当前 FFmpeg 有 whisper 滤镜（语音生成字幕的内置引擎） */
+  whisper: boolean;
+  managed: ManagedFfmpegStatus;
+}
+
+/** `ffmpeg-download` 事件：下载进度（ffmpeg::managed::DownloadProgress）。 */
+export interface FfmpegDownloadProgress {
+  phase: "download" | "extract" | "install";
+  tool: "ffmpeg" | "ffprobe";
+  /** 当前下载地址的主机名 */
+  source: string;
+  downloaded: number;
+  total: number;
+  bytesPerSec: number;
+}
+
+export interface FfmpegDownloadOutcome {
+  cancelled: boolean;
+  status: FfmpegStatus;
 }
 
 export interface EncoderInfo {
@@ -330,6 +371,17 @@ export interface OutputDirCheck {
 export const getAppInfo = () => call<AppInfo>("app_info");
 export const getFfmpegStatus = () => call<FfmpegStatus>("ffmpeg_status");
 export const getEncoderInfo = (refresh = false) => call<EncoderInfo>("encoder_info", { refresh });
+
+// ---------- 应用内下载 FFmpeg（src-tauri/src/commands/ffmpeg.rs） ----------
+
+/** 下载并安装固定版本的 FFmpeg；只在用户点击时调用。失败时以错误信息拒绝。 */
+export const downloadFfmpeg = () => call<FfmpegDownloadOutcome>("download_ffmpeg");
+export const cancelFfmpegDownload = () => call<boolean>("cancel_ffmpeg_download");
+export const removeManagedFfmpeg = () => call<FfmpegStatus>("remove_managed_ffmpeg");
+/** 重新查找 FFmpeg（清除编码器探测缓存）。 */
+export const redetectFfmpeg = () => call<FfmpegStatus>("redetect_ffmpeg");
+export const onFfmpegDownload = (handler: (progress: FfmpegDownloadProgress) => void) =>
+  subscribe("ffmpeg-download", handler);
 
 export interface SidecarOptions {
   subtitle: boolean;

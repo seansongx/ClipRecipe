@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "dump-defaults": "node scripts/dump-recipe-defaults.mjs",
     "e2e": "node scripts/e2e-smoke.mjs",
+    "sync-ffmpeg-manifest": "node scripts/sync-ffmpeg-manifest.mjs",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -27,6 +28,8 @@
     "zustand": "^5.1.0"
   },
   "devDependencies": {
+    "@seankit/ffmpeg": "9.0.1",
+    "@seankit/ffprobe": "9.0.1",
     "@tailwindcss/vite": "^4.3.5",
     "@tauri-apps/cli": "^2.12.6",
     "@types/node": "^26.6.6",

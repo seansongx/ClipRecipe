@@ -2,7 +2,7 @@
 // 字段定义见 lib/backend.ts 的 Settings（与后端 model/settings.rs 一致）。
 
 import { useEffect, useId, useState, type ReactNode } from "react";
-import { BookOpen, FileInput, FolderOpen, Play, RefreshCw, TriangleAlert, X } from "lucide-react";
+import { BookOpen, FileInput, FolderOpen, Play, RefreshCw, Trash2, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -25,13 +25,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import ChoiceGroup from "@/components/ChoiceGroup";
 import ColorField from "@/components/ColorField";
+import { FfmpegDownloadControl, FfmpegDownloadNote } from "@/components/FfmpegDownload";
 import FontSelect from "@/components/FontSelect";
 import NumberInput from "@/components/NumberInput";
 import {
   getAppInfo,
   getDataDir,
   getEncoderInfo,
-  getFfmpegStatus,
   isTauri,
   openDataDir,
   openProjectPage,
@@ -46,6 +46,8 @@ import {
   type TargetFormat,
   type ThemeSetting,
 } from "@/lib/backend";
+import { formatSize } from "@/lib/format";
+import { SOURCE_LABELS, useFfmpeg } from "@/state/ffmpeg";
 import { playCompletionSound } from "@/state/finish";
 import { useLog } from "@/state/log";
 import { useSettings } from "@/state/settings";
@@ -288,17 +290,17 @@ function GpuHint() {
   const gpu = useSettings((s) => s.settings.gpu);
   const update = useSettings((s) => s.update);
   const [failed, setFailed] = useState<string[]>([]);
+  const ffmpegPath = useFfmpeg((s) => (s.status?.available ? s.status.path : null));
   useEffect(() => {
-    if (!isTauri || !gpu) return;
+    if (!isTauri || !gpu || !ffmpegPath) return;
     let alive = true;
-    getFfmpegStatus()
-      .then((status) => (status.available ? getEncoderInfo(false) : null))
-      .then((info) => alive && info && setFailed(info.failedVendors))
+    getEncoderInfo(false)
+      .then((info) => alive && setFailed(info.failedVendors))
       .catch(() => {});
     return () => {
       alive = false;
     };
-  }, [gpu]);
+  }, [gpu, ffmpegPath]);
   if (dismissed || !gpu || failed.length === 0) return null;
   return (
     <div className="mt-2 flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-2 py-1.5 text-xs">
@@ -581,9 +583,125 @@ function AdvancedGroup() {
 
 // ---------------------------------------------------------------- 关于
 
+function FfmpegRow({ ffmpeg }: { ffmpeg: FfmpegStatus | null }) {
+  const checking = useFfmpeg((s) => s.checking);
+  return (
+    <Row label="FFmpeg" hint="查找顺序：环境变量 CLIPRECIPE_FFMPEG → 应用内下载 → 程序目录 → 系统 PATH">
+      {!ffmpeg && "检测中…"}
+      {ffmpeg?.available && (
+        <>
+          <p>{ffmpeg.version}</p>
+          <p className="text-xs text-muted-foreground">来源：{SOURCE_LABELS[ffmpeg.source]}</p>
+          <p className="text-xs text-muted-foreground">{ffmpeg.path}</p>
+          <p className="text-xs text-muted-foreground">{ffmpeg.ffprobePath}</p>
+          {!ffmpeg.whisper && (
+            <p className="text-xs text-muted-foreground">
+              没有 whisper 滤镜：“语音生成字幕”需改用 whisper-cli，或使用带 whisper 的完整版 FFmpeg。
+            </p>
+          )}
+        </>
+      )}
+      {ffmpeg && !ffmpeg.available && (
+        <>
+          <p>未找到可用的 FFmpeg</p>
+          <p className="text-xs text-muted-foreground">
+            {ffmpeg.error}。可以在下方一键下载，或自行安装 FFmpeg 并加入 PATH、设置环境变量 CLIPRECIPE_FFMPEG 指向
+            ffmpeg 可执行文件（ffprobe 需在同一目录）。
+          </p>
+        </>
+      )}
+      <Button
+        variant="outline"
+        size="xs"
+        onClick={() => void useFfmpeg.getState().redetect()}
+        disabled={checking}
+        className="mt-1 text-xs font-normal text-muted-foreground"
+      >
+        <RefreshCw /> {checking ? "检测中…" : "重新检测 FFmpeg"}
+      </Button>
+    </Row>
+  );
+}
+
+function ManagedFfmpegRow({ ffmpeg }: { ffmpeg: FfmpegStatus }) {
+  const download = useFfmpeg((s) => s.download);
+  const removing = useFfmpeg((s) => s.removing);
+  const [confirming, setConfirming] = useState(false);
+  const managed = ffmpeg.managed;
+  const installed = managed.installedVersion;
+  const running = download.kind === "running";
+  return (
+    <Row label="应用内下载" hint="下载固定版本的 FFmpeg 到本机数据目录，不影响系统里已安装的 FFmpeg">
+      {!managed.supported ? (
+        <p className="text-xs text-muted-foreground">{managed.unsupportedReason}</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {installed && (
+            <div>
+              <p>
+                已下载 FFmpeg {installed}
+                {managed.updateAvailable && <span className="text-warning">（可更新到 {managed.pinnedVersion}）</span>}
+              </p>
+              <p className="text-xs text-muted-foreground">{managed.installedDir}</p>
+              {ffmpeg.source === "env" && (
+                <p className="text-xs text-muted-foreground">
+                  当前使用环境变量 CLIPRECIPE_FFMPEG 指定的 FFmpeg（优先于应用内下载的副本）。
+                </p>
+              )}
+            </div>
+          )}
+          {(!installed || managed.updateAvailable || download.kind !== "idle") && (
+            <FfmpegDownloadControl
+              idleLabel={
+                installed
+                  ? `更新到 FFmpeg ${managed.pinnedVersion}（${formatSize(managed.downloadSize)}）`
+                  : `下载 FFmpeg ${managed.pinnedVersion}（${formatSize(managed.downloadSize)}）`
+              }
+            />
+          )}
+          {installed && !running && (
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={() => setConfirming(true)}
+              disabled={removing}
+              className="self-start text-xs font-normal text-muted-foreground"
+            >
+              <Trash2 /> {removing ? "删除中…" : "删除已下载的 FFmpeg"}
+            </Button>
+          )}
+          <FfmpegDownloadNote />
+        </div>
+      )}
+      <AlertDialog open={confirming} onOpenChange={setConfirming}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除已下载的 FFmpeg？</AlertDialogTitle>
+            <AlertDialogDescription>
+              删除 {managed.installedDir}。之后会改用系统中的 FFmpeg（如果有）；需要时可以重新下载。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                setConfirming(false);
+                void useFfmpeg.getState().remove();
+              }}
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Row>
+  );
+}
+
 function EnvironmentSection() {
   const [info, setInfo] = useState<AppInfo | null>(null);
-  const [ffmpeg, setFfmpeg] = useState<FfmpegStatus | null>(null);
+  const ffmpeg = useFfmpeg((s) => s.status);
   const [encoders, setEncoders] = useState<EncoderInfo | null>(null);
   const [detecting, setDetecting] = useState(false);
   const [dataDir, setDataDir] = useState<string | null>(null);
@@ -601,13 +719,16 @@ function EnvironmentSection() {
     if (!isTauri) return;
     getAppInfo().then(setInfo).catch((e) => setError(String(e)));
     getDataDir().then(setDataDir).catch(() => {});
-    getFfmpegStatus()
-      .then((status) => {
-        setFfmpeg(status);
-        if (status.available) detect(false);
-      })
-      .catch((e) => setError(String(e)));
+    void useFfmpeg.getState().refresh();
   }, []);
+
+  // FFmpeg 换了（下载、删除、重新检测）时重新读取编码器信息
+  const ffmpegPath = ffmpeg?.available ? ffmpeg.path : null;
+  useEffect(() => {
+    if (!isTauri) return;
+    if (ffmpegPath) detect(false);
+    else setEncoders(null);
+  }, [ffmpegPath]);
 
   return (
     <Section title="运行环境">
@@ -616,25 +737,8 @@ function EnvironmentSection() {
       ) : (
         <>
           <Row label="CPU 核心">{info ? info.cpuCores : "读取中…"}</Row>
-          <Row label="FFmpeg">
-            {!ffmpeg && "检测中…"}
-            {ffmpeg?.available && (
-              <>
-                <p>{ffmpeg.version}</p>
-                <p className="text-xs text-muted-foreground">{ffmpeg.path}</p>
-                <p className="text-xs text-muted-foreground">{ffmpeg.ffprobePath}</p>
-              </>
-            )}
-            {ffmpeg && !ffmpeg.available && (
-              <>
-                <p>未找到可用的 FFmpeg</p>
-                <p className="text-xs text-muted-foreground">
-                  {ffmpeg.error}。请安装 FFmpeg 并加入 PATH，或设置环境变量 CLIPRECIPE_FFMPEG 指向
-                  ffmpeg 可执行文件（ffprobe 需在同一目录）。
-                </p>
-              </>
-            )}
-          </Row>
+          <FfmpegRow ffmpeg={ffmpeg} />
+          {ffmpeg && <ManagedFfmpegRow ffmpeg={ffmpeg} />}
           <Row label="硬件编码器" hint="通过实际试编码检测">
             {detecting && <p className="text-muted-foreground">检测中…</p>}
             {!detecting && encoders && (
@@ -705,8 +809,9 @@ function AboutGroup() {
         </Row>
         <Row label="FFmpeg 说明">
           <p className="text-xs text-muted-foreground">
-            本程序调用系统中安装的 FFmpeg / FFprobe 完成全部音视频处理，本身不包含也不分发 FFmpeg。FFmpeg 是
-            FFmpeg 项目的商标，依其构建方式按 LGPL 或 GPL 授权；请从可信来源获取并遵守相应许可。
+            本程序调用 FFmpeg / FFprobe（作为独立程序运行）完成全部音视频处理，本身不包含也不分发 FFmpeg：可以使用系统中安装的
+            FFmpeg，或在下方“运行环境”中点击下载（只在点击时下载未经修改的上游构建）。FFmpeg 是 FFmpeg 项目的商标，
+            依其构建方式按 LGPL 或 GPL 授权（应用内下载的构建为 GPL-3.0-or-later）；请遵守相应许可。
           </p>
         </Row>
       </Section>

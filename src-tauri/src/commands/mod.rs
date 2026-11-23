@@ -7,8 +7,10 @@
 //! - `preview-progress`：`{ percent }`
 //! - `tool-event`：独立工具运行的 [`crate::jobs::JobEvent`]（见 `commands::tools`）
 //! - `shutdown-countdown`：`{ remaining }`；`shutdown-failed`：错误信息（见 `commands::system`）
+//! - `ffmpeg-download`：应用内下载 FFmpeg 的进度 [`crate::ffmpeg::managed::DownloadProgress`]（见 `commands::ffmpeg`）
 
 pub mod app;
+pub mod ffmpeg;
 pub mod fonts;
 pub mod jobs;
 pub mod media;
@@ -39,6 +41,8 @@ pub struct AppState {
     pub preview_dir: PreviewDir,
     /// 当前（或最近一次）独立工具运行（`tool-event` 事件）
     pub tool_run: Mutex<Option<crate::tools::ToolRunHandle>>,
+    /// 正在进行的 FFmpeg 下载（`commands::ffmpeg`）
+    pub ffmpeg_download: Mutex<Option<CancelToken>>,
 }
 
 /// 环境变量：覆盖配置目录（端到端测试用它隔离用户的设置与队列，见 `scripts/e2e-smoke.mjs`）。

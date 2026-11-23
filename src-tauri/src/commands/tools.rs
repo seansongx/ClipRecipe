@@ -52,7 +52,7 @@ pub struct StartToolResponse {
     items: Vec<PlannedItem>,
 }
 
-fn is_running(state: &AppState) -> Result<bool, String> {
+pub(crate) fn is_running(state: &AppState) -> Result<bool, String> {
     Ok(state
         .tool_run
         .lock()

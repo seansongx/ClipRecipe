@@ -5,6 +5,7 @@ pub mod ffmpeg;
 pub mod fsutil;
 pub mod jobs;
 pub mod model;
+pub mod net;
 pub mod pipeline;
 pub mod preview;
 pub mod system;
@@ -20,6 +21,11 @@ pub fn run() {
             if let Err(e) = commands::preview::setup(app.handle()) {
                 eprintln!("预览目录初始化失败：{e}");
             }
+            // 应用内下载的 FFmpeg 放在本地数据目录（CLIPRECIPE_CONFIG_DIR 优先，见 ffmpeg::managed::root）
+            match tauri::Manager::path(app).app_local_data_dir() {
+                Ok(dir) => ffmpeg::managed::set_default_root(dir.join("ffmpeg")),
+                Err(e) => eprintln!("无法确定本地数据目录，不能下载 FFmpeg：{e}"),
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -34,6 +40,10 @@ pub fn run() {
             commands::app::app_info,
             commands::app::ffmpeg_status,
             commands::app::encoder_info,
+            commands::ffmpeg::download_ffmpeg,
+            commands::ffmpeg::cancel_ffmpeg_download,
+            commands::ffmpeg::remove_managed_ffmpeg,
+            commands::ffmpeg::redetect_ffmpeg,
             commands::media::import_paths,
             commands::media::probe_media,
             commands::settings::load_settings,

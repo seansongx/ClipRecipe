@@ -34,6 +34,22 @@ fn model() -> Option<PathBuf> {
     }
 }
 
+/// 真实识别需要：whisper 模型（环境变量）与能合成语音的 FFmpeg（`flite` 滤镜；应用内下载 / node_modules 的
+/// essentials 构建没有，此时打印原因并跳过）。
+fn prerequisites(paths: &FfmpegPaths) -> Option<PathBuf> {
+    let model = model()?;
+    for filter in ["flite", "whisper"] {
+        if !cliprecipe_lib::ffmpeg::has_filter(&paths.ffmpeg, filter) {
+            println!(
+                "跳过：当前 FFmpeg（{}）没有 {filter} 滤镜（合成测试语音 / 内置识别需要）；请用完整版 FFmpeg（CLIPRECIPE_FFMPEG）",
+                paths.ffmpeg.display()
+            );
+            return None;
+        }
+    }
+    Some(model)
+}
+
 /// 深蓝背景 + flite 合成的英文语音。
 fn make_speech(paths: &FfmpegPaths, out: &Path) {
     make_lavfi(
@@ -171,8 +187,10 @@ fn video_without_audio_fails() {
 /// 真实识别：内置 whisper 滤镜生成 SRT，并烧录进新视频。
 #[test]
 fn builtin_whisper_transcribes_speech_and_burns_subtitles() {
-    let Some(model) = model() else { return };
     let paths = ffmpeg_paths();
+    let Some(model) = prerequisites(&paths) else {
+        return;
+    };
     let dir = TempDir::new("asr-real");
     let input = dir.join("src/speech.mp4");
     make_speech(&paths, &input);
@@ -233,8 +251,10 @@ fn builtin_whisper_transcribes_speech_and_burns_subtitles() {
 /// 真实识别：字幕放在源视频旁，已存在时加序号。
 #[test]
 fn srt_beside_the_source_does_not_overwrite_by_default() {
-    let Some(model) = model() else { return };
     let paths = ffmpeg_paths();
+    let Some(model) = prerequisites(&paths) else {
+        return;
+    };
     let dir = TempDir::new("asr-beside");
     let input = dir.join("src/talk.mp4");
     make_speech(&paths, &input);

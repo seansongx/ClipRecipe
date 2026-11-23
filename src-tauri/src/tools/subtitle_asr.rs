@@ -3,7 +3,8 @@
 //! whisper.cpp 官方的 Hugging Face 仓库（ggerganov/whisper.cpp）下载后选择。
 //!
 //! **识别引擎** `engine`（`auto`）：
-//! - `builtin` FFmpeg 内置的 `whisper` 滤镜（FFmpeg 8.0 起，需编译时启用 whisper.cpp；本机 9.1 full 构建可用）：
+//! - `builtin` FFmpeg 内置的 `whisper` 滤镜（FFmpeg 8.0 起，需编译时启用 whisper.cpp；gyan.dev 的 full 构建有，
+//!   应用内下载的 essentials 构建**没有**——`ffmpeg_status` 的 `whisper` 字段据此在表单里提前说明）：
 //!   `-af whisper=model=…:language=…:queue=…:use_gpu=…:destination=临时.srt:format=srt`；
 //! - `cli` 外部 whisper.cpp 命令行程序（`whisper-cli`，路径 `cliPath`）：先用 FFmpeg 把第一条音轨转成
 //!   16 kHz 单声道 WAV，再运行 `whisper-cli -m 模型 -f 音频.wav -l 语言 -osrt -of 临时名`；
@@ -179,7 +180,9 @@ pub fn check_model(path: &str) -> Result<PathBuf, String> {
 pub fn check_cli(path: &str) -> Result<PathBuf, String> {
     let path = path.trim();
     if path.is_empty() {
-        return Err("当前 FFmpeg 没有 whisper 滤镜，请选择 whisper.cpp 的 whisper-cli 程序".into());
+        return Err(format!(
+            "{NO_WHISPER_FILTER}，请选择 whisper.cpp 的 whisper-cli 程序，或通过 PATH / 环境变量 CLIPRECIPE_FFMPEG 使用带 whisper 的完整版 FFmpeg"
+        ));
     }
     let file = PathBuf::from(path);
     if !file.is_file() {
@@ -190,8 +193,11 @@ pub fn check_cli(path: &str) -> Result<PathBuf, String> {
 
 /// `ffmpeg -h filter=whisper` 的输出里是否有该滤镜。
 pub fn help_has_whisper(help: &str) -> bool {
-    help.contains("whisper AVOptions") || help.contains("Filter whisper")
+    ffmpeg::help_has_filter(help, "whisper")
 }
+
+/// 当前 FFmpeg 没有 whisper 滤镜时的说明（应用内下载的 essentials 构建就没有）。
+pub const NO_WHISPER_FILTER: &str = "当前 FFmpeg 没有 whisper 滤镜（需要 FFmpeg 8.0 以上且编译时启用 whisper.cpp；应用内下载的精简构建不含它）";
 
 impl SubtitleAsrParams {
     pub fn validate(&self) -> Result<(), String> {
@@ -218,9 +224,9 @@ impl SubtitleAsrParams {
     pub fn pick_engine(&self, has_filter: bool) -> Result<Engine, String> {
         match self.engine {
             AsrEngine::Builtin if has_filter => Ok(Engine::Builtin),
-            AsrEngine::Builtin => Err(
-                "当前 FFmpeg 没有 whisper 滤镜（需要 FFmpeg 8.0 以上且编译时启用 whisper.cpp），请改用 whisper-cli".into(),
-            ),
+            AsrEngine::Builtin => Err(format!(
+                "{NO_WHISPER_FILTER}。请改用 whisper-cli，或通过 PATH / 环境变量 CLIPRECIPE_FFMPEG 使用带 whisper 的完整版 FFmpeg"
+            )),
             AsrEngine::Cli => Ok(Engine::Cli),
             AsrEngine::Auto if has_filter => Ok(Engine::Builtin),
             AsrEngine::Auto => Ok(Engine::Cli),
@@ -401,14 +407,6 @@ pub fn beside_source(
         .ok_or_else(|| "无法为字幕文件找到可用的名字".to_owned())
 }
 
-fn ffmpeg_has_whisper(ffmpeg_path: &Path) -> bool {
-    ffmpeg::command(ffmpeg_path)
-        .args(["-hide_banner", "-h", "filter=whisper"])
-        .output()
-        .map(|o| help_has_whisper(&String::from_utf8_lossy(&o.stdout)))
-        .unwrap_or(false)
-}
-
 /// 运行 whisper-cli，响应取消；失败时返回输出末尾。
 fn run_cli(ctx: &mut ToolContext, exe: &Path, args: &[String]) -> Result<(), ToolError> {
     ctx.check_cancelled()?;
@@ -500,7 +498,7 @@ impl Tool for SubtitleAsrParams {
         }
         let has_filter = match self.engine {
             AsrEngine::Cli => false,
-            _ => ffmpeg_has_whisper(&ctx.paths().ffmpeg),
+            _ => ffmpeg::has_filter(&ctx.paths().ffmpeg, "whisper"),
         };
         let engine = self.pick_engine(has_filter)?;
         if engine == Engine::Cli {

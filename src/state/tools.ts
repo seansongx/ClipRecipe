@@ -14,6 +14,7 @@ import {
 import { TOOLS } from "../features/registry";
 import type { JobEvent, TaskSpec, TaskState } from "../lib/backend";
 import { cancelToolItem, startTool, stopTool, type ToolParams } from "../lib/tools";
+import { requireFfmpeg } from "./ffmpeg";
 import { useLog } from "./log";
 import { useQueue, type QueueItem } from "./queue";
 import { useRecipe } from "./recipe";
@@ -166,6 +167,7 @@ export const useTools = create<ToolsState>((set, get) => ({
   start: async () => {
     const openId = get().openId;
     if (!openId || get().run?.running) return;
+    if (!(await requireFfmpeg("运行工具"))) return;
     const log = useLog.getState();
     const name = toolName(openId);
     let def = getToolDef(openId);

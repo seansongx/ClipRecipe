@@ -26,12 +26,26 @@
 
 ## FFmpeg
 
-ClipRecipe 不包含也不分发 FFmpeg。请自行安装 FFmpeg（建议 7.0 以上的 full 构建，例如 Windows 上的
-`winget install Gyan.FFmpeg`），并让 `ffmpeg` / `ffprobe` 在 `PATH` 中，或设置环境变量 `CLIPRECIPE_FFMPEG`
-指向 ffmpeg 可执行文件（ffprobe 需在同一目录）。设置 → 关于 中可以看到检测结果与可用的硬件编码器。
+ClipRecipe 不包含也不分发 FFmpeg，而是把它作为独立程序调用。有两种方式：
 
-部分功能依赖 FFmpeg 的编译选项：字幕烧录需要 libass，HDR 转 SDR 需要 zimg（`zscale`），
-“语音生成字幕”的内置模式需要带 whisper 滤镜的构建（FFmpeg 8.0 起），否则改用外部的 `whisper-cli`。
+- **应用内下载（最简单）**：没有找到 FFmpeg 时，批量处理页顶部会提示，点“下载 FFmpeg”即可；也可以在
+  设置 → 关于 → 运行环境 中下载、更新或删除。下载的是 npm 包 [`@seankit/ffmpeg`](https://www.npmjs.com/package/@seankit/ffmpeg) /
+  [`@seankit/ffprobe`](https://www.npmjs.com/package/@seankit/ffprobe) 中未经修改的上游静态构建（当前为 FFmpeg 9.0.2，
+  Windows 上是 gyan.dev 的 essentials 构建，两个压缩包合计约 75 MB），先从 npmmirror、失败时从 npmjs 下载，
+  按程序内置的大小与 SHA-256 校验后放到本机数据目录（Windows：`%LOCALAPPDATA%\io.github.cliprecipe\ffmpeg\<版本>\`），
+  下载后立即生效、无需重启。只有点击按钮时才会联网；请求只是普通的 GET，不带任何用户信息；会使用环境变量
+  `HTTPS_PROXY` / `NO_PROXY` 设置的代理。这些 FFmpeg 构建按 GPL-3.0-or-later 授权。
+- **自行安装**：例如 Windows 上 `winget install Gyan.FFmpeg`（full 构建），让 `ffmpeg` / `ffprobe` 在 `PATH` 中，
+  或设置环境变量 `CLIPRECIPE_FFMPEG` 指向 ffmpeg 可执行文件（ffprobe 需在同一目录）。
+
+查找顺序：`CLIPRECIPE_FFMPEG` → 应用内下载的副本 → 程序所在目录 → `PATH`。设置 → 关于 中可以看到实际使用的 FFmpeg、
+来源与可用的硬件编码器。
+
+部分功能依赖 FFmpeg 的编译选项：字幕烧录需要 libass，HDR 转 SDR 需要 zimg（`zscale`），这些应用内下载的构建都有。
+它**没有**的：`whisper` 滤镜——“语音生成字幕”的内置模式会在表单里提前说明，请改用外部的 `whisper-cli`，
+或通过 `PATH` / `CLIPRECIPE_FFMPEG` 使用带 whisper 的完整构建（FFmpeg 8.0 起，如 gyan.dev full）；
+另外少了 libdav1d（AV1 改用 libaom 解码，较慢）、SVT-AV1 / rav1e 编码器、frei0r、libplacebo、OpenCL / Vulkan 滤镜等，
+ClipRecipe 不使用它们。
 
 **语音生成字幕的模型**：程序不会自动下载任何东西。请从 whisper.cpp 的 Hugging Face 仓库
 （<https://huggingface.co/ggerganov/whisper.cpp>）下载 ggml 格式的模型（如 `ggml-base.bin`），在工具里选择它。
@@ -42,7 +56,8 @@ ClipRecipe 不包含也不分发 FFmpeg。请自行安装 FFmpeg（建议 7.0 �
 
 - Node.js 20+
 - Rust（stable）与 [Tauri 2 的系统依赖](https://tauri.app/start/prerequisites/)（Windows 需要 MSVC 生成工具和 WebView2）
-- FFmpeg（见上）
+- FFmpeg：开发时不必另装——`npm install` 会装上开发依赖 `@seankit/ffmpeg` / `@seankit/ffprobe`，调试构建与
+  `cargo test` 找不到别的 FFmpeg 时自动使用 `node_modules` 里的这份（设置了 `CLIPRECIPE_FFMPEG` 或 `PATH` 里有时以它们为准）
 
 ```bash
 npm install
@@ -65,8 +80,10 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
-`cargo test` 中的集成测试用 FFmpeg 的 `lavfi` 现场生成素材并真实运行，需要 FFmpeg 可用（`PATH` 或 `CLIPRECIPE_FFMPEG`），
+`cargo test` 中的集成测试用 FFmpeg 的 `lavfi` 现场生成素材并真实运行，需要 FFmpeg 可用（`npm install` 后自动使用
+`node_modules` 里的 FFmpeg 9.0.2 essentials；也可用 `PATH` 或 `CLIPRECIPE_FFMPEG` 指定别的构建，两者都应全部通过），
 默认值一致性检查（`tests/recipe_defaults.rs`）需要 Node.js 并已 `npm install`。仓库里不包含任何媒体文件。
+测试不访问网络：下载器的测试用进程内的本机 HTTP 服务器。
 
 ## 目录结构
 
@@ -81,7 +98,8 @@ src/                      前端（React + TypeScript + Tailwind v4 + shadcn/ui�
   views/                  页面：批量处理、工具箱、设置
   lib/backend.ts          与后端通信的命令、事件与类型
 src-tauri/src/            后端（Rust）
-  ffmpeg/                 FFmpeg 定位、探测、运行与进度、编码器探测
+  ffmpeg/                 FFmpeg 定位、探测、运行与进度、编码器探测；manifest.rs / managed.rs 应用内下载
+src-tauri/resources/      ffmpeg-manifest.json：应用内下载的固定清单（npm run sync-ffmpeg-manifest 生成）
   model/                  范围值、素材来源、配方、设置
   pipeline/               配方 → FFmpeg 命令；modules/ 每个模块一个文件；steps.rs 字幕 / 封面 / HDR 等流水线级步骤
   jobs/                   导入、输出命名、调度执行、收尾（移回 / 删除源）、队列保存
@@ -108,4 +126,5 @@ docs/PLAN.md              架构约定、验收标准、模块 / 工具编写指
 
 ## 许可
 
-[MIT](LICENSE)。FFmpeg 是独立项目，不随本仓库分发，使用时请遵守其许可条款（LGPL / GPL，取决于构建方式）。
+[MIT](LICENSE)。FFmpeg 是独立项目，不随本仓库或安装包分发（应用内下载只在用户点击时从 npm 获取上游构建，
+并作为独立程序运行），使用时请遵守其许可条款（LGPL / GPL，取决于构建方式；应用内下载的构建为 GPL-3.0-or-later）。

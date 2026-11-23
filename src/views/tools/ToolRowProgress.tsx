@@ -37,10 +37,7 @@ export default function ToolRowProgress({ queueId, path }: { queueId: string; pa
         </div>
       </Hint>
       {active && (
-        <Progress
-          value={toolItemPercent(item)}
-          className={cn("mt-1 h-1", item.state === "done" && "[&>[data-slot=progress-indicator]]:bg-muted-foreground/60")}
-        />
+        <Progress value={toolItemPercent(item)} className="mt-1" />
       )}
       {item.state === "failed" && item.error && (
         <p className="mt-1 line-clamp-2 text-xs text-destructive select-text">{item.error}</p>

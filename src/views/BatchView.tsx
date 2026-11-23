@@ -110,14 +110,12 @@ function QueueToolbar() {
         </Button>
       </Hint>
       <DropdownMenu>
-        <DropdownMenuTrigger asChild disabled={items.length < 2}>
-          <Button variant="ghost" size="sm">
-            <ArrowDownUp /> 排序
-          </Button>
+        <DropdownMenuTrigger disabled={items.length < 2} render={<Button variant="ghost" size="sm" />}>
+          <ArrowDownUp /> 排序
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-auto">
           {SORT_OPTIONS.map((o) => (
-            <DropdownMenuItem key={o.value} onSelect={() => sortBy(o.key, o.descending)}>
+            <DropdownMenuItem key={o.value} onClick={() => sortBy(o.key, o.descending)}>
               {o.label}
             </DropdownMenuItem>
           ))}

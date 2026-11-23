@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// 检查 src/components/ui/ 是否与 shadcn CLI 按 components.json（style：radix-mira）生成的原版完全一致。
+// 检查 src/components/ui/ 是否与 shadcn CLI 按 components.json（style：base-mira，Base UI 版的 Mira）生成的原版完全一致。
 //
 // 用法：npm run check:shadcn
 //
 // 做法：对 ui/ 里的每个组件运行 `shadcn add <组件> --diff <文件>`（预演，不写文件）：CLI 从注册表取当前风格的组件、
 // 按本项目的别名与图标库转换后与本地文件比较，“(skip) No changes.” 即与原版一致。
 // 有差异的文件打印 CLI 给出的 diff，并以退出码 1 结束。需要联网（ui.shadcn.com 注册表）。
-// ui/ 下的文件不要手改：定制只改 src/index.css 的主题变量（见 docs/PLAN.md“前端 · shadcn 组件与主题”）。
+// ui/ 下的文件不要手改，也不要用全局 CSS 覆盖它们的外观；主题变量用 CLI 的默认值（见 docs/PLAN.md“前端 · shadcn 组件与主题”）。
 
 import fs from "node:fs";
 import path from "node:path";

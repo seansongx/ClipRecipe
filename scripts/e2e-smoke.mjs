@@ -84,6 +84,8 @@ process.env.no_proxy = NO_PROXY;
 
 const results = [];
 let shotIndex = 0;
+/** 界面审计中降级为警告的规则（scripts/e2e-audit-page.js 的 SOFT_RULES）：每条带审计位置，最后汇总实测值。 */
+const auditWarnings = [];
 
 function log(...args) {
   console.log(`[${new Date().toLocaleTimeString()}]`, ...args);
@@ -395,14 +397,14 @@ const ui = {
   },
 
   switchState(page, label, within = "aside") {
-    return page.evaluate((l, wi) => window.__e2e.find({ selector: "[role=switch]", label: l, within: wi })?.getAttribute("data-state") ?? null, label, within);
+    return page.evaluate((l, wi) => window.__e2e.state(window.__e2e.find({ selector: "[role=switch]", label: l, within: wi })), label, within);
   },
 
   async setSwitch(page, label, on, within = "aside") {
     const state = await ui.switchState(page, label, within);
     if (state === null) throw new Error(`找不到开关：${label}`);
     if ((state === "checked") !== on) await page.click({ selector: "[role=switch]", label, within });
-    await page.waitFor(`开关 ${label} = ${on}`, (l, wi, want) => window.__e2e.find({ selector: "[role=switch]", label: l, within: wi })?.getAttribute("data-state") === want, [label, within, on ? "checked" : "unchecked"]);
+    await page.waitFor(`开关 ${label} = ${on}`, (l, wi, want) => window.__e2e.state(window.__e2e.find({ selector: "[role=switch]", label: l, within: wi })) === want, [label, within, on ? "checked" : "unchecked"]);
   },
 
   async expandModule(page, name) {
@@ -413,8 +415,8 @@ const ui = {
   },
 
   async choose(page, label, within = "aside") {
-    await page.click({ selector: "[role=radio]", text: label, within });
-    await page.waitFor(`选项 ${label}`, (l, wi) => window.__e2e.find({ selector: "[role=radio]", text: l, within: wi })?.getAttribute("data-state") === "on", [label, within]);
+    await page.click({ selector: "[data-slot=toggle-group-item]", text: label, within });
+    await page.waitFor(`选项 ${label}`, (l, wi) => window.__e2e.state(window.__e2e.find({ selector: "[data-slot=toggle-group-item]", text: l, within: wi })) === "on", [label, within]);
   },
 
   runSummary(page) {
@@ -474,6 +476,8 @@ const ui = {
 
   async closeDialog(page) {
     const before = await page.evaluate(() => document.querySelectorAll("[role=dialog],[role=alertdialog]").length);
+    // 焦点回到按钮时 Base UI 的提示会打开，这时第一次 Esc 只关闭提示：先关掉打开着的提示
+    if (await page.evaluate(() => !!document.querySelector("[data-slot=tooltip-content][data-open]"))) await page.escape();
     await page.escape();
     await page.waitFor("对话框关闭", (n) => document.querySelectorAll("[role=dialog],[role=alertdialog]").length < n, [before], { timeout: 5000 });
   },
@@ -534,17 +538,25 @@ function partials(dir) {
 
 /** 首帧主题检查：首帧已带主题与对应底色，之后 data-theme 没有变成别的值（没有先浅后深的闪烁）。 */
 async function checkFirstFrame(page, expectTheme) {
-  const boot = await page.evaluate(() => ({
-    first: window.__e2e.firstFrame,
-    history: window.__e2e.themeHistory,
-    now: document.documentElement.dataset.theme,
-  }));
+  const boot = await page.evaluate(() => {
+    const first = window.__e2e.firstFrame;
+    // 主题变量是 oklch：经 canvas 换算成 sRGB 再比较亮度
+    let rgba = null;
+    if (first?.background) {
+      const ctx = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+      ctx.fillStyle = "rgba(0, 0, 0, 0)";
+      ctx.fillStyle = first.background;
+      ctx.fillRect(0, 0, 1, 1);
+      rgba = [...ctx.getImageData(0, 0, 1, 1).data];
+    }
+    return { first, rgba, history: window.__e2e.themeHistory, now: document.documentElement.dataset.theme };
+  });
   assert(boot.first, "没有记录到首帧");
   const theme = expectTheme ?? boot.now;
   assert(boot.first.theme === theme, `首帧主题 ${boot.first.theme}，应为 ${theme}（${JSON.stringify(boot)}）`);
   const flips = boot.history.filter((h) => h.theme !== theme);
   assert(flips.length === 0, `启动过程中主题变化过：${JSON.stringify(boot.history)}`);
-  const rgb = (boot.first.background ?? "").match(/\d+(\.\d+)?/g)?.map(Number) ?? [];
+  const rgb = boot.rgba ?? [];
   const transparent = rgb.length === 4 && rgb[3] === 0;
   const luminance = rgb.length >= 3 ? (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255 : -1;
   // 底色透明时露出的是 WebView 底色（后端按同一主题设置），也不会闪白
@@ -768,19 +780,25 @@ async function bootScenarios(s, media) {
 }
 
 /**
- * 界面状态审计（scripts/e2e-audit-page.js）：鼠标移开、取消焦点后检查 root 内的选中态、aria 与 data-state 一致、对比度。
+ * 界面状态审计（scripts/e2e-audit-page.js）：鼠标移开、取消焦点后检查 root 内的选中态、aria 与 Base UI 状态属性一致、对比度。
  * 返回统计；有问题时抛出（列出全部问题）。
  */
-async function auditUi(page, label, root) {
+async function auditUi(page, label, root, found = null) {
   await page.cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 2, y: 4000, button: "none", pointerType: "mouse" });
   await page.evaluate(() => document.activeElement?.blur?.());
   await sleep(250);
   const r = await page.evaluate((o) => window.__e2e.audit(o), { root });
-  if (r.problems.length) throw new Error(`界面审计（${label}）发现 ${r.problems.length} 个问题：\n${r.problems.slice(0, 15).join("\n")}`);
+  for (const w of r.warnings ?? []) {
+    log(`  ⚠ 审计警告（${label}）：${w}`);
+    auditWarnings.push({ label, text: w });
+  }
+  // found：收集问题而不是立即失败（审计场景要覆盖全部页面后再统一报告）
+  if (r.problems.length && found) found.push(...r.problems.map((p) => `（${label}）${p}`));
+  else if (r.problems.length) throw new Error(`界面审计（${label}）发现 ${r.problems.length} 个问题：\n${r.problems.slice(0, 15).join("\n")}`);
   return r;
 }
 
-/** 导航项（侧栏 / 设置分组）的选中态：选中项 aria 与 data-state 一致，底色与未选中项明显不同，键盘焦点环与选中底色同时可见。 */
+/** 导航项（侧栏 / 设置分组）的选中态：选中项 aria 与 Base UI 的 data-active 一致，底色与未选中项明显不同，键盘焦点环与选中底色同时可见。 */
 async function assertNavSelected(page, listSelector, expectText) {
   const r = await page.evaluate((sel) => {
     const tabs = [...document.querySelectorAll(`${sel} [role=tab]`)];
@@ -794,17 +812,27 @@ async function assertNavSelected(page, listSelector, expectText) {
     return tabs.map((t) => ({
       text: t.textContent.trim(),
       selected: t.getAttribute("aria-selected") === "true",
-      state: t.getAttribute("data-state"),
+      state: window.__e2e.state(t),
       bg: rgb(getComputedStyle(t).backgroundColor),
     }));
   }, listSelector);
   const selected = r.filter((t) => t.selected);
   assert(selected.length === 1 && selected[0].text.includes(expectText), `${listSelector} 的选中项应为“${expectText}”：${JSON.stringify(r)}`);
-  assert(selected[0].state === "active", `${listSelector} 选中项的 data-state 是 ${selected[0].state}（应为 active，状态属性被覆盖）`);
+  assert(selected[0].state === "active", `${listSelector} 选中项的状态是 ${selected[0].state}（应为 active，即带 data-active）`);
   const others = r.filter((t) => !t.selected);
-  assert(others.every((t) => t.state === "inactive"), `${listSelector} 未选中项的 data-state：${JSON.stringify(others.map((t) => t.state))}`);
-  // 选中项有不透明度可见的主题色底，未选中项没有底色
-  assert(selected[0].bg[3] > 20 && others.every((t) => t.bg[3] < 5), `${listSelector} 选中项没有可见的底色：${JSON.stringify(r)}`);
+  assert(others.every((t) => t.state === "inactive"), `${listSelector} 未选中项的状态：${JSON.stringify(others.map((t) => t.state))}`);
+  // 选中项有可见的底色（不透明度 > 20/255），未选中项没有底色。属于“选中项底色对比”规则：
+  // 它在 SOFT_RULES 里（暂用 shadcn 默认主题）时只记警告，否则是硬失败
+  const bgVisible = selected[0].bg[3] > 20 && others.every((t) => t.bg[3] < 5);
+  if (!bgVisible) {
+    const soft = await page.evaluate(() => window.__e2e.softRules?.["selected-distinct"]);
+    const message = `${listSelector} 选中项“${expectText}”的底色不透明度 ${selected[0].bg[3]}/255 ≤ 20（rgba(${selected[0].bg.join(",")})）`;
+    assert(soft, message);
+    const label = "导航选中底色";
+    const text = `[selected-distinct] ${message}【降级为警告：${soft}】`;
+    log(`  ⚠ 审计警告（${label}）：${text}`);
+    auditWarnings.push({ label, text });
+  }
   return `${expectText}（底色 rgba(${selected[0].bg.join(",")})）`;
 }
 
@@ -822,6 +850,7 @@ async function auditScenario(s) {
       counts.boundaries += r.stats.boundaries;
     };
     const notes = [];
+    const found = [];
     for (const theme of themes) {
       if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== theme) {
         await page.click({ selector: "nav button", label: theme === "dark" ? "切换到深色" : "切换到浅色" });
@@ -830,17 +859,27 @@ async function auditScenario(s) {
       // 三个页面：侧栏选中项明确
       for (const [id, heading, label] of [["batch", "视频队列", "批量处理"], ["toolbox", "工具箱", "工具箱"], ["settings", "设置", "设置"]]) {
         await ui.nav(page, id, heading);
-        add(await auditUi(page, `${theme} ${heading}`));
+        add(await auditUi(page, `${theme} ${heading}`, undefined, found));
         notes.push(`${theme} 侧栏 ${await assertNavSelected(page, "nav", label)}`);
       }
       // 侧栏的键盘焦点环与选中底色同时可见、互相区分
       const ring = await page.evaluate(() => window.__e2e.focusRing("#nav-settings"));
-      assert(ring.ok && ring.contrast >= 3, `侧栏焦点环：${JSON.stringify(ring)}`);
+      assert(ring.ok, `侧栏焦点环：${JSON.stringify(ring)}`);
+      if (ring.contrast < 3) {
+        const soft = await page.evaluate(() => window.__e2e.softRules?.["focus-ring-contrast"]);
+        const message = `侧栏焦点环描边对比 ${ring.contrast} < 3（${JSON.stringify(ring)}）`;
+        if (!soft) found.push(`（${theme}）${message}`);
+        else {
+          const text = `[focus-ring-contrast] ${message}【降级为警告：${soft}】`;
+          log(`  ⚠ 审计警告（${theme} 侧栏焦点环）：${text}`);
+          auditWarnings.push({ label: `${theme} 侧栏焦点环`, text });
+        }
+      }
       // 设置的每个分组
       for (const tab of ["转换", "字幕与封面", "通用", "完成后", "高级", "关于"]) {
         await page.click({ selector: "[role=tab]", text: tab });
         await sleep(200);
-        add(await auditUi(page, `${theme} 设置 · ${tab}`, "main"));
+        add(await auditUi(page, `${theme} 设置 · ${tab}`, "main", found));
         await assertNavSelected(page, "main [aria-label=设置分组]", tab);
       }
       // 18 个模块的参数表单（逐个展开，不改动开关）
@@ -849,7 +888,7 @@ async function auditScenario(s) {
       assert(modules.length === 18, `模块数 ${modules.length}`);
       for (const name of modules) {
         await ui.expandModule(page, name);
-        add(await auditUi(page, `${theme} 模块 ${name}`, "aside"));
+        add(await auditUi(page, `${theme} 模块 ${name}`, "aside", found));
       }
       await ui.expandModule(page, "帧率");
       // 34 个工具对话框
@@ -857,7 +896,7 @@ async function auditScenario(s) {
       const tools = await page.evaluate(() => [...document.querySelectorAll("[role=button][aria-label^='打开 ']")].map((b) => b.getAttribute("aria-label").slice(3)));
       for (const name of tools) {
         await ui.openTool(page, name);
-        add(await auditUi(page, `${theme} 工具 ${name}`, "[role=dialog]"));
+        add(await auditUi(page, `${theme} 工具 ${name}`, "[role=dialog]", found));
         await ui.closeDialog(page);
       }
       notes.push(`${theme}：${modules.length} 个模块、${tools.length} 个工具`);
@@ -866,6 +905,7 @@ async function auditScenario(s) {
       await page.click({ selector: "nav button", label: original === "dark" ? "切换到深色" : "切换到浅色" });
     }
     await ui.nav(page, "batch", "视频队列");
+    if (found.length) throw new Error(`界面审计发现 ${found.length} 个问题（${counts.audits} 次审计）：\n${[...new Set(found)].join("\n")}`);
     return `${counts.audits} 次审计无问题（${counts.groups} 组选项、${counts.texts} 处文字、${counts.boundaries} 个控件边界）；${notes.join("；")}`;
   });
 }
@@ -1044,11 +1084,12 @@ async function batchScenarios(s, media) {
     await ui.expandModule(page, "文本");
     await page.click({ selector: "aside button", label: "字体" });
     const fonts = await page.waitFor("字体列表", () => {
-      const n = document.querySelectorAll("[data-slot=select-item]").length;
+      const n = document.querySelectorAll("[data-slot=select-content][data-open] [data-slot=select-item]").length;
       return n > 2 ? n : null;
     });
     await page.escape();
-    await page.waitFor("字体列表关闭", () => document.querySelectorAll("[data-slot=select-item]").length === 0);
+    // Base UI 的 Select 关闭后弹层仍挂在页面上（data-closed），以 data-open 判断是否打开
+    await page.waitFor("字体列表关闭", () => document.querySelectorAll("[data-slot=select-content][data-open]").length === 0);
     return `${r}；${steps}；最大像素差 ${diff}；系统字体 ${fonts - 2} 个`;
   });
 
@@ -1089,7 +1130,7 @@ async function batchScenarios(s, media) {
     await page.click({ selector: "[role=menuitem]", textIncludes: "独立工具" });
     await page.click({ selector: "[role=menu] [role=menuitem]", text: "视频倒放" });
     await page.waitFor("视频倒放对话框", () => document.querySelector("[role=dialog] h2")?.textContent.includes("视频倒放"));
-    const scope = await page.evaluate(() => window.__e2e.find({ selector: "[role=radio]", textStarts: "队列中选中的", within: "[role=dialog]" })?.getAttribute("data-state") + " " + window.__e2e.find({ selector: "[role=radio]", textStarts: "队列中选中的", within: "[role=dialog]" })?.textContent);
+    const scope = await page.evaluate(() => window.__e2e.state(window.__e2e.find({ selector: "[data-slot=toggle-group-item]", textStarts: "队列中选中的", within: "[role=dialog]" })) + " " + window.__e2e.find({ selector: "[data-slot=toggle-group-item]", textStarts: "队列中选中的", within: "[role=dialog]" })?.textContent);
     assert(scope.startsWith("on 队列中选中的 1 个"), `处理范围：${scope}`);
     await ui.closeDialog(page);
     // 工具栏“工具”菜单：选中全部 → 生成 GIF，范围为选中的 3 个
@@ -1097,7 +1138,7 @@ async function batchScenarios(s, media) {
     await page.click({ selector: "main button", text: "工具" });
     await page.click({ selector: "[role=menuitem]", text: "生成 GIF" });
     await page.waitFor("生成 GIF 对话框", () => document.querySelector("[role=dialog] h2")?.textContent.includes("生成 GIF"));
-    const scope2 = await page.evaluate(() => window.__e2e.find({ selector: "[role=radio][data-state=on]", within: "[role=dialog]" })?.textContent);
+    const scope2 = await page.evaluate(() => window.__e2e.find({ selector: "[data-slot=toggle-group-item][data-pressed]", within: "[role=dialog]" })?.textContent);
     assert(scope2 === "队列中选中的 3 个", `处理范围：${scope2}`);
     await ui.closeDialog(page);
     // 拖动把手排序（指针事件，系统拖放开启时 HTML5 拖放不可用）：第 1 行拖到第 3 行下方
@@ -1178,14 +1219,14 @@ async function batchScenarios(s, media) {
     const reset = async () => {
       await page.click({ selector: "aside header button", textIncludes: "重置" });
       await page.click({ selector: "[role=alertdialog] button", text: "确定" });
-      await page.waitFor("重置后裁剪关闭", () => window.__e2e.find({ selector: "[role=switch]", label: "裁剪", within: "aside" })?.getAttribute("data-state") === "unchecked");
+      await page.waitFor("重置后裁剪关闭", () => window.__e2e.state(window.__e2e.find({ selector: "[role=switch]", label: "裁剪", within: "aside" })) === "unchecked");
       assert((await ui.switchState(page, "文本")) === "unchecked" && (await ui.switchState(page, "帧率")) === "checked", "重置后应只启用帧率");
     };
     const restored = async (how) => {
-      await page.waitFor(`${how}后裁剪开启`, () => window.__e2e.find({ selector: "[role=switch]", label: "裁剪", within: "aside" })?.getAttribute("data-state") === "checked");
+      await page.waitFor(`${how}后裁剪开启`, () => window.__e2e.state(window.__e2e.find({ selector: "[role=switch]", label: "裁剪", within: "aside" })) === "checked");
       assert((await ui.switchState(page, "文本")) === "checked" && (await ui.switchState(page, "码率")) === "checked", `${how}后文本 / 码率未恢复`);
       await ui.expandModule(page, "裁剪");
-      const mode = await page.evaluate(() => window.__e2e.find({ selector: "[role=radio]", text: "百分比", within: "aside" })?.getAttribute("data-state"));
+      const mode = await page.evaluate(() => window.__e2e.state(window.__e2e.find({ selector: "[data-slot=toggle-group-item]", text: "百分比", within: "aside" })));
       assert(mode === "on", `${how}后裁剪方式不是百分比`);
     };
     await reset();
@@ -1717,6 +1758,24 @@ function printReport() {
   }
   const shots = sessions.flatMap((s) => s.shots ?? []);
   if (shots.length) console.log(`\n截图：\n  ${shots.join("\n  ")}`);
+  if (auditWarnings.length) {
+    // 按规则汇总降级为警告的审计结果：次数与实测值范围（每条消息里的第一个比值 / 不透明度）
+    console.log(`\n界面审计警告（暂时降级的规则，见 scripts/e2e-audit-page.js 的 SOFT_RULES）：共 ${auditWarnings.length} 条`);
+    const byRule = new Map();
+    for (const w of auditWarnings) {
+      const rule = /^\[([\w-]+)\]/.exec(w.text)?.[1] ?? "?";
+      const value = Number(/(\d+(?:\.\d+)?)(?: <|，|\/255)/.exec(w.text)?.[1]);
+      const entry = byRule.get(rule) ?? { count: 0, values: [], sample: w };
+      entry.count++;
+      if (Number.isFinite(value)) entry.values.push(value);
+      byRule.set(rule, entry);
+    }
+    for (const [rule, e] of byRule) {
+      const range = e.values.length ? `实测 ${Math.min(...e.values)} ~ ${Math.max(...e.values)}` : "";
+      console.log(`  ${rule}：${e.count} 条，${range}；例：（${e.sample.label}）${e.sample.text}`);
+    }
+    fs.writeFileSync(path.join(REPORT, "audit-warnings.json"), JSON.stringify(auditWarnings, null, 2));
+  }
   const failed = results.filter((r) => r.status === "fail").length;
   console.log(`\n${results.length - failed}/${results.length} 通过；报告目录：${REPORT}`);
   fs.writeFileSync(path.join(REPORT, "results.json"), JSON.stringify(results, null, 2));

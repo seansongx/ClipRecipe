@@ -74,29 +74,34 @@ function ModuleRow({ feature, open, onToggleOpen }: { feature: Feature; open: bo
           aria-label={feature.name}
           onCheckedChange={(on) => setEnabled(feature.id, on)}
         />
-        <CollapsibleTrigger asChild>
-          <Button
-            variant="ghost"
-            // 两行内容（名称 + 摘要）：高度随内容（Mira 的按钮是固定高度 h-7）
-            className="h-auto min-w-0 flex-1 justify-start text-left whitespace-normal"
-          >
-            <span className="min-w-0 flex-1">
-              <span className="flex items-center gap-1.5">
-                {feature.name}
-                {planned && (
-                  <Badge variant="secondary">
-                    规划中
-                  </Badge>
-                )}
-              </span>
-              <span className="block truncate text-xs text-muted-foreground">{feature.summary}</span>
+        <CollapsibleTrigger
+          render={
+            <Button
+              variant="ghost"
+              // 两行内容（名称 + 摘要）：高度随内容（Mira 的按钮是固定高度 h-7）
+              className="h-auto min-w-0 flex-1 justify-start text-left whitespace-normal"
+            />
+          }
+        >
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-1.5">
+              {feature.name}
+              {planned && (
+                <Badge variant="secondary">
+                  规划中
+                </Badge>
+              )}
             </span>
-            {open ? (
-              <ChevronDown />
-            ) : (
-              <ChevronRight />
-            )}
-          </Button>
+            {/* 摘要是次要文字；展开 / 悬停时按钮是 muted 底，muted 文字在上面不够 4.5:1，改为继承按钮的前景色 */}
+            <span className="block truncate text-xs text-muted-foreground group-hover/button:text-inherit group-aria-expanded/button:text-inherit">
+              {feature.summary}
+            </span>
+          </span>
+          {open ? (
+            <ChevronDown />
+          ) : (
+            <ChevronRight />
+          )}
         </CollapsibleTrigger>
       </div>
       <CollapsibleContent className="px-3 pb-3">
@@ -154,13 +159,13 @@ function RecipeFooter() {
 /** pipe.reset：二次确认后恢复默认参数。 */
 function ResetButton() {
   const reset = useRecipe((s) => s.reset);
+  // 受控：shadcn（Base UI）的 AlertDialogAction 只是按钮，不会自己关闭对话框
+  const [open, setOpen] = useState(false);
   return (
-    <AlertDialog>
+    <AlertDialog open={open} onOpenChange={setOpen}>
       <Hint label="恢复默认参数（仅启用帧率）">
-        <AlertDialogTrigger asChild>
-          <Button variant="outline" size="sm" className="ml-auto">
-            <RotateCcw /> 重置
-          </Button>
+        <AlertDialogTrigger render={<Button variant="outline" size="sm" className="ml-auto" />}>
+          <RotateCcw /> 重置
         </AlertDialogTrigger>
       </Hint>
       <AlertDialogContent size="sm">
@@ -170,7 +175,14 @@ function ResetButton() {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>取消</AlertDialogCancel>
-          <AlertDialogAction onClick={reset}>确定</AlertDialogAction>
+          <AlertDialogAction
+            onClick={() => {
+              reset();
+              setOpen(false);
+            }}
+          >
+            确定
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

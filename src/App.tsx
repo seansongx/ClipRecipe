@@ -40,7 +40,7 @@ const panelId = (id: ViewId) => `view-${id}`;
 
 /** 是否有打开的对话框 / 菜单（这时全局快捷键让给它们，Esc 由它们自己关闭）。 */
 const overlayOpen = () =>
-  !!document.querySelector("[role=dialog], [role=alertdialog], [role=menu], [role=listbox][data-state=open], [data-slot=popover-content]");
+  !!document.querySelector("[role=dialog], [role=alertdialog], [role=menu], [role=listbox][data-open], [data-slot=popover-content]");
 
 const openDocs = () =>
   openProjectPage().catch((e) => useLog.getState().add("error", `无法打开使用文档：${String(e)}`));
@@ -141,7 +141,7 @@ export default function App() {
   }, [settingsLoaded]);
 
   return (
-    <TooltipProvider delayDuration={500} skipDelayDuration={300}>
+    <TooltipProvider delay={500} timeout={300}>
       <div className="flex h-full flex-col">
         <div className="flex min-h-0 flex-1">
           {/*

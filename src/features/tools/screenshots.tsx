@@ -70,7 +70,7 @@ function ScreenshotsForm({ value, onChange }: ToolFormProps<ScreenshotsParams>) 
   return (
     <>
       <ParamField label="截图方式">
-        <Select value={value.mode} onValueChange={(mode) => onChange({ mode: mode as ShotMode })}>
+        <Select items={MODES} value={value.mode} onValueChange={(mode) => mode && onChange({ mode })}>
           <SelectTrigger aria-label="截图方式" className="w-32">
             <SelectValue />
           </SelectTrigger>
@@ -187,8 +187,9 @@ function ScreenshotsForm({ value, onChange }: ToolFormProps<ScreenshotsParams>) 
         <>
           <ParamField label="位置">
             <Select
+              items={POSITIONS}
               value={value.namePosition}
-              onValueChange={(namePosition) => onChange({ namePosition: namePosition as NamePosition })}
+              onValueChange={(namePosition) => namePosition && onChange({ namePosition })}
             >
               <SelectTrigger aria-label="文件名位置" className="w-28">
                 <SelectValue />

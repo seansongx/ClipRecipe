@@ -116,8 +116,9 @@ function ImageToVideoForm({ value, onChange }: ToolFormProps<ImageToVideoParams>
         hint="缓慢推拉：整段时长内缓慢放大并从左向右平移，不使用入场时长。"
       >
         <Select
+          items={ANIMATIONS}
           value={value.animation}
-          onValueChange={(animation) => onChange({ animation: animation as ImageAnimation })}
+          onValueChange={(animation) => animation && onChange({ animation })}
         >
           <SelectTrigger aria-label="入场动画" className="w-32">
             <SelectValue />

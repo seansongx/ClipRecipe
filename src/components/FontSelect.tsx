@@ -36,6 +36,12 @@ export default function FontSelect({ value, onChange }: { value: string; onChang
   const inList = fonts.some((f) => f.path === value);
   const custom = customChosen || (value !== "" && !inList);
   const selected = custom ? CUSTOM_FONT : value === "" ? DEFAULT_FONT : value;
+  // SelectValue 按 items 显示所选项的名称（Base UI 默认显示原始值，即字体路径）
+  const items = [
+    { value: DEFAULT_FONT, label: "默认（自动选择中文字体）" },
+    { value: CUSTOM_FONT, label: "其它字体文件…" },
+    ...fonts.map((font) => ({ value: font.path, label: font.name })),
+  ];
 
   const browse = async () => {
     const path = await pickFile("字体", FONT_EXTENSIONS);
@@ -45,8 +51,10 @@ export default function FontSelect({ value, onChange }: { value: string; onChang
   return (
     <div className="space-y-2">
       <Select
+        items={items}
         value={selected}
         onValueChange={(next) => {
+          if (next === null) return;
           setCustomChosen(next === CUSTOM_FONT);
           if (next === DEFAULT_FONT) onChange("");
           else if (next !== CUSTOM_FONT) onChange(next);

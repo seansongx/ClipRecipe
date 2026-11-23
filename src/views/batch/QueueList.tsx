@@ -115,21 +115,21 @@ function SidecarSubmenu() {
         <Captions /> 字幕与封面
       </ContextMenuSubTrigger>
       <ContextMenuSubContent className="min-w-40">
-        <ContextMenuItem disabled={!isTauri} onSelect={() => void choose("subtitle")}>
+        <ContextMenuItem disabled={!isTauri} onClick={() => void choose("subtitle")}>
           <Captions /> 设置字幕…
         </ContextMenuItem>
-        <ContextMenuItem onSelect={() => setAttachment(ids(), "subtitle", null)}>
+        <ContextMenuItem onClick={() => setAttachment(ids(), "subtitle", null)}>
           清除字幕
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem disabled={!isTauri} onSelect={() => void choose("cover")}>
+        <ContextMenuItem disabled={!isTauri} onClick={() => void choose("cover")}>
           <Image /> 设置封面…
         </ContextMenuItem>
-        <ContextMenuItem onSelect={() => setAttachment(ids(), "cover", null)}>
+        <ContextMenuItem onClick={() => setAttachment(ids(), "cover", null)}>
           清除封面
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem disabled={!isTauri} onSelect={() => void reloadSidecars()}>
+        <ContextMenuItem disabled={!isTauri} onClick={() => void reloadSidecars()}>
           <RefreshCw /> 全部重载（同名字幕与封面）
         </ContextMenuItem>
       </ContextMenuSubContent>
@@ -195,141 +195,137 @@ function Row({
   const isActive = item.state === "running" || item.state === "waiting";
   return (
     <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <li
-          id={rowDomId(item.id)}
-          role="option"
-          aria-selected={selected}
-          data-row-index={index}
-          data-active={active || undefined}
-          onClick={(e) => onRowClick(e, item)}
-          onContextMenu={() => {
-            // 右键未选中的行时改为只选中它，菜单里的操作针对所选视频
-            if (!selected) select(item.id, "single");
-          }}
-          onDoubleClick={() => usePreview.getState().playSource(item)}
-          className={cn(
-            "group relative flex items-start gap-2 py-1.5 pr-2 pl-1",
-            selected
-              ? "bg-primary/15 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-primary"
-              : "hover:bg-muted/60",
-            "group-focus-visible/list:data-active:outline group-focus-visible/list:data-active:-outline-offset-1 group-focus-visible/list:data-active:outline-ring",
-          )}
-        >
-          {dropMark && (
-            <span
-              className={cn("pointer-events-none absolute inset-x-0 h-0.5 bg-primary", dropMark === "before" ? "-top-px" : "-bottom-px")}
-            />
-          )}
-          <Hint label="拖动调整顺序">
-            <span
-              aria-label="拖动调整顺序"
-              onPointerDown={(e) => onGripDown(e, item.id)}
-              onClick={(e) => e.stopPropagation()}
-              className="mt-0.5 cursor-grab touch-none text-muted-foreground opacity-40 hover:opacity-100 active:cursor-grabbing"
-            >
-              <GripVertical className="size-4" />
-            </span>
-          </Hint>
-          <Checkbox
-            checked={selected}
-            tabIndex={-1}
-            onClick={(e) => e.stopPropagation()}
-            onDoubleClick={(e) => e.stopPropagation()}
-            onCheckedChange={() => select(item.id, "toggle")}
-            aria-label={`选择 ${item.name}`}
-            className="mt-0.5"
+      <ContextMenuTrigger
+        render={
+          <li
+            id={rowDomId(item.id)}
+            role="option"
+            aria-selected={selected}
+            data-row-index={index}
+            data-active={active || undefined}
+            onClick={(e) => onRowClick(e, item)}
+            onContextMenu={() => {
+              // 右键未选中的行时改为只选中它，菜单里的操作针对所选视频
+              if (!selected) select(item.id, "single");
+            }}
+            onDoubleClick={() => usePreview.getState().playSource(item)}
+            className={cn(
+              "group relative flex items-start gap-2 py-1.5 pr-2 pl-1",
+              selected
+                ? "bg-primary/15 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-primary"
+                : "hover:bg-muted/60",
+              "group-focus-visible/list:data-active:outline group-focus-visible/list:data-active:-outline-offset-1 group-focus-visible/list:data-active:outline-ring",
+            )}
           />
-          <span className="mt-px w-6 text-right text-xs text-muted-foreground tabular-nums">{index + 1}</span>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <Hint label={item.path} side="bottom" align="start">
-                <p className="truncate" data-path={item.path}>
-                  {item.name}
-                </p>
-              </Hint>
-              {item.subtitle && <AttachmentBadge title={`烧录字幕：${item.subtitle}`}>CC</AttachmentBadge>}
-              {item.cover && <AttachmentBadge title={`嵌入封面：${item.cover}`}>FC</AttachmentBadge>}
-              {!item.subtitle && item.info && item.info.subtitles.length > 0 && (
-                <StreamBadge title="文件内带字幕轨">CC</StreamBadge>
-              )}
-              {!item.cover && item.info?.hasCover && <StreamBadge title="文件内带封面">FC</StreamBadge>}
-            </div>
-            <p className={cn("truncate text-xs", item.probeError ? "text-destructive select-text" : "text-muted-foreground")}>
-              {mediaSummary(item)}
-            </p>
-            {(item.state === "running" || item.state === "done") && (
-              <Progress
-                value={Math.max(0, Math.min(100, item.percent))}
-                className={cn(
-                  "mt-1 h-1",
-                  item.state === "done" && "[&>[data-slot=progress-indicator]]:bg-muted-foreground/60",
-                )}
-              />
+        }
+      >
+        {dropMark && (
+          <span
+            className={cn("pointer-events-none absolute inset-x-0 h-0.5 bg-primary", dropMark === "before" ? "-top-px" : "-bottom-px")}
+          />
+        )}
+        <Hint label="拖动调整顺序">
+          <span
+            aria-label="拖动调整顺序"
+            onPointerDown={(e) => onGripDown(e, item.id)}
+            onClick={(e) => e.stopPropagation()}
+            className="mt-0.5 cursor-grab touch-none text-muted-foreground opacity-40 hover:opacity-100 active:cursor-grabbing"
+          >
+            <GripVertical className="size-4" />
+          </span>
+        </Hint>
+        <Checkbox
+          checked={selected}
+          tabIndex={-1}
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onCheckedChange={() => select(item.id, "toggle")}
+          aria-label={`选择 ${item.name}`}
+          className="mt-0.5"
+        />
+        <span className="mt-px w-6 text-right text-xs text-muted-foreground tabular-nums">{index + 1}</span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <Hint label={item.path} side="bottom" align="start">
+              <p className="truncate" data-path={item.path}>
+                {item.name}
+              </p>
+            </Hint>
+            {item.subtitle && <AttachmentBadge title={`烧录字幕：${item.subtitle}`}>CC</AttachmentBadge>}
+            {item.cover && <AttachmentBadge title={`嵌入封面：${item.cover}`}>FC</AttachmentBadge>}
+            {!item.subtitle && item.info && item.info.subtitles.length > 0 && (
+              <StreamBadge title="文件内带字幕轨">CC</StreamBadge>
             )}
-            {item.state === "failed" && item.error && (
-              <p className="mt-1 line-clamp-2 text-xs text-destructive select-text">{item.error}</p>
-            )}
-            <OutputLine item={item} />
-            <ToolRowProgress queueId={item.id} path={item.path} />
+            {!item.cover && item.info?.hasCover && <StreamBadge title="文件内带封面">FC</StreamBadge>}
           </div>
-          <span className={cn("mt-px shrink-0 text-xs tabular-nums", STATE_TONE[item.state])}>{stateText(item)}</span>
-          <div className="-my-0.5 flex shrink-0" onDoubleClick={(e) => e.stopPropagation()}>
-            <Hint label="播放">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="播放"
-                tabIndex={-1}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  usePreview.getState().playSource(item);
-                }}
-                className={rowButton}
-              >
-                <Play />
-              </Button>
-            </Hint>
-            <Hint label="媒体信息">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="媒体信息"
-                tabIndex={-1}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onShowInfo(item);
-                }}
-                className={rowButton}
-              >
-                <Info />
-              </Button>
-            </Hint>
-            <Hint label={isActive ? "取消" : "移除"}>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={isActive ? "取消" : "移除"}
-                tabIndex={-1}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (isActive) void cancel(item.id);
-                  else requestRemove({ kind: "ids", ids: [item.id] });
-                }}
-                className={rowButton}
-              >
-                <X />
-              </Button>
-            </Hint>
-          </div>
-        </li>
+          <p className={cn("truncate text-xs", item.probeError ? "text-destructive select-text" : "text-muted-foreground")}>
+            {mediaSummary(item)}
+          </p>
+          {(item.state === "running" || item.state === "done") && (
+            <Progress value={Math.max(0, Math.min(100, item.percent))} className="mt-1" />
+          )}
+          {item.state === "failed" && item.error && (
+            <p className="mt-1 line-clamp-2 text-xs text-destructive select-text">{item.error}</p>
+          )}
+          <OutputLine item={item} />
+          <ToolRowProgress queueId={item.id} path={item.path} />
+        </div>
+        <span className={cn("mt-px shrink-0 text-xs tabular-nums", STATE_TONE[item.state])}>{stateText(item)}</span>
+        <div className="-my-0.5 flex shrink-0" onDoubleClick={(e) => e.stopPropagation()}>
+          <Hint label="播放">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="播放"
+              tabIndex={-1}
+              onClick={(e) => {
+                e.stopPropagation();
+                usePreview.getState().playSource(item);
+              }}
+              className={rowButton}
+            >
+              <Play />
+            </Button>
+          </Hint>
+          <Hint label="媒体信息">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="媒体信息"
+              tabIndex={-1}
+              onClick={(e) => {
+                e.stopPropagation();
+                onShowInfo(item);
+              }}
+              className={rowButton}
+            >
+              <Info />
+            </Button>
+          </Hint>
+          <Hint label={isActive ? "取消" : "移除"}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={isActive ? "取消" : "移除"}
+              tabIndex={-1}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isActive) void cancel(item.id);
+                else requestRemove({ kind: "ids", ids: [item.id] });
+              }}
+              className={rowButton}
+            >
+              <X />
+            </Button>
+          </Hint>
+        </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="min-w-44">
-        <ContextMenuItem onSelect={() => usePreview.getState().playSource(item)}>
+        <ContextMenuItem onClick={() => usePreview.getState().playSource(item)}>
           <Play /> 播放
           <ContextMenuShortcut>Enter</ContextMenuShortcut>
         </ContextMenuItem>
-        <ContextMenuItem onSelect={() => onShowInfo(item)}>
+        <ContextMenuItem onClick={() => onShowInfo(item)}>
           <Info /> 媒体信息
         </ContextMenuItem>
         <QueueToolsSubmenu />
@@ -337,7 +333,7 @@ function Row({
         <ContextMenuSeparator />
         <ContextMenuItem
           variant="destructive"
-          onSelect={() => {
+          onClick={() => {
             if (isActive) void cancel(item.id);
             else requestRemove({ kind: "ids", ids: [...useQueue.getState().selected] });
           }}
@@ -513,7 +509,7 @@ export default function QueueList({ hovering }: { hovering: boolean }) {
             <Spinner className="size-3.5" aria-label="导入中" />
             {importing.total > 10 ? `正在导入 ${importing.done} / ${importing.total}` : "正在导入…"}
           </div>
-          {importing.total > 10 && <Progress value={(importing.done / importing.total) * 100} className="mt-1 h-1" />}
+          {importing.total > 10 && <Progress value={(importing.done / importing.total) * 100} className="mt-1" />}
         </div>
       )}
       {items.length === 0 ? (

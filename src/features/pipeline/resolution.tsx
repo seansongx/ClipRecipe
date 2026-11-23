@@ -38,6 +38,11 @@ export interface ResolutionParams {
 const STANDARD_HEIGHTS = [360, 480, 540, 720, 1080, 1440, 2160];
 /** 下拉框里表示“当前高度不是标准档位”的值 */
 const CUSTOM_HEIGHT = "custom";
+/** 高度下拉框的选项（SelectValue 按它显示名称）。 */
+const HEIGHT_ITEMS = [
+  { value: CUSTOM_HEIGHT, label: "自定义" },
+  ...STANDARD_HEIGHTS.map((h) => ({ value: String(h), label: `${h}p` })),
+];
 
 const SIZE_PRESETS: { label: string; width: number; height: number }[] = [
   { label: "竖屏 1080×1920", width: 1080, height: 1920 },
@@ -64,8 +69,9 @@ function ResolutionForm({ value, onChange }: ModuleFormProps<ResolutionParams>) 
         <ParamField label="高度" hint="所有视频统一为此高度，宽度按原比例换算（取偶数）。">
           <div className="flex flex-wrap items-center gap-1.5">
             <Select
+              items={HEIGHT_ITEMS}
               value={STANDARD_HEIGHTS.includes(value.standardHeight) ? String(value.standardHeight) : CUSTOM_HEIGHT}
-              onValueChange={(v) => v !== CUSTOM_HEIGHT && onChange({ standardHeight: Number(v) })}
+              onValueChange={(v) => v && v !== CUSTOM_HEIGHT && onChange({ standardHeight: Number(v) })}
             >
               <SelectTrigger aria-label="标准高度" className="w-24">
                 <SelectValue />
@@ -126,13 +132,12 @@ function ResolutionForm({ value, onChange }: ModuleFormProps<ResolutionParams>) 
           </ParamField>
           <ParamField label="常用">
             <ToggleGroup
-              type="single"
               variant="outline"
               spacing={1}
               aria-label="常用尺寸"
-              value={SIZE_PRESETS.find((p) => p.width === value.width && p.height === value.height)?.label ?? ""}
-              onValueChange={(label) => {
-                const preset = SIZE_PRESETS.find((p) => p.label === label);
+              value={SIZE_PRESETS.filter((p) => p.width === value.width && p.height === value.height).map((p) => p.label)}
+              onValueChange={(labels) => {
+                const preset = SIZE_PRESETS.find((p) => p.label === labels[0]);
                 if (preset) onChange({ width: preset.width, height: preset.height });
               }}
               className="flex-wrap"

@@ -63,7 +63,7 @@ function RemoveWatermarkForm({ value, onChange }: ModuleFormProps<RemoveWatermar
       {value.mode === "preset" ? (
         <ParamField label="位置" hint="可多选。角标按画面短边的 30%×12% 计算，横竖屏一致；字幕条为画面底部 76%～90% 高度处。">
           <ToggleGroup
-            type="multiple"
+            multiple
             variant="outline"
             spacing={1}
             value={value.presets}

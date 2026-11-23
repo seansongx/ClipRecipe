@@ -53,54 +53,55 @@ export default function LogPanel({
   }, [visible.length, open]);
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} asChild>
-      <section className={cn("mx-3 mb-2 flex flex-col rounded-md border bg-card", className)}>
-        <header className="flex items-center gap-2 px-1.5 py-0.5">
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm">
-              {open ? <ChevronDown /> : <ChevronRight />}
-              处理记录
-              <span className="font-normal text-muted-foreground">
-                {visible.length} 条{problems > 0 && `，${problems} 个错误`}
-              </span>
-            </Button>
-          </CollapsibleTrigger>
-          <div className="ml-auto flex items-center gap-1.5">
-            <Checkbox id={debugId} checked={showDebug} onCheckedChange={(v) => setShowDebug(v === true)} />
-            <Label htmlFor={debugId}>
-              显示命令行
-            </Label>
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      render={<section className={cn("mx-3 mb-2 flex flex-col rounded-md border bg-card", className)} />}
+    >
+      <header className="flex items-center gap-2 px-1.5 py-0.5">
+        <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
+          {open ? <ChevronDown /> : <ChevronRight />}
+          处理记录
+          {/* 次要文字；按钮展开 / 悬停时是 muted 底，muted 文字在上面不够 4.5:1，改为继承按钮的前景色 */}
+          <span className="font-normal text-muted-foreground group-hover/button:text-inherit group-aria-expanded/button:text-inherit">
+            {visible.length} 条{problems > 0 && `，${problems} 个错误`}
+          </span>
+        </CollapsibleTrigger>
+        <div className="ml-auto flex items-center gap-1.5">
+          <Checkbox id={debugId} checked={showDebug} onCheckedChange={(v) => setShowDebug(v === true)} />
+          <Label htmlFor={debugId}>
+            显示命令行
+          </Label>
+        </div>
+        <Hint label="清空记录">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="清空记录"
+            onClick={clear}
+            disabled={entries.length === 0}
+          >
+            <Trash2 />
+          </Button>
+        </Hint>
+      </header>
+      <CollapsibleContent>
+        <ScrollArea ref={scroller} className={cn("border-t", bodyClassName)}>
+          <div className="px-3 py-1.5 font-mono text-xs leading-5 select-text">
+            {visible.length === 0 ? (
+              <p className="text-muted-foreground">暂无记录</p>
+            ) : (
+              visible.map((entry) => (
+                <div key={entry.id} className={`flex gap-2 ${LEVEL_TONE[entry.level]}`}>
+                  <span className="shrink-0 text-muted-foreground tabular-nums">{formatTime(entry.time)}</span>
+                  <span className="shrink-0">{LEVEL_LABEL[entry.level]}</span>
+                  <span className="min-w-0 break-all whitespace-pre-wrap">{entry.message}</span>
+                </div>
+              ))
+            )}
           </div>
-          <Hint label="清空记录">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="清空记录"
-              onClick={clear}
-              disabled={entries.length === 0}
-            >
-              <Trash2 />
-            </Button>
-          </Hint>
-        </header>
-        <CollapsibleContent>
-          <ScrollArea ref={scroller} className={cn("border-t", bodyClassName)}>
-            <div className="px-3 py-1.5 font-mono text-xs leading-5 select-text">
-              {visible.length === 0 ? (
-                <p className="text-muted-foreground">暂无记录</p>
-              ) : (
-                visible.map((entry) => (
-                  <div key={entry.id} className={`flex gap-2 ${LEVEL_TONE[entry.level]}`}>
-                    <span className="shrink-0 text-muted-foreground tabular-nums">{formatTime(entry.time)}</span>
-                    <span className="shrink-0">{LEVEL_LABEL[entry.level]}</span>
-                    <span className="min-w-0 break-all whitespace-pre-wrap">{entry.message}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </ScrollArea>
-        </CollapsibleContent>
-      </section>
+        </ScrollArea>
+      </CollapsibleContent>
     </Collapsible>
   );
 }

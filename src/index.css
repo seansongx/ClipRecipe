@@ -7,150 +7,145 @@
 
 /*
  * ============================================================================================
- * shadcn 主题变量（style：radix-mira，components.json）
- * 结构与 `shadcn apply` 为 Mira 写出的完全相同（同一组变量、同一套 @theme inline 映射、同一个圆角刻度），
- * 只把颜色换成本项目的配色：深色是中性灰（底色 #141416 一族）+ 青色 #00c1cd，浅色是浅灰 + 深青 #006b75。
- * 界面的全部定制都在这里改变量，不改 src/components/ui/（那里是 CLI 生成的原版，`npm run check:shadcn` 核对）。
+ * 主题 token（全应用只有这一套）
  *
- * 取值时要满足的硬性规则（e2e 的界面状态审计 scripts/e2e-audit-page.js 会检查）：
- * - --muted：Mira 的 Toggle / ToggleGroup 选中项、Tabs 列表底都是 bg-muted，它与所在面板（background / card / popover）
- *   的亮度对比 ≥ 1.2，选中项才看得出来；
- * - --muted-foreground：在 muted 底上（以及输入框的半透明底上）仍 ≥ 4.5；
- * - --input：输入框、复选框的边框与开关的未选中底（深色主题是 input/80）与面板对比 ≥ 3；
- * - --ring：Mira 的键盘焦点是 1px 实色 ring 边框 + 半透明光晕，实色部分与背景 ≥ 3；
- * - --primary 上的文字（primary-foreground）≥ 4.5。
- * --background 的两个值也是窗口显示前的底色，src-tauri/src/desktop.rs 的单元测试会核对，改动时一并修改那里；
- * --background / --foreground / --border 也会写进 Windows 11 的标题栏（state/theme.ts），必须是 #rrggbb。
+ * 1. shadcn 主题变量（style：base-mira，即 Base UI 版的 Mira；基础色 neutral）：
+ *    与 `shadcn init --base base --preset b1D0dv72`（Mira + neutral）写出的变量、取值、@theme inline 映射、圆角刻度完全相同，
+ *    只是深色挂在 [data-theme="dark"] 上（CLI 写的是 .dark）。不要改这些值；src/components/ui/ 是 CLI 原版
+ *    （`npm run check:shadcn` 核对），也不要用全局规则覆盖组件外观。
+ * 2. 本应用自有 token（shadcn 没有的语义）：写法与 shadcn 变量相同（:root 与 [data-theme="dark"] 各一组 oklch 值），
+ *    在 @theme inline 里暴露成 Tailwind 颜色（bg-success、text-warning、bg-media…）。新颜色先找已有 token，确实没有再加在这里。
+ *
+ * 窗口颜色：--background 也是窗口显示前的底色（src-tauri/src/desktop.rs 的 BOOT_BACKGROUND_*，单元测试把这里的 oklch 值
+ * 换算成 #rrggbb 后核对）；--titlebar / --foreground / --border / --background 由 state/theme.ts 换算成 #rrggbb 写进
+ * Windows 11 标题栏（DWM 只接受 RGB）。
  * ============================================================================================
  */
 :root {
   color-scheme: light;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
-  --background: #f4f5f6;
-  --foreground: #0c0d0e;
-  --card: #ffffff;
-  --card-foreground: #0c0d0e;
-  --popover: #ffffff;
-  --popover-foreground: #0c0d0e;
-  --primary: #006b75;
-  --primary-foreground: #ffffff;
-  --secondary: #e7e8eb;
-  --secondary-foreground: #0c0d0e;
-  --muted: #dedfe2;
-  --muted-foreground: #55585e;
-  --accent: #e2e4e7;
-  --accent-foreground: #0c0d0e;
-  --destructive: #bf3329;
-  --border: #dcdee2;
-  --input: #868a92;
-  --ring: #006b75;
-  --chart-1: #00a3ae;
-  --chart-2: #006b75;
-  --chart-3: #4fc3cb;
-  --chart-4: #62656b;
-  --chart-5: #17181a;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #0c0d0e;
-  --sidebar-primary: #006b75;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #dedfe2;
-  --sidebar-accent-foreground: #0c0d0e;
-  --sidebar-border: #dcdee2;
-  --sidebar-ring: #006b75;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --background: #141416;
-  --foreground: #e8e8ea;
-  --card: #1e1e21;
-  --card-foreground: #e8e8ea;
-  --popover: #252529;
-  --popover-foreground: #e8e8ea;
-  --primary: #00c1cd;
-  --primary-foreground: #03272a;
-  --secondary: #36363b;
-  --secondary-foreground: #e8e8ea;
-  --muted: #3d3d43;
-  --muted-foreground: #b0b1b7;
-  --accent: #404046;
-  --accent-foreground: #e8e8ea;
-  --destructive: #f87171;
-  --border: #323237;
-  --input: #85858c;
-  --ring: #00c1cd;
-  --chart-1: #00c1cd;
-  --chart-2: #4fd8e0;
-  --chart-3: #008c95;
-  --chart-4: #9a9ba1;
-  --chart-5: #e8e8ea;
-  --sidebar: #1e1e21;
-  --sidebar-foreground: #e8e8ea;
-  --sidebar-primary: #00c1cd;
-  --sidebar-primary-foreground: #03272a;
-  --sidebar-accent: #3d3d43;
-  --sidebar-accent-foreground: #e8e8ea;
-  --sidebar-border: #323237;
-  --sidebar-ring: #00c1cd;
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
 }
 
 /*
- * 本应用额外的变量（不属于 shadcn 主题）：
- *   success / warning 状态色（与 destructive 并列，用在文字与图标上）
- *   titlebar 系统标题栏底色（Windows 11 经 DWM 设置，见 src-tauri/src/desktop.rs；必须是 #rrggbb）
- *   scrollbar / scrollbar-hover 原生滚动条（文本框、对话框等没有用 ScrollArea 的地方）
+ * 本应用自有 token：
+ *   success / warning   状态色（与 shadcn 的 destructive 并列，用在文字、图标与浅色提示底上）
+ *   titlebar            系统标题栏底色（与导航栏同为 card 面）
+ *   media / media-foreground  视频画面区（预览、框选）的底色与压在画面上的文字、框线：画面本身的颜色，深浅主题相同
  */
 :root {
-  --success: #15803d;
-  --warning: #b45309;
-  --titlebar: #ffffff;
-  --scrollbar: #c9ccd1;
-  --scrollbar-hover: #a4a8b0;
+  --success: oklch(0.527 0.154 150.069);
+  --warning: oklch(0.555 0.163 48.998);
+  --titlebar: var(--card);
+  --media: oklch(0 0 0);
+  --media-foreground: oklch(1 0 0);
 }
 
 [data-theme="dark"] {
-  --success: #4ade80;
-  --warning: #fbbf24;
-  --titlebar: #1e1e21;
-  --scrollbar: #3c3c42;
-  --scrollbar-hover: #55555d;
+  --success: oklch(0.792 0.209 151.711);
+  --warning: oklch(0.828 0.189 84.429);
 }
 
 @theme inline {
   /* Mira 预设的字体是 Inter（远程 / 打包字体）；本应用的 CSP 不允许远程字体，用系统界面字体 */
   --font-sans: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --font-heading: var(--font-sans);
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -158,12 +153,12 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
-  /* 本应用额外的颜色 */
+  /* 本应用自有 token */
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-titlebar: var(--titlebar);
-  --color-scrollbar: var(--scrollbar);
-  --color-scrollbar-hover: var(--scrollbar-hover);
+  --color-media: var(--media);
+  --color-media-foreground: var(--media-foreground);
 }
 
 @layer base {
@@ -174,20 +169,20 @@
   body {
     @apply bg-background text-foreground;
   }
+  html {
+    @apply font-sans;
+  }
   /*
    * 正文字号：Mira 的组件正文都是 text-xs/relaxed（12 px / 1.625，见 Dialog、Field、Tabs 的内容区），
    * 页面里没有写字号的文字跟它一致，而不是浏览器默认的 16 px。只设在 body 上：<html> 的字号是 rem 的基准，不能改。
    */
-  html {
-    @apply font-sans;
-  }
   body {
     @apply text-xs/relaxed;
   }
 
   /*
    * 桌面应用体验（docs/PLAN.md“桌面应用体验约定”）：界面文字不可选中、默认箭头光标、无拖动残影、
-   * 鼠标点击不出焦点框（键盘焦点环保留）、无回弹滚动、统一的细滚动条、数字等宽。
+   * 鼠标点击不出焦点框（键盘焦点环保留）、无回弹滚动、数字等宽。这些是页面行为，不改 shadcn 组件的外观。
    */
   html,
   body,
@@ -251,9 +246,6 @@
   a {
     -webkit-user-drag: none;
   }
-  ::selection {
-    background: color-mix(in oklab, var(--primary) 35%, transparent);
-  }
   /* 鼠标点击不显示焦点框，键盘操作（:focus-visible）的焦点环保留 */
   :focus:not(:focus-visible) {
     outline: none;
@@ -270,81 +262,16 @@
   input[type="search"]::-webkit-search-cancel-button {
     -webkit-appearance: none;
   }
-  /* 原生滚动条（文本框、对话框、未用 ScrollArea 的区域）：细、主题色、无箭头 */
-  ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+  /* 原生滚动条（文本框、对话框等没有用 ScrollArea 的地方）：细，颜色与 Mira ScrollArea 的滑块相同（border） */
+  * {
+    scrollbar-width: thin;
   }
-  ::-webkit-scrollbar-track,
-  ::-webkit-scrollbar-corner {
-    background: transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    background-color: var(--scrollbar);
-    background-clip: padding-box;
-    border: 3px solid transparent;
-    border-radius: 999px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background-color: var(--scrollbar-hover);
-  }
-  ::-webkit-scrollbar-button {
-    display: none;
+  html {
+    scrollbar-color: var(--border) transparent;
   }
 }
 
-/*
- * ============================================================================================
- * 对 shadcn 组件的全局规则（按 data-slot）。只有变量做不到、又是硬性要求时才加，每条写明原因；
- * 不要在这里调外观（颜色、尺寸、圆角都走上面的变量），也不要改 src/components/ui/。
- * ============================================================================================
- */
-
-/*
- * 动效：桌面程序的浮层只淡入淡出，不缩放、不滑动（docs/PLAN.md“动效”）。Mira 的弹出层带 zoom-in-95 / slide-in-from-*，
- * 这里把 tw-animate-css 的缩放、位移量归零，保留淡入淡出与时长。不放进 @layer，才能压过组件里的工具类。
- */
-[data-slot="dialog-content"],
-[data-slot="alert-dialog-content"],
-[data-slot="popover-content"],
-[data-slot="tooltip-content"],
-[data-slot="dropdown-menu-content"],
-[data-slot="dropdown-menu-sub-content"],
-[data-slot="context-menu-content"],
-[data-slot="context-menu-sub-content"],
-[data-slot="select-content"] {
-  --tw-enter-scale: 1;
-  --tw-exit-scale: 1;
-  --tw-enter-translate-x: 0;
-  --tw-enter-translate-y: 0;
-  --tw-exit-translate-x: 0;
-  --tw-exit-translate-y: 0;
-}
-
-/*
- * 选中态用强调色（项目所有者要求）。Mira 原版的选中只是一层灰底（bg-muted / bg-background），
- * 深色主题下和未选中项只差一点灰度，不够醒目；muted 变量同时用于标签容器和悬停背景，改变量会把它们一起染色，
- * 所以在这里按 data-slot 统一加：浅强调色底 + 强调色文字 + 1px 强调色内描边。
- * 作用于：侧栏导航与设置分组导航（Tabs）、表单里的标签、分段选择与九宫格位置（ToggleGroup / Toggle）。
- */
-[data-slot="tabs-trigger"][aria-selected="true"],
-[data-slot="toggle-group-item"][data-state="on"],
-[data-slot="toggle-group-item"][aria-checked="true"],
-[data-slot="toggle-group-item"][aria-pressed="true"],
-[data-slot="toggle"][aria-pressed="true"] {
-  /* 底色以 card 为基底而不是透明：标签容器本身是 muted 灰底，透明叠加后强调色文字的对比度不够 4.5:1 */
-  background-color: color-mix(in oklab, var(--primary) 16%, var(--card));
-  color: var(--primary);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary) 55%, transparent);
-}
-
-/* 遮罩不做背景模糊（桌面程序的模态窗口不模糊底下的窗口；模糊整个窗口的开销也大） */
-[data-slot="dialog-overlay"],
-[data-slot="alert-dialog-overlay"] {
-  backdrop-filter: none;
-}
-
-/* 动效短而克制；系统要求减少动态效果时关闭 */
+/* 系统要求减少动态效果时关闭动画（无障碍；不改变组件在正常情况下的外观） */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -354,14 +281,4 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
-}
-
-/* 滚动区域内滚到底时不带动外层（桌面程序没有滚动链） */
-[data-slot="scroll-area-viewport"] {
-  overscroll-behavior: contain;
-}
-
-/* Radix ScrollArea 的内容包装层默认是 display: table，会让子元素的 truncate 失效、撑出横向滚动。 */
-[data-slot="scroll-area-viewport"] > div {
-  display: block !important;
 }

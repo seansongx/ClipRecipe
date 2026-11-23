@@ -110,13 +110,13 @@ const SCROLL_OPTIONS: { value: ScrollMode; label: string }[] = [
 function AnchorGrid({ value, onChange, label }: { value: Anchor; onChange: (anchor: Anchor) => void; label: string }) {
   return (
     <ToggleGroup
-      type="single"
       variant="outline"
       spacing={1}
       aria-label={label}
-      value={value}
+      value={[value]}
       onValueChange={(next) => {
-        if (next) onChange(next as Anchor);
+        const chosen = ANCHORS.find((anchor) => anchor.value === next[0]);
+        if (chosen) onChange(chosen.value);
       }}
       className="grid w-fit grid-cols-3"
     >
@@ -280,7 +280,7 @@ function AddWatermarkForm({ value, onChange }: ModuleFormProps<AddWatermarkParam
         />
       </ParamField>
       <ParamField label="滚动">
-        <Select value={value.scroll} onValueChange={(scroll) => onChange({ scroll: scroll as ScrollMode })}>
+        <Select items={SCROLL_OPTIONS} value={value.scroll} onValueChange={(scroll) => scroll && onChange({ scroll })}>
           <SelectTrigger aria-label="滚动效果" className="w-32">
             <SelectValue />
           </SelectTrigger>

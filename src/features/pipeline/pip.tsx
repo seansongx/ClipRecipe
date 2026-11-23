@@ -209,16 +209,14 @@ function PipForm(props: ModuleFormProps<PipParams>) {
               />
             </div>
             <ToggleGroup
-              type="single"
               variant="outline"
               spacing={1}
               aria-label="常用画布尺寸"
-              value={
-                CANVAS_PRESETS.find((p) => p.width === value.canvasWidth && p.height === value.canvasHeight)?.label ??
-                ""
-              }
-              onValueChange={(label) => {
-                const preset = CANVAS_PRESETS.find((p) => p.label === label);
+              value={CANVAS_PRESETS.filter((p) => p.width === value.canvasWidth && p.height === value.canvasHeight).map(
+                (p) => p.label,
+              )}
+              onValueChange={(labels) => {
+                const preset = CANVAS_PRESETS.find((p) => p.label === labels[0]);
                 if (preset) onChange({ canvasWidth: preset.width, canvasHeight: preset.height });
               }}
               className="flex-wrap"

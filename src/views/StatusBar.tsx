@@ -33,7 +33,7 @@ function BatchStatus() {
           处理中 {count("running")} · 等待 {count("waiting")} · 完成 {count("done")}
           {count("failed") > 0 && ` · 失败 ${count("failed")}`}
         </span>
-        <Progress value={percent} aria-label="批量处理总进度" className="h-1 w-24" />
+        <Progress value={percent} aria-label="批量处理总进度" className="w-24" />
         <span className="w-8">{percent.toFixed(0)}%</span>
       </span>
     );

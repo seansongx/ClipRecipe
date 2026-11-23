@@ -73,10 +73,11 @@ export function FfmpegMissingBanner() {
   if (!status || (status.available && !running) || (dismissed && !running)) return null;
   const managed = status.managed;
   return (
+    // 警告色只用在边框与图标上：浅色警告底（warning/10）上的 muted 次要文字在默认主题下不到 4.5:1
     <div
       role="region"
       aria-label="未找到 FFmpeg"
-      className="mx-4 mt-2 flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs"
+      className="mx-4 mt-2 flex items-start gap-2 rounded-md border border-warning/40 bg-card px-3 py-2 text-xs"
     >
       <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">

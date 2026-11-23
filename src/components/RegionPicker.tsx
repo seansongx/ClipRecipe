@@ -220,17 +220,17 @@ function FrameEditor({
               key={i}
               data-index={i}
               className={`absolute cursor-move border-2 ${
-                i === active ? "border-primary bg-primary/20" : "border-white/80 bg-white/10"
+                i === active ? "border-primary bg-primary/20" : "border-media-foreground/80 bg-media-foreground/10"
               }`}
               style={{
                 left: pct(r.x, frame.width),
                 top: pct(r.y, frame.height),
                 width: pct(r.width, frame.width),
                 height: pct(r.height, frame.height),
-                boxShadow: "0 0 0 1px rgba(0,0,0,.6)",
+                boxShadow: "0 0 0 1px color-mix(in oklab, var(--media) 60%, transparent)",
               }}
             >
-              <span className="pointer-events-none absolute left-0 top-0 bg-black/70 px-1 text-xs leading-4 text-white">
+              <span className="pointer-events-none absolute left-0 top-0 bg-media/70 px-1 text-xs leading-4 text-media-foreground">
                 {i + 1}
               </span>
               {i === active &&
@@ -238,7 +238,7 @@ function FrameEditor({
                   <span
                     key={corner}
                     data-corner={corner}
-                    className="absolute size-2.5 border border-black/60 bg-white"
+                    className="absolute size-2.5 border border-media/60 bg-media-foreground"
                     style={{
                       left: corner.includes("w") ? -6 : undefined,
                       right: corner.includes("e") ? -6 : undefined,
@@ -313,11 +313,11 @@ function FrameDialog({
         <DialogHeader>
           <DialogTitle className="truncate">{`${title}${item ? ` · ${item.name}` : ""}`}</DialogTitle>
         </DialogHeader>
-        <div className="grid min-h-[300px] place-items-center rounded-lg bg-black/90 p-3">
+        <div className="grid min-h-[300px] place-items-center rounded-lg bg-media/90 p-3">
           {frame ? (
             children(frame)
           ) : (
-            <div className="text-center text-sm text-white/80">
+            <div className="text-center text-sm text-media-foreground/80">
               {loading ? <Spinner className="mx-auto size-6" aria-label="加载中" /> : error}
             </div>
           )}
@@ -330,7 +330,7 @@ function FrameDialog({
             step={0.1}
             value={[time]}
             disabled={duration <= 0}
-            onValueChange={([t]) => setTime(t ?? 0)}
+            onValueChange={(next) => setTime((Array.isArray(next) ? next[0] : next) ?? 0)}
             className="min-w-0 flex-1"
             aria-label="取帧时间"
           />

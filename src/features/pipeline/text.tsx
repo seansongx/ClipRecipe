@@ -286,7 +286,8 @@ function ItemForm({ item, onChange }: { item: TextItem; onChange: (patch: Partia
       </ParamField>
 
       <ParamField label="多行" hint="行距为字号的百分比（0～200）。">
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        {/* 分段选择的选中项是 muted 底，不能继承 muted 文字色：muted 色只给“行距” */}
+        <div className="flex flex-wrap items-center gap-2 text-xs">
           <ChoiceGroup<TextAlign>
             label="对齐"
             value={item.align}
@@ -297,7 +298,7 @@ function ItemForm({ item, onChange }: { item: TextItem; onChange: (patch: Partia
               { value: "right", label: "右对齐" },
             ]}
           />
-          <span className="flex items-center gap-1.5">
+          <span className="flex items-center gap-1.5 text-muted-foreground">
             行距 {percentInput("lineSpacing", "行距", 0, 200)}%
           </span>
         </div>
@@ -312,7 +313,7 @@ function ItemForm({ item, onChange }: { item: TextItem; onChange: (patch: Partia
         }
       >
         <div className="space-y-2">
-          <Select value={item.position} onValueChange={(position) => onChange({ position: position as TextPosition })}>
+          <Select items={POSITIONS} value={item.position} onValueChange={(position) => position && onChange({ position })}>
             <SelectTrigger aria-label="位置" className="w-28">
               <SelectValue />
             </SelectTrigger>

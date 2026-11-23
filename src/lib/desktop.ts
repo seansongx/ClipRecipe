@@ -49,7 +49,7 @@ export function installDesktopGuards(): () => void {
       e.preventDefault();
     }
   };
-  // 冒泡到 document 时应用自己的右键菜单已经处理（Radix 会取消默认行为）；剩下的只给输入框保留系统编辑菜单
+  // 冒泡到 document 时应用自己的右键菜单已经处理（shadcn ContextMenu 会取消默认行为）；剩下的只给输入框保留系统编辑菜单
   const onContextMenu = (e: MouseEvent) => {
     if (e.defaultPrevented || isEditable(e.target)) return;
     e.preventDefault();

@@ -39,7 +39,7 @@ function OrientationForm({ value, onChange }: ToolFormProps<OrientationParams>) 
   return (
     <>
       <ParamField label="目标尺寸" hint="宽高互换：1920×1080 变成 1080×1920，竖屏同理。">
-        <Select value={value.target} onValueChange={(target) => onChange({ target: target as OrientationTarget })}>
+        <Select items={TARGETS} value={value.target} onValueChange={(target) => target && onChange({ target })}>
           <SelectTrigger aria-label="目标尺寸" className="w-44">
             <SelectValue />
           </SelectTrigger>

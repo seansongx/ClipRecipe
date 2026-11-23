@@ -51,17 +51,12 @@ export default function ColorField({
 
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={disabled}
-          aria-label={`${label}：${value}`}
-        >
-          <span className="size-4 rounded-sm ring-1 ring-foreground/20" style={{ backgroundColor: value }} />
-          {value}
-        </Button>
+      <PopoverTrigger
+        disabled={disabled}
+        render={<Button type="button" variant="outline" size="sm" aria-label={`${label}：${value}`} />}
+      >
+        <span className="size-4 rounded-sm ring-1 ring-foreground/20" style={{ backgroundColor: value }} />
+        {value}
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto">
         <div className="grid grid-cols-6 gap-1" role="listbox" aria-label={label}>

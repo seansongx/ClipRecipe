@@ -39,15 +39,31 @@ export function useTheme(): [Theme, () => void] {
   return [theme, toggle];
 }
 
-/** 主题变量的颜色，统一成 #rrggbb（构建时 CSS 压缩会把 #ffffff 写成 #fff，也可能是别的写法）。 */
-function cssVar(name: string): string {
+/** 主题变量的计算值（如 `oklch(0.145 0 0)`、`oklch(1 0 0 / 10%)`）。 */
+function computedColor(name: string): string {
   const probe = document.createElement("span");
   probe.style.color = `var(${name})`;
   probe.style.display = "none";
   document.body.append(probe);
-  const rgb = getComputedStyle(probe).color.match(/\d+(\.\d+)?/g)?.map(Number) ?? [];
+  const color = getComputedStyle(probe).color;
   probe.remove();
-  return `#${rgb.slice(0, 3).map((v) => Math.round(v).toString(16).padStart(2, "0")).join("")}`;
+  return color;
+}
+
+/**
+ * 主题变量的颜色换算成 #rrggbb（Windows 的 DWM 只接受 RGB）。主题变量是 oklch，可能带透明度（深色主题的 border），
+ * 所以画在 1×1 的 canvas 上读回 sRGB：先铺不透明的 `over`（默认 --background），再叠上这个颜色。
+ */
+function cssVar(name: string, over = "--background"): string {
+  const ctx = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+  if (!ctx) return "";
+  ctx.canvas.width = ctx.canvas.height = 1;
+  ctx.fillStyle = computedColor(over);
+  ctx.fillRect(0, 0, 1, 1);
+  ctx.fillStyle = computedColor(name);
+  ctx.fillRect(0, 0, 1, 1);
+  const [r = 0, g = 0, b = 0] = ctx.getImageData(0, 0, 1, 1).data;
+  return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 }
 
 /** 把主题应用到页面与窗口。 */

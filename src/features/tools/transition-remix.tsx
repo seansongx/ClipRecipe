@@ -39,6 +39,9 @@ const TRANSITIONS: { value: string; label: string }[] = [
   { value: "zoomin", label: "放大" },
 ];
 
+/** 转场下拉框的选项：每处随机 + 全部转场。 */
+const TRANSITION_ITEMS = [{ value: "random", label: "每处随机" }, ...TRANSITIONS];
+
 function TransitionRemixForm({ value, onChange }: ToolFormProps<TransitionRemixParams>) {
   return (
     <>
@@ -48,15 +51,12 @@ function TransitionRemixForm({ value, onChange }: ToolFormProps<TransitionRemixP
         minSegmentHint="相邻切换点至少间隔这么久（且不少于两倍转场时长），更近的切换点被忽略。"
       />
       <ParamField label="转场" hint="“每处随机”时每个衔接处各随机选一种（随种子可复现）。">
-        <Select value={value.transition} onValueChange={(transition) => onChange({ transition })}>
+        <Select items={TRANSITION_ITEMS} value={value.transition} onValueChange={(transition) => transition && onChange({ transition })}>
           <SelectTrigger aria-label="转场效果" className="w-36">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="random">
-              每处随机
-            </SelectItem>
-            {TRANSITIONS.map((t) => (
+            {TRANSITION_ITEMS.map((t) => (
               <SelectItem key={t.value} value={t.value}>
                 {t.label}
               </SelectItem>

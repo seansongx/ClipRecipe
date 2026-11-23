@@ -22,10 +22,10 @@ pub const MAIN_WINDOW: &str = "main";
 /// 前端没有在这段时间内报告“首帧已画好”（脚本出错、调试时断点）时也显示窗口，免得窗口永远不出现。
 const SHOW_FALLBACK: Duration = Duration::from_secs(6);
 
-/// 窗口显示前与调整大小时露出的底色：与 `src/index.css` 的 `--background` 相同（单元测试核对）。
+/// 窗口显示前与调整大小时露出的底色：`src/index.css` 的 `--background`（oklch）换算成的 sRGB（单元测试核对）。
 /// 前端加载后会用主题变量的实际值再设置一次（`set_window_chrome`）。
-pub const BOOT_BACKGROUND_DARK: &str = "#141416";
-pub const BOOT_BACKGROUND_LIGHT: &str = "#f4f5f6";
+pub const BOOT_BACKGROUND_DARK: &str = "#0a0a0a";
+pub const BOOT_BACKGROUND_LIGHT: &str = "#ffffff";
 
 /// 第二次启动时转交给已运行实例的文件（事件 `open-paths`，内容为路径数组）。
 pub const OPEN_PATHS_EVENT: &str = "open-paths";
@@ -445,6 +445,56 @@ mod tests {
         assert_eq!(parse_hex("#14141g"), None);
     }
 
+    /// CSS 的 `oklch(L C H)`（不带透明度）换算成 #rrggbb：OKLab → 线性 sRGB → sRGB（与浏览器的换算相同，超出色域时截断）。
+    fn oklch_to_hex(value: &str) -> String {
+        let args = value
+            .trim()
+            .strip_prefix("oklch(")
+            .and_then(|v| v.strip_suffix(')'))
+            .unwrap_or_else(|| panic!("不是 oklch() 颜色：{value}"));
+        let n: Vec<f64> = args
+            .split_whitespace()
+            .map(|v| v.parse().unwrap_or_else(|_| panic!("无法解析 {value}")))
+            .collect();
+        let [l, c, h] = n[..] else {
+            panic!("oklch() 需要三个分量：{value}");
+        };
+        let (a, b) = (c * h.to_radians().cos(), c * h.to_radians().sin());
+        let l_ = (l + 0.396_337_777_4 * a + 0.215_803_757_3 * b).powi(3);
+        let m_ = (l - 0.105_561_345_8 * a - 0.063_854_172_8 * b).powi(3);
+        let s_ = (l - 0.089_484_177_5 * a - 1.291_485_548 * b).powi(3);
+        let linear = [
+            4.076_741_662_1 * l_ - 3.307_711_591_3 * m_ + 0.230_969_929_2 * s_,
+            -1.268_438_004_6 * l_ + 2.609_757_401_1 * m_ - 0.341_319_396_5 * s_,
+            -0.004_196_086_3 * l_ - 0.703_418_614_7 * m_ + 1.707_614_701 * s_,
+        ];
+        let byte = |x: f64| {
+            let x = x.clamp(0.0, 1.0);
+            let v = if x <= 0.003_130_8 {
+                12.92 * x
+            } else {
+                1.055 * x.powf(1.0 / 2.4) - 0.055
+            };
+            (v * 255.0).round() as u8
+        };
+        format!(
+            "#{:02x}{:02x}{:02x}",
+            byte(linear[0]),
+            byte(linear[1]),
+            byte(linear[2])
+        )
+    }
+
+    #[test]
+    fn oklch_converts_like_css() {
+        assert_eq!(oklch_to_hex("oklch(1 0 0)"), "#ffffff");
+        assert_eq!(oklch_to_hex("oklch(0 0 0)"), "#000000");
+        // Tailwind 的 neutral-950 / neutral-500 / red-600
+        assert_eq!(oklch_to_hex("oklch(0.145 0 0)"), "#0a0a0a");
+        assert_eq!(oklch_to_hex("oklch(0.556 0 0)"), "#737373");
+        assert_eq!(oklch_to_hex("oklch(0.577 0.245 27.325)"), "#e7000b");
+    }
+
     /// 启动底色必须与 index.css 的 --background 一致，否则窗口显示瞬间或调整大小时露出另一种颜色。
     #[test]
     fn boot_backgrounds_match_theme_tokens() {
@@ -471,9 +521,12 @@ mod tests {
                 .trim_end_matches(';')
                 .to_owned()
         };
-        assert_eq!(background(block(":root {")), BOOT_BACKGROUND_LIGHT);
         assert_eq!(
-            background(block("[data-theme=\"dark\"] {")),
+            oklch_to_hex(&background(block(":root {"))),
+            BOOT_BACKGROUND_LIGHT
+        );
+        assert_eq!(
+            oklch_to_hex(&background(block("[data-theme=\"dark\"] {"))),
             BOOT_BACKGROUND_DARK
         );
     }

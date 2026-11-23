@@ -221,7 +221,7 @@ export const PROBE_SCRIPT = String.raw`
 /** 界面状态审计（scripts/e2e-audit-page.js，在探针之后注入，定义 window.__e2e.audit / focusRing）。 */
 export const AUDIT_SCRIPT = fs.readFileSync(path.join(import.meta.dirname, "e2e-audit-page.js"), "utf8");
 
-/** 页面操作：求值、等待、真实鼠标 / 键盘输入（经 CDP Input 域，Radix 的 pointerdown / mousedown 也能触发）。 */
+/** 页面操作：求值、等待、真实鼠标 / 键盘输入（经 CDP Input 域，Base UI 的 pointerdown / mousedown 也能触发）。 */
 export class Page {
   constructor(cdp) {
     this.cdp = cdp;

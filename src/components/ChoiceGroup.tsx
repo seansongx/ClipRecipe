@@ -27,14 +27,14 @@ export default function ChoiceGroup<T extends string>({
 }) {
   return (
     <ToggleGroup
-      type="single"
       variant="outline"
       spacing={spacing}
-      value={value}
+      value={[value]}
       disabled={disabled}
       aria-label={label}
       onValueChange={(next) => {
-        if (next) onChange(next as T);
+        const chosen = options.find((option) => option.value === next[0]);
+        if (chosen) onChange(chosen.value);
       }}
       className={cn("max-w-full flex-wrap", className)}
     >

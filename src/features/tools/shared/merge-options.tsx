@@ -105,7 +105,7 @@ export function MergeOptionsFields({
       )}
       {reencode && (
         <ParamField label="转场" hint="视频之间的过渡效果，音频同步交叉淡化；每处转场使总时长减少一个转场时长。">
-          <Select value={value.transition} onValueChange={(transition) => onChange({ transition })}>
+          <Select items={TRANSITIONS} value={value.transition} onValueChange={(transition) => transition && onChange({ transition })}>
             <SelectTrigger aria-label="转场" className="w-32">
               <SelectValue />
             </SelectTrigger>

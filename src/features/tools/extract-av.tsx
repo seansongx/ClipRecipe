@@ -20,6 +20,7 @@ export type ExtractAvParams = {
 
 /** 与后端 MP3_KBPS 一致。 */
 const MP3_KBPS = [128, 160, 192, 256, 320];
+const MP3_ITEMS = MP3_KBPS.map((kbps) => ({ value: kbps, label: `${kbps} kbps` }));
 
 const FORMATS: { value: AudioFormat; label: string }[] = [
   { value: "original", label: "原格式（不重编码）" },
@@ -58,7 +59,7 @@ function ExtractAvForm({ value, onChange }: ToolFormProps<ExtractAvParams>) {
             />
           </ParamField>
           <ParamField label="音频格式" hint="源编码与所选格式相同时直接复制，不重编码。">
-            <Select value={value.audioFormat} onValueChange={(v) => onChange({ audioFormat: v as AudioFormat })}>
+            <Select items={FORMATS} value={value.audioFormat} onValueChange={(audioFormat) => audioFormat && onChange({ audioFormat })}>
               <SelectTrigger aria-label="音频格式" className="w-40">
                 <SelectValue />
               </SelectTrigger>
@@ -73,13 +74,13 @@ function ExtractAvForm({ value, onChange }: ToolFormProps<ExtractAvParams>) {
           </ParamField>
           {value.audioFormat === "mp3" && (
             <ParamField label="MP3 码率">
-              <Select value={String(value.mp3Kbps)} onValueChange={(v) => onChange({ mp3Kbps: Number(v) })}>
+              <Select items={MP3_ITEMS} value={value.mp3Kbps} onValueChange={(mp3Kbps) => mp3Kbps && onChange({ mp3Kbps })}>
                 <SelectTrigger aria-label="MP3 码率" className="w-28">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {MP3_KBPS.map((kbps) => (
-                    <SelectItem key={kbps} value={String(kbps)}>
+                    <SelectItem key={kbps} value={kbps}>
                       {kbps} kbps
                     </SelectItem>
                   ))}

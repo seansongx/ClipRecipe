@@ -5,6 +5,7 @@
 import { Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
+  ContextMenuGroup,
   ContextMenuItem,
   ContextMenuLabel,
   ContextMenuSeparator,
@@ -15,6 +16,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -58,19 +60,22 @@ function QueueToolsMenuItems() {
   const { groups, loading } = useQueueToolGroups();
   return (
     <>
-      <DropdownMenuLabel>
-        {selected.size > 0 ? `处理选中的 ${selected.size} 个视频` : `处理全部 ${items.length} 个视频`}
-      </DropdownMenuLabel>
+      {/* Base UI 的菜单标签（GroupLabel）必须放在 Group 里 */}
+      <DropdownMenuGroup>
+        <DropdownMenuLabel>
+          {selected.size > 0 ? `处理选中的 ${selected.size} 个视频` : `处理全部 ${items.length} 个视频`}
+        </DropdownMenuLabel>
+      </DropdownMenuGroup>
       {groups.map(([group, tools]) => (
-        <div key={group}>
+        <DropdownMenuGroup key={group}>
           <DropdownMenuSeparator />
           <DropdownMenuLabel>{group}</DropdownMenuLabel>
           {tools.map((tool) => (
-            <DropdownMenuItem key={tool.id} onSelect={() => openFromQueue(tool.id)}>
+            <DropdownMenuItem key={tool.id} onClick={() => openFromQueue(tool.id)}>
               {tool.name}
             </DropdownMenuItem>
           ))}
-        </div>
+        </DropdownMenuGroup>
       ))}
       {loading && <LoadingLabel />}
       {!loading && groups.length === 0 && (
@@ -86,10 +91,11 @@ export function QueueToolsMenu({ className }: { className?: string }) {
   if (DONE_TOOLS.length === 0) return null;
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild disabled={items.length === 0}>
-        <Button variant="ghost" size="sm" className={className} onPointerEnter={preload} onFocus={preload}>
-          <Wrench /> 工具
-        </Button>
+      <DropdownMenuTrigger
+        disabled={items.length === 0}
+        render={<Button variant="ghost" size="sm" className={className} onPointerEnter={preload} onFocus={preload} />}
+      >
+        <Wrench /> 工具
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-auto min-w-40">
         <QueueToolsMenuItems />
@@ -109,15 +115,15 @@ export function QueueToolsSubmenu() {
       </ContextMenuSubTrigger>
       <ContextMenuSubContent className="min-w-36">
         {groups.map(([group, tools], index) => (
-          <div key={group}>
+          <ContextMenuGroup key={group}>
             {index > 0 && <ContextMenuSeparator />}
             <ContextMenuLabel>{group}</ContextMenuLabel>
             {tools.map((tool) => (
-              <ContextMenuItem key={tool.id} onSelect={() => openFromQueue(tool.id)}>
+              <ContextMenuItem key={tool.id} onClick={() => openFromQueue(tool.id)}>
                 {tool.name}
               </ContextMenuItem>
             ))}
-          </div>
+          </ContextMenuGroup>
         ))}
         {loading && <LoadingLabel />}
       </ContextMenuSubContent>

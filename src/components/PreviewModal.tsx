@@ -38,20 +38,20 @@ function PreviewDialog() {
       <DialogHeader>
         <DialogTitle className="truncate">{title}</DialogTitle>
       </DialogHeader>
-      <div className="grid min-h-[320px] place-items-center overflow-hidden rounded-lg bg-black">
+      <div className="grid min-h-[320px] place-items-center overflow-hidden rounded-lg bg-media">
         {status === "ready" && url && (
           <video key={url} src={url} controls autoPlay loop={pipeline} muted={mutePreview} className="max-h-[65vh] w-full" />
         )}
         {status === "rendering" && (
-          <div className="w-64 text-center text-sm text-white/80">
+          <div className="w-64 text-center text-sm text-media-foreground/80">
             <Spinner className="mx-auto mb-3 size-7" aria-label="加载中" />
             {pipeline ? "正在生成预览…" : "正在打开…"}
             {pipeline && percent > 0 && <Progress value={percent} className="mt-3" />}
           </div>
         )}
         {status === "error" && (
-          <div className="max-w-md px-6 text-center text-sm text-white/80 select-text">
-            <TriangleAlert className="mx-auto mb-3 size-7 text-primary" />
+          <div className="max-w-md px-6 text-center text-sm text-media-foreground/80 select-text">
+            <TriangleAlert className="mx-auto mb-3 size-7" />
             {error}
           </div>
         )}

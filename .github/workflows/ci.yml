@@ -53,12 +53,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: 安装 Tauri 2 的 Linux 系统依赖
+      # fonts-noto-cjk：文字 / 字幕类的集成测试要真实画出中文，runner 默认没有中文字体
+      # （程序在 Linux 上找的就是它装的 /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc）
+      - name: 安装 Tauri 2 的 Linux 系统依赖与中文字体
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
-            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev fonts-noto-cjk
+          fc-cache -f
 
       - uses: actions/setup-node@v7
         with:

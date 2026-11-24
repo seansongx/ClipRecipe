@@ -1,5 +1,6 @@
-# 持续集成：前端检查 + 后端在 Windows 与 Linux 上 fmt / clippy / test。
-# 与本地的验收命令一致（README“测试”、CONTRIBUTING“提交前”）。Linux 没有本地开发环境，这里是它的主要验证手段。
+# 持续集成：前端检查 + 后端在 Windows、Linux 与 macOS 上 fmt / clippy / test。
+# 与本地的验收命令一致（README“测试”、CONTRIBUTING“提交前”）。Linux 与 macOS 没有本地开发环境，这里是它们的主要验证手段
+# （macOS 只验证能编译、测试通过；发布流程不产出 macOS 安装包）。
 name: CI
 
 on:
@@ -44,7 +45,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        # macos-latest 是 Apple 芯片（arm64）
+        os: [windows-latest, ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     defaults:
@@ -67,7 +69,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      # 测试用 node_modules 里 @seankit/ffmpeg、@seankit/ffprobe 对应本平台的那份（Linux 为 *-linux-x64/bin/）；
+      # 测试用 node_modules 里 @seankit/ffmpeg、@seankit/ffprobe 对应本平台的那份（Linux 为 *-linux-x64/bin/，macOS 为 *-darwin-arm64/bin/）；
       # 也用于检查内嵌的 FFmpeg 下载清单与已安装的包一致。前端不需要构建（cargo test 是开发构建，不内嵌前端）。
       - run: npm ci
       - name: 确认测试用的 FFmpeg 可以运行
@@ -75,6 +77,7 @@ jobs:
           case "$RUNNER_OS" in
             Windows) dir=win32-x64; ext=.exe ;;
             Linux) dir=linux-x64; ext= ;;
+            macOS) dir=darwin-$([ "$(uname -m)" = arm64 ] && echo arm64 || echo x64); ext= ;;
           esac
           node_modules/@seankit/ffmpeg-$dir/bin/ffmpeg$ext -hide_banner -version
           node_modules/@seankit/ffprobe-$dir/bin/ffprobe$ext -hide_banner -version

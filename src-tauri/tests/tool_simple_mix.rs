@@ -134,7 +134,8 @@ fn subtitles_are_burned_in_with_chinese_text() {
     // 字幕区（画面下方）在字幕时段内出现白色文字与黑色描边，字幕结束后消失；画面上方不受影响
     let bottom = (20, 180, 280, 60);
     let (white, dark) = contrast_pixels(&paths, out, 1.0, bottom);
-    // 白色像素数随字体的笔画粗细变化（Linux 的 Noto Sans CJK 比 Windows 的微软雅黑细，实测 33），阈值留出余量；
+    // 偏亮像素数随字体的笔画粗细变化（Linux 的 Noto Sans CJK 比 Windows 的微软雅黑细；macOS 的字体更细，
+    // 小字号下笔画被抗锯齿与黑色描边压暗，没有一个像素超过 200），所以“偏亮”只要求明显亮于灰色背景，阈值留出余量；
     // 没有字幕时两者都是 0（见下一条断言），所以仍能区分“画出了字”和“没画”
     assert!(
         white > 15 && dark > 150,
@@ -152,7 +153,7 @@ fn subtitles_are_burned_in_with_chinese_text() {
     );
 }
 
-/// 灰色背景上某区域里明显偏白（> 200）与偏黑（< 50）的像素个数。
+/// 灰色背景（亮度约 128）上某区域里明显偏亮（> 170）与偏黑（< 50）的像素个数。
 fn contrast_pixels(
     paths: &FfmpegPaths,
     file: &Path,
@@ -175,7 +176,7 @@ fn contrast_pixels(
         .output()
         .unwrap();
     assert!(output.status.success());
-    let white = output.stdout.iter().filter(|p| **p > 200).count();
+    let white = output.stdout.iter().filter(|p| **p > 170).count();
     let dark = output.stdout.iter().filter(|p| **p < 50).count();
     (white, dark)
 }

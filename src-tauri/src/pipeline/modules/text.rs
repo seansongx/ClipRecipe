@@ -870,7 +870,11 @@ mod tests {
             "第一集\n上篇\n下篇"
         );
         let mut info = sample_info();
-        info.path = r"D:\videos\春天，在路上_part1.mp4".into();
+        // 用本平台的路径分隔符拼：Linux / macOS 上反斜杠不是分隔符，写死 Windows 路径会让文件名取成整条路径
+        info.path = Path::new("videos")
+            .join("春天，在路上_part1.mp4")
+            .to_string_lossy()
+            .into_owned();
         let recipe = recipe_with(vec![TextItem {
             source: TextSource::FileName,
             strip: vec!["_part1".into()],

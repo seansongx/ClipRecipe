@@ -91,4 +91,5 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: cargo test
         working-directory: src-tauri
-        run: cargo test
+        # --no-fail-fast：一个测试程序失败后继续跑其余的，一次看到全部失败
+        run: cargo test --no-fail-fast

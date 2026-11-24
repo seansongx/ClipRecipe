@@ -3,6 +3,7 @@
 import {
   isTauri,
   jobsRunning,
+  onCloseRequested,
   onFfmpegDownload,
   onImportProgress,
   onJobEvent,
@@ -16,6 +17,7 @@ import { useEncoders } from "./encoders";
 import { useFfmpeg } from "./ffmpeg";
 import { handleRunFinished } from "./finish";
 import { persistQueue, useQueue } from "./queue";
+import { useQuitConfirm } from "./quit";
 import { useSettings } from "./settings";
 import { useTools } from "./tools";
 import { useUpdate } from "./update";
@@ -55,6 +57,7 @@ export function initBackend(): () => void {
   const stopUpdateProgress = onUpdateProgress((progress) => useUpdate.getState().setProgress(progress));
   const stopUpdateInstalling = onUpdateInstalling(() => useUpdate.getState().setInstalling());
   const stopUpdateFailed = onUpdateFailed((error) => useUpdate.getState().setFailed(error));
+  const stopCloseRequested = onCloseRequested(() => useQuitConfirm.getState().request());
   if (isTauri) {
     // 真实平台以后端为准（lib/platform.ts；读到之前用 User-Agent 推断）
     void loadRealPlatform();
@@ -75,5 +78,6 @@ export function initBackend(): () => void {
     stopUpdateProgress();
     stopUpdateInstalling();
     stopUpdateFailed();
+    stopCloseRequested();
   };
 }

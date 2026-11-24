@@ -88,9 +88,9 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // set.tray：关闭主窗口时隐藏到托盘
+            // set.tray：关闭主窗口时隐藏到托盘；正在处理时先让用户确认
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if commands::system::hide_instead_of_close(tauri::Manager::app_handle(window)) {
+                if commands::system::on_close_requested(tauri::Manager::app_handle(window)) {
                     api.prevent_close();
                 }
             }
@@ -136,6 +136,8 @@ pub fn run() {
             commands::system::schedule_shutdown,
             commands::system::cancel_shutdown,
             commands::system::quit_app,
+            commands::system::close_prompt_shown,
+            commands::system::close_prompt_dismissed,
             commands::system::open_folder,
             commands::system::open_data_dir,
             commands::system::open_project_page,
@@ -152,6 +154,8 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
+                // 先结束 ffmpeg / whisper-cli 子进程，再删预览目录（预览的 ffmpeg 可能还在写）
+                commands::stop_all_work(app);
                 commands::preview::cleanup(app);
             }
         });

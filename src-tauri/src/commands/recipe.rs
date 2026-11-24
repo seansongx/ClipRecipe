@@ -2,18 +2,19 @@
 
 use std::path::Path;
 
+use super::blocking;
 use crate::model::{LoadedRecipe, Recipe, RECIPE_VERSION};
 
 /// 把配方保存为 JSON 文件。
 #[tauri::command]
-pub fn save_recipe_file(path: String, recipe: Recipe) -> Result<(), String> {
-    save(Path::new(&path), &recipe)
+pub async fn save_recipe_file(path: String, recipe: Recipe) -> Result<(), String> {
+    blocking(move || save(Path::new(&path), &recipe)).await?
 }
 
 /// 读取配方文件：版本过高时报错；缺失 / 无效的内容取默认值并给出提示。
 #[tauri::command]
-pub fn load_recipe_file(path: String) -> Result<LoadedRecipe, String> {
-    load(Path::new(&path))
+pub async fn load_recipe_file(path: String) -> Result<LoadedRecipe, String> {
+    blocking(move || load(Path::new(&path))).await?
 }
 
 pub fn save(path: &Path, recipe: &Recipe) -> Result<(), String> {

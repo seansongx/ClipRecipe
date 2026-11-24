@@ -6,6 +6,7 @@ import { Tabs, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Hint from "./components/Hint";
 import PreviewModal from "./components/PreviewModal";
+import QuitConfirmDialog from "./components/QuitConfirmDialog";
 import ShutdownDialog from "./components/ShutdownDialog";
 import UpdateDialog from "./components/UpdateDialog";
 import VerticalTabsList from "./components/VerticalTabsList";
@@ -219,6 +220,7 @@ export default function App() {
       </div>
       <PreviewModal />
       <ShutdownDialog />
+      <QuitConfirmDialog />
       <UpdateDialog />
       <Suspense fallback={null}>
         <ToolDialog />

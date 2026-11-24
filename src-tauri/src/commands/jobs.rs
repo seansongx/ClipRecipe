@@ -247,13 +247,19 @@ pub struct OutputDirCheck {
 
 /// 检查输出目录：是否存在、是否与源文件目录相同（界面据此给出警告）。
 #[tauri::command]
-pub fn check_output_dir(output_dir: String, sources: Vec<String>) -> OutputDirCheck {
-    let dir = PathBuf::from(output_dir.trim());
-    OutputDirCheck {
-        exists: dir.is_dir(),
-        same_as_source: sources
-            .iter()
-            .filter_map(|s| Path::new(s).parent())
-            .any(|parent| same_path(parent, &dir)),
-    }
+pub async fn check_output_dir(
+    output_dir: String,
+    sources: Vec<String>,
+) -> Result<OutputDirCheck, String> {
+    blocking(move || {
+        let dir = PathBuf::from(output_dir.trim());
+        OutputDirCheck {
+            exists: dir.is_dir(),
+            same_as_source: sources
+                .iter()
+                .filter_map(|s| Path::new(s).parent())
+                .any(|parent| same_path(parent, &dir)),
+        }
+    })
+    .await
 }

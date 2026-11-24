@@ -1,12 +1,15 @@
 //! 系统相关命令：全部完成后关机 / 退出（`set.after-all`）、打开文件夹与项目页面、检查更新与自动更新、
 //! 托盘（`set.tray`）、提示音文件（`set.sound`）。
 //!
-//! 事件：`shutdown-countdown`：`{ remaining }`（剩余秒数；0 表示正在关机）；自动更新的事件见 [`install_update`]。
+//! 事件：`shutdown-countdown`：`{ remaining }`（剩余秒数；0 表示正在关机）；自动更新的事件见 [`install_update`]；
+//! `close-requested`：正在处理时关闭主窗口或从托盘退出，前端显示确认框时调用 [`close_prompt_shown`]，
+//! 确认后调用 [`quit_app`]、选择继续处理时调用 [`close_prompt_dismissed`]。前端没有应答（界面没加载成功或卡住）时，
+//! [`FORCE_QUIT_WINDOW`] 内再次关闭 / 退出就直接退出（见 [`should_confirm_quit`]）。
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
@@ -30,6 +33,8 @@ pub struct SystemState {
     countdown: Mutex<Option<Countdown>>,
     /// 设置 `set.tray`：关闭窗口时隐藏到托盘
     close_to_tray: AtomicBool,
+    /// 正在处理时关闭 / 退出的确认进度（见 [`should_confirm_quit`]）
+    close_prompt: Mutex<ClosePrompt>,
 }
 
 #[derive(Clone, Serialize)]
@@ -86,18 +91,26 @@ fn folder_to_open(path: &Path) -> Option<PathBuf> {
 
 /// 用系统文件管理器打开文件夹（传入文件时打开其所在文件夹）。
 #[tauri::command]
-pub fn open_folder(path: String) -> Result<(), String> {
-    let dir =
-        folder_to_open(Path::new(path.trim())).ok_or_else(|| format!("文件夹不存在：{path}"))?;
-    tauri_plugin_opener::open_path(&dir, None::<&str>).map_err(|e| format!("无法打开文件夹：{e}"))
+pub async fn open_folder(path: String) -> Result<(), String> {
+    blocking(move || {
+        let dir = folder_to_open(Path::new(path.trim()))
+            .ok_or_else(|| format!("文件夹不存在：{path}"))?;
+        tauri_plugin_opener::open_path(&dir, None::<&str>)
+            .map_err(|e| format!("无法打开文件夹：{e}"))
+    })
+    .await?
 }
 
 /// 打开数据目录（配置、日志）。
 #[tauri::command]
-pub fn open_data_dir(app: AppHandle) -> Result<(), String> {
+pub async fn open_data_dir(app: AppHandle) -> Result<(), String> {
     let dir = config_dir(&app)?;
-    std::fs::create_dir_all(&dir).map_err(|e| format!("无法创建数据目录：{e}"))?;
-    tauri_plugin_opener::open_path(&dir, None::<&str>).map_err(|e| format!("无法打开数据目录：{e}"))
+    blocking(move || {
+        std::fs::create_dir_all(&dir).map_err(|e| format!("无法创建数据目录：{e}"))?;
+        tauri_plugin_opener::open_path(&dir, None::<&str>)
+            .map_err(|e| format!("无法打开数据目录：{e}"))
+    })
+    .await?
 }
 
 /// 在浏览器中打开本项目的页面（只接受 `system::REPO_URL` 下的地址）。
@@ -139,10 +152,12 @@ fn configured_pubkey(app: &AppHandle) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// 程序退出安装新版本前（Windows 上更新插件直接结束进程）：保存窗口位置、清理预览临时文件。
+/// 程序退出安装新版本前（Windows 上更新插件直接结束进程，不经过 `RunEvent::Exit`）：保存窗口位置、
+/// 停止仍在进行的工作（批量处理与工具已由 [`busy`] 挡住，但预览与 FFmpeg 下载可能还在进行）、清理预览临时文件。
 fn before_update_exit(app: &AppHandle) {
     use tauri_plugin_window_state::AppHandleExt;
     let _ = app.save_window_state(crate::desktop::window_state_flags());
+    super::stop_all_work(app);
     super::preview::cleanup(app);
 }
 
@@ -299,18 +314,21 @@ pub fn cancel_update(state: State<'_, UpdateState>) -> bool {
 
 /// 允许 WebView 读取自定义提示音（只接受存在的 wav 文件），返回原路径。
 #[tauri::command]
-pub fn allow_sound_file(app: AppHandle, path: String) -> Result<String, String> {
-    let file = PathBuf::from(&path);
-    if !file.is_file() {
-        return Err(format!("提示音文件不存在：{path}"));
-    }
-    if !has_extension(&file, &["wav"]) {
-        return Err("提示音只支持 wav 文件".into());
-    }
-    app.asset_protocol_scope()
-        .allow_file(&file)
-        .map_err(|e| format!("无法访问提示音文件：{e}"))?;
-    Ok(path)
+pub async fn allow_sound_file(app: AppHandle, path: String) -> Result<String, String> {
+    blocking(move || {
+        let file = PathBuf::from(&path);
+        if !file.is_file() {
+            return Err(format!("提示音文件不存在：{path}"));
+        }
+        if !has_extension(&file, &["wav"]) {
+            return Err("提示音只支持 wav 文件".into());
+        }
+        app.asset_protocol_scope()
+            .allow_file(&file)
+            .map_err(|e| format!("无法访问提示音文件：{e}"))?;
+        Ok(path)
+    })
+    .await?
 }
 
 /// 关闭主窗口时是否改为隐藏到托盘：开启了 `set.tray` 且托盘图标确实存在（否则窗口隐藏后找不回来）。
@@ -318,8 +336,80 @@ pub fn should_hide_on_close(close_to_tray: bool, tray_exists: bool) -> bool {
     close_to_tray && tray_exists
 }
 
-/// 主窗口的关闭请求：需要隐藏到托盘时返回 true（调用方据此阻止关闭）。
-pub fn hide_instead_of_close(app: &AppHandle) -> bool {
+/// 请前端确认退出后，这段时间内前端没有应答（[`close_prompt_shown`]）而用户再次关闭 / 退出，就直接退出。
+pub const FORCE_QUIT_WINDOW: Duration = Duration::from_secs(10);
+
+/// 退出确认的进度：上次请前端确认的时间、前端是否已显示确认框。
+#[derive(Default)]
+struct ClosePrompt {
+    requested_at: Option<Instant>,
+    acknowledged: bool,
+}
+
+/// 关闭主窗口或从托盘退出时是否先让用户确认（拦截退出）。
+///
+/// 没有隐藏到托盘、且批量处理或工具正在运行时才确认；但如果上次请求确认后不到 [`FORCE_QUIT_WINDOW`]、
+/// 前端一直没有应答（界面没加载成功或卡住），就不再拦截，保证总能退出。前端应答过时仍只重新请求确认。
+/// `since_last_request`：距上次请求确认多久（没有请求过为 None）。
+pub fn should_confirm_quit(
+    hidden_to_tray: bool,
+    busy: bool,
+    since_last_request: Option<Duration>,
+    acknowledged: bool,
+) -> bool {
+    if hidden_to_tray || !busy {
+        return false;
+    }
+    let asked_recently = since_last_request.is_some_and(|d| d < FORCE_QUIT_WINDOW);
+    !asked_recently || acknowledged
+}
+
+/// 主窗口的关闭请求，返回 true 时调用方阻止关闭：
+/// 开启了托盘时隐藏窗口；正在处理时改为让前端确认（`close-requested` 事件，确认后前端调用 [`quit_app`]）。
+pub fn on_close_requested(app: &AppHandle) -> bool {
+    let hidden = hide_instead_of_close(app);
+    hidden || ask_before_quit(app, hidden)
+}
+
+/// 正在处理时显示主窗口并请前端确认退出，返回是否已请求确认（此时调用方不要退出）。
+fn ask_before_quit(app: &AppHandle, hidden_to_tray: bool) -> bool {
+    // 读状态失败时不拦截，免得窗口关不掉
+    let busy = busy(app).unwrap_or(false);
+    let Some(state) = app.try_state::<SystemState>() else {
+        return false;
+    };
+    {
+        let mut prompt = lock(&state.close_prompt);
+        let now = Instant::now();
+        let since = prompt.requested_at.map(|t| now.duration_since(t));
+        if !should_confirm_quit(hidden_to_tray, busy, since, prompt.acknowledged) {
+            return false;
+        }
+        // 超出时间窗口后重新计：需要前端重新应答
+        if since.map_or(true, |d| d >= FORCE_QUIT_WINDOW) {
+            prompt.acknowledged = false;
+        }
+        prompt.requested_at = Some(now);
+    }
+    show_main(app);
+    let _ = app.emit("close-requested", ());
+    true
+}
+
+/// 前端收到 `close-requested` 并显示了确认框（说明界面正常，再次关闭时不强制退出）。
+#[tauri::command]
+pub fn close_prompt_shown(state: State<'_, SystemState>) {
+    lock(&state.close_prompt).acknowledged = true;
+}
+
+/// 用户在确认框里选择继续处理：复位退出确认的状态。
+#[tauri::command]
+pub fn close_prompt_dismissed(state: State<'_, SystemState>) {
+    *lock(&state.close_prompt) = ClosePrompt::default();
+}
+
+/// 主窗口的关闭请求：需要隐藏到托盘时隐藏窗口并返回 true。
+fn hide_instead_of_close(app: &AppHandle) -> bool {
     let enabled = app
         .try_state::<SystemState>()
         .is_some_and(|s| s.close_to_tray.load(Ordering::SeqCst));
@@ -353,7 +443,7 @@ pub fn sync_tray(app: &AppHandle, enabled: bool) -> Result<(), String> {
             .show_menu_on_left_click(false)
             .on_menu_event(|app, event| match event.id.as_ref() {
                 "tray-show" => show_main(app),
-                "tray-quit" => crate::desktop::quit(app),
+                "tray-quit" if !ask_before_quit(app, false) => crate::desktop::quit(app),
                 _ => {}
             })
             .on_tray_icon_event(|tray, event| {
@@ -384,6 +474,43 @@ mod tests {
         assert!(should_hide_on_close(true, true));
         assert!(!should_hide_on_close(true, false));
         assert!(!should_hide_on_close(false, true));
+    }
+
+    #[test]
+    fn quit_needs_confirm_only_when_busy_and_not_hidden() {
+        assert!(should_confirm_quit(false, true, None, false));
+        assert!(!should_confirm_quit(false, false, None, false));
+        // 已隐藏到托盘：任务继续在后台运行，不用确认
+        assert!(!should_confirm_quit(true, true, None, false));
+        assert!(!should_confirm_quit(true, false, None, false));
+    }
+
+    #[test]
+    fn repeated_quit_without_frontend_answer_is_not_blocked() {
+        let soon = Some(Duration::from_secs(2));
+        let later = Some(FORCE_QUIT_WINDOW + Duration::from_secs(1));
+        // 首次请求：拦截并请前端确认
+        assert!(should_confirm_quit(false, true, None, false));
+        // 前端没应答，短时间内再次关闭：放行
+        assert!(!should_confirm_quit(false, true, soon, false));
+        assert!(!should_confirm_quit(
+            false,
+            true,
+            Some(FORCE_QUIT_WINDOW - Duration::from_millis(1)),
+            false
+        ));
+        // 前端已显示确认框：仍只重新请求确认
+        assert!(should_confirm_quit(false, true, soon, true));
+        // 超出时间窗口：重新计，再次拦截
+        assert!(should_confirm_quit(false, true, later, false));
+        assert!(should_confirm_quit(
+            false,
+            true,
+            Some(FORCE_QUIT_WINDOW),
+            false
+        ));
+        // 不忙时总是放行
+        assert!(!should_confirm_quit(false, false, soon, true));
     }
 
     #[test]

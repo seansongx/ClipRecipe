@@ -672,6 +672,12 @@ export interface UpdateProgress {
 export const scheduleShutdown = () => call<void>("schedule_shutdown");
 export const cancelShutdown = () => call<void>("cancel_shutdown");
 export const quitApp = () => call<void>("quit_app");
+/** 正在处理时关闭主窗口或从托盘退出：后端已阻止退出，由界面确认后调用 quitApp。 */
+export const onCloseRequested = (handler: () => void) => subscribe("close-requested", handler);
+/** 已显示退出确认框（告诉后端界面正常；否则短时间内再次关闭会直接退出）。 */
+export const closePromptShown = () => call<void>("close_prompt_shown");
+/** 用户在退出确认框里选择继续处理。 */
+export const closePromptDismissed = () => call<void>("close_prompt_dismissed");
 /** 打开文件夹（传入文件时打开其所在文件夹）。 */
 export const openFolder = (path: string) => call<void>("open_folder", { path });
 export const openDataDir = () => call<void>("open_data_dir");

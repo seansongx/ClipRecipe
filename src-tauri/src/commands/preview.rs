@@ -79,25 +79,29 @@ pub async fn extract_frame(
 
 /// 删除不再需要的预览 / 取帧文件（只接受预览目录中的文件）。
 #[tauri::command]
-pub fn release_preview_file(state: State<'_, AppState>, path: String) -> Result<(), String> {
-    state.preview_dir.release(Path::new(&path))
+pub async fn release_preview_file(state: State<'_, AppState>, path: String) -> Result<(), String> {
+    let dir = state.preview_dir.clone();
+    blocking(move || dir.release(Path::new(&path))).await?
 }
 
 /// 允许 WebView 通过 asset 协议读取某个视频文件（双击队列播放源视频时使用）。
 /// 只接受存在的、扩展名为常见视频格式的文件。
 #[tauri::command]
-pub fn allow_media_file(app: AppHandle, path: String) -> Result<String, String> {
-    let file = PathBuf::from(&path);
-    if !file.is_file() {
-        return Err(format!("文件不存在：{path}"));
-    }
-    if !has_extension(&file, VIDEO_EXTENSIONS) {
-        return Err("只能播放视频文件".into());
-    }
-    app.asset_protocol_scope()
-        .allow_file(&file)
-        .map_err(|e| format!("无法访问该文件：{e}"))?;
-    Ok(path)
+pub async fn allow_media_file(app: AppHandle, path: String) -> Result<String, String> {
+    blocking(move || {
+        let file = PathBuf::from(&path);
+        if !file.is_file() {
+            return Err(format!("文件不存在：{path}"));
+        }
+        if !has_extension(&file, VIDEO_EXTENSIONS) {
+            return Err("只能播放视频文件".into());
+        }
+        app.asset_protocol_scope()
+            .allow_file(&file)
+            .map_err(|e| format!("无法访问该文件：{e}"))?;
+        Ok(path)
+    })
+    .await?
 }
 
 /// 启动时：清理其它进程残留的预览目录，并把本进程的预览目录加入 asset 协议范围。

@@ -564,8 +564,13 @@ mod tests {
         for kind in [Nsis, Msi, AppImage, MacApp, Deb, Rpm, Unbundled] {
             assert!(manual_update_reason(kind, false).unwrap().contains("公钥"));
         }
-        // 测试程序没有经过打包
-        assert_eq!(InstallKind::current(), Unbundled);
+        // 测试程序没有经过打包。macOS 上 Tauri 分辨不出是否打包，一律报告为应用包
+        let expected = if cfg!(target_os = "macos") {
+            MacApp
+        } else {
+            Unbundled
+        };
+        assert_eq!(InstallKind::current(), expected);
     }
 
     #[test]

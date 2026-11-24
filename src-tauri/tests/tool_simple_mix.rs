@@ -134,12 +134,13 @@ fn subtitles_are_burned_in_with_chinese_text() {
     // 字幕区（画面下方）在字幕时段内出现白色文字与黑色描边，字幕结束后消失；画面上方不受影响
     let bottom = (20, 180, 280, 60);
     let (white, dark) = contrast_pixels(&paths, out, 1.0, bottom);
-    // 偏亮像素数随字体的笔画粗细变化（Linux 的 Noto Sans CJK 比 Windows 的微软雅黑细；macOS 的字体更细，
-    // 小字号下笔画被抗锯齿与黑色描边压暗，没有一个像素超过 200），所以“偏亮”只要求明显亮于灰色背景，阈值留出余量；
-    // 没有字幕时两者都是 0（见下一条断言），所以仍能区分“画出了字”和“没画”
+    // 偏亮像素数随字体的笔画粗细变化（Linux 的 Noto Sans CJK 比 Windows 的微软雅黑细），所以“偏亮”只要求明显亮于
+    // 灰色背景，阈值留出余量；没有字幕时两者都是 0（见下一条断言），所以仍能区分“画出了字”和“没画”。
+    // 失败时打印字幕区的字符画与 libass 的字体日志（macOS 上只有描边、没有亮像素，原因待查）
     assert!(
         white > 15 && dark > 150,
-        "字幕区应有文字：白 {white}，黑 {dark}"
+        "字幕区应有文字：白 {white}，黑 {dark}\n{}",
+        subtitle_diagnostics(&paths, out, &srt, bottom)
     );
     assert_eq!(
         contrast_pixels(&paths, out, 3.0, bottom),
@@ -160,6 +161,19 @@ fn contrast_pixels(
     time: f64,
     (x, y, w, h): (u32, u32, u32, u32),
 ) -> (usize, usize) {
+    let pixels = gray_crop(paths, file, time, (x, y, w, h));
+    let white = pixels.iter().filter(|p| **p > 170).count();
+    let dark = pixels.iter().filter(|p| **p < 50).count();
+    (white, dark)
+}
+
+/// 某一帧里一块区域的灰度像素（逐行，每像素一字节）。
+fn gray_crop(
+    paths: &FfmpegPaths,
+    file: &Path,
+    time: f64,
+    (x, y, w, h): (u32, u32, u32, u32),
+) -> Vec<u8> {
     let output = ffmpeg::command(&paths.ffmpeg)
         .args([
             "-hide_banner",
@@ -176,9 +190,51 @@ fn contrast_pixels(
         .output()
         .unwrap();
     assert!(output.status.success());
-    let white = output.stdout.iter().filter(|p| **p > 170).count();
-    let dark = output.stdout.iter().filter(|p| **p < 50).count();
-    (white, dark)
+    output.stdout
+}
+
+/// 字幕断言失败时的排查信息：字幕区的字符画（`#` 偏黑、`o` 偏亮、`+` 略亮于背景、`.` 背景）、最亮像素的亮度，
+/// 以及用同一个字幕文件单独跑一次 `subtitles` 滤镜时 libass 关于字体的日志。
+fn subtitle_diagnostics(
+    paths: &FfmpegPaths,
+    file: &Path,
+    srt: &Path,
+    (x, y, w, h): (u32, u32, u32, u32),
+) -> String {
+    let pixels = gray_crop(paths, file, 1.0, (x, y, w, h));
+    let brightest = pixels.iter().copied().max().unwrap_or(0);
+    let mut text = format!("最亮像素 {brightest}；字幕区 {w}x{h}：\n");
+    for row in pixels.chunks(w as usize) {
+        text.extend(row.iter().map(|p| match p {
+            0..=49 => '#',
+            50..=140 => '.',
+            141..=170 => '+',
+            _ => 'o',
+        }));
+        text.push('\n');
+    }
+    let filter = format!(
+        "subtitles={}",
+        cliprecipe_lib::pipeline::escape_filter_path(&srt.to_string_lossy())
+    );
+    let log = ffmpeg::command(&paths.ffmpeg)
+        .args(["-hide_banner", "-loglevel", "verbose", "-f", "lavfi", "-i"])
+        .arg("color=c=gray:s=320x240:d=1")
+        .args(["-vf", &filter, "-frames:v", "1", "-f", "null", "-"])
+        .output()
+        .unwrap();
+    text.push_str("libass 日志：\n");
+    for line in String::from_utf8_lossy(&log.stderr).lines() {
+        let lower = line.to_lowercase();
+        if ["subtitles", "font", "glyph", "libass"]
+            .iter()
+            .any(|key| lower.contains(key))
+        {
+            text.push_str(line);
+            text.push('\n');
+        }
+    }
+    text
 }
 
 #[test]

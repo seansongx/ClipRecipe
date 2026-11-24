@@ -24,6 +24,7 @@ use crate::tools::analysis::Interval;
 use crate::tools::av_mux::AUDIO_EXTENSIONS;
 use crate::tools::context::Encoding;
 use crate::tools::media::secs;
+use crate::tools::subtitle_asr::MACOS_CJK_FONT;
 use crate::tools::common::merge_engine::shuffle;
 use crate::tools::{OutputSpec, Tool, ToolContext, ToolError};
 
@@ -154,6 +155,16 @@ pub struct MixGraph {
     pub subtitle: Option<String>,
 }
 
+/// 字幕滤镜的字体参数：只在 macOS 上显式指定中文字体（否则中文画成方框，见 [`MACOS_CJK_FONT`]）；
+/// 其它平台不指定，沿用 libass 的默认字体与回退。
+fn subtitle_font_style() -> String {
+    if cfg!(target_os = "macos") {
+        format!(":force_style='FontName={MACOS_CJK_FONT}'")
+    } else {
+        String::new()
+    }
+}
+
 impl MixGraph {
     /// 滤镜图：输出 `[vout]`；有背景音频时还有 `[aout]`。
     pub fn graph(&self) -> String {
@@ -191,7 +202,7 @@ impl MixGraph {
         }
         let mut tail = Vec::new();
         if let Some(sub) = &self.subtitle {
-            tail.push(format!("subtitles={sub}"));
+            tail.push(format!("subtitles={sub}{}", subtitle_font_style()));
         }
         let (ew, eh) = (w - w % 2, h - h % 2);
         if (ew, eh) != (w, h) {
@@ -411,6 +422,8 @@ mod tests {
 
     #[test]
     fn graph_overlays_each_window_then_subtitles_and_mixes_bgm() {
+        // macOS 上字幕滤镜带显式的中文字体，其它平台为空
+        let font = subtitle_font_style();
         let graph = MixGraph {
             width: 1280,
             height: 720,
@@ -430,7 +443,7 @@ mod tests {
                 "[0:V:0][o0]overlay=(W-w)/2:(H-h)/2:eof_action=pass:enable='between(t,1,3)'[b0]",
                 "[2:V:0]scale=640:-2,setsar=1,setpts=PTS-STARTPTS+5/TB[o1]",
                 "[b0][o1]overlay=(W-w)/2:(H-h)/2:eof_action=pass:enable='between(t,5,7.5)'[b1]",
-                "[b1]subtitles=C\\\\:/s.srt,format=yuv420p[vout]",
+                &format!("[b1]subtitles=C\\\\:/s.srt{font},format=yuv420p[vout]"),
             ]
         );
         let conform = "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo";
@@ -475,7 +488,10 @@ mod tests {
             subtitle: Some("s.ass".into()),
         }
         .graph();
-        assert_eq!(plain, "[0:V:0]subtitles=s.ass,format=yuv420p[vout]");
+        assert_eq!(
+            plain,
+            format!("[0:V:0]subtitles=s.ass{font},format=yuv420p[vout]")
+        );
     }
 
     #[test]

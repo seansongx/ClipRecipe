@@ -136,7 +136,7 @@ fn subtitles_are_burned_in_with_chinese_text() {
     let (white, dark) = contrast_pixels(&paths, out, 1.0, bottom);
     // 偏亮像素数随字体的笔画粗细变化（Linux 的 Noto Sans CJK 比 Windows 的微软雅黑细），所以“偏亮”只要求明显亮于
     // 灰色背景，阈值留出余量；没有字幕时两者都是 0（见下一条断言），所以仍能区分“画出了字”和“没画”。
-    // 失败时打印字幕区的字符画与 libass 的字体日志（macOS 上只有描边、没有亮像素，原因待查）
+    // 失败时打印字幕区的字符画与 libass 的字体日志（macOS 上不指定中文字体时曾全部画成方框：只有描边、没有亮像素）
     assert!(
         white > 15 && dark > 150,
         "字幕区应有文字：白 {white}，黑 {dark}\n{}",

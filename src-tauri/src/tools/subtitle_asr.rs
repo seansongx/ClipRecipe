@@ -23,7 +23,7 @@
 //! - `burn`（false）另外把字幕烧录进新视频 `<视频名>_subtitled.<扩展名>`（视频重编码，音频能复制就复制）；样式：
 //!   `fontSize` 字号（画面高度的 5%，1～20）、`fontColor`（#ffffff）、`outlineColor`（#000000）、
 //!   `outlineWidth` 描边（2，0～10）、`marginBottom` 距底部（画面高度的 5%，0～40）。样式通过 libass 的
-//!   `force_style` 设置（以 288 行高的脚本坐标换算）；Windows 上字体用“Microsoft YaHei”以显示中文。
+//!   `force_style` 设置（以 288 行高的脚本坐标换算）；Windows 与 macOS 上显式指定中文字体（见 [`subtitle_font`]）。
 //!
 //! whisper 输出的 SRT 序号从 0 开始、文字前带空格，写出前统一整理：序号从 1 起、去掉首尾空白与空条目。
 //! 视频没有音轨时失败；没有识别到任何语音时仍输出空字幕并提示（不烧录）。
@@ -350,12 +350,27 @@ pub fn normalize_srt(text: &str) -> (String, usize) {
     (out, count)
 }
 
-/// 烧录字幕的 libass `force_style`（脚本坐标：行高 288）。
-pub fn force_style(params: &SubtitleAsrParams, windows: bool) -> Result<String, String> {
+/// macOS 上烧录字幕用的中文字体。不指定时 libass 的默认字体 Arial 没有中文字形，回退选中的苹方
+/// （系统保留目录里的 PingFangUI.ttc）打不开，中文全部画成方框；这个字体在 /System/Library/Fonts 下，可以打开。
+pub const MACOS_CJK_FONT: &str = "Hiragino Sans GB";
+
+/// 本平台烧录字幕时显式指定的字体（Linux 上交给 fontconfig 回退）。
+pub fn subtitle_font() -> Option<&'static str> {
+    if cfg!(windows) {
+        Some("Microsoft YaHei")
+    } else if cfg!(target_os = "macos") {
+        Some(MACOS_CJK_FONT)
+    } else {
+        None
+    }
+}
+
+/// 烧录字幕的 libass `force_style`（脚本坐标：行高 288）；`font` 为显式指定的字体（见 [`subtitle_font`]）。
+pub fn force_style(params: &SubtitleAsrParams, font: Option<&str>) -> Result<String, String> {
     let units = |percent: f64| fmt_num((288.0 * percent / 100.0 * 10.0).round() / 10.0);
     let mut parts = Vec::new();
-    if windows {
-        parts.push("FontName=Microsoft YaHei".to_owned());
+    if let Some(font) = font {
+        parts.push(format!("FontName={font}"));
     }
     parts.extend([
         format!("FontSize={}", units(params.font_size)),
@@ -377,11 +392,15 @@ pub fn force_style(params: &SubtitleAsrParams, windows: bool) -> Result<String, 
 }
 
 /// 烧录用的视频滤镜。
-pub fn burn_filter(params: &SubtitleAsrParams, srt: &str, windows: bool) -> Result<String, String> {
+pub fn burn_filter(
+    params: &SubtitleAsrParams,
+    srt: &str,
+    font: Option<&str>,
+) -> Result<String, String> {
     Ok(format!(
         "subtitles={}:force_style='{}'",
         escape_filter_path(srt),
-        force_style(params, windows)?
+        force_style(params, font)?
     ))
 }
 
@@ -537,7 +556,7 @@ impl Tool for SubtitleAsrParams {
             } else {
                 let subs = ctx.temp_file("burn.srt")?;
                 std::fs::write(&subs, &srt).map_err(|e| format!("无法写入字幕文件：{e}"))?;
-                let filter = burn_filter(self, &path_arg(&subs)?, cfg!(windows))?;
+                let filter = burn_filter(self, &path_arg(&subs)?, subtitle_font())?;
                 let ext = ctx.video_extension(0)?;
                 let output = path_arg(&ctx.output(&OutputSpec::file(&ext).suffix("_subtitled"))?)?;
                 let audio = audio_args(&info, &ext);
@@ -751,14 +770,14 @@ mod tests {
             ..with_model()
         };
         assert_eq!(
-            force_style(&p, false).unwrap(),
+            force_style(&p, None).unwrap(),
             "FontSize=14.4,PrimaryColour=&H0000CCFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginV=14.4"
         );
-        assert!(force_style(&p, true)
+        assert!(force_style(&p, Some("Microsoft YaHei"))
             .unwrap()
             .starts_with("FontName=Microsoft YaHei,"));
         assert_eq!(
-            burn_filter(&p, r"C:\t\s.srt", false).unwrap(),
+            burn_filter(&p, r"C:\t\s.srt", None).unwrap(),
             r"subtitles=C\\:/t/s.srt:force_style='FontSize=14.4,PrimaryColour=&H0000CCFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginV=14.4'"
         );
     }

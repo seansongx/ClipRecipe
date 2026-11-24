@@ -80,7 +80,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "REPLACE_WITH_UPDATER_PUBLIC_KEY (see docs/RELEASING.md)",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM5NzUxMTIwRUI5MjBEMDEKUldRQkRaTHJJQkYxT2FhZzF3WnFkRVVDQlNKZlJzWlFFL0hUVFdpRlNzYysvUkd0b0RaZ0FpWmEK",
       "endpoints": [
         "https://github.com/seansongx/ClipRecipe/releases/latest/download/latest.json"
       ],

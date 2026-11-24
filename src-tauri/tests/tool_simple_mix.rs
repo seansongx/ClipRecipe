@@ -134,8 +134,10 @@ fn subtitles_are_burned_in_with_chinese_text() {
     // 字幕区（画面下方）在字幕时段内出现白色文字与黑色描边，字幕结束后消失；画面上方不受影响
     let bottom = (20, 180, 280, 60);
     let (white, dark) = contrast_pixels(&paths, out, 1.0, bottom);
+    // 白色像素数随字体的笔画粗细变化（Linux 的 Noto Sans CJK 比 Windows 的微软雅黑细，实测 33），阈值留出余量；
+    // 没有字幕时两者都是 0（见下一条断言），所以仍能区分“画出了字”和“没画”
     assert!(
-        white > 40 && dark > 150,
+        white > 15 && dark > 150,
         "字幕区应有文字：白 {white}，黑 {dark}"
     );
     assert_eq!(

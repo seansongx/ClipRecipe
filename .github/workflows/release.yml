@@ -1,0 +1,158 @@
+# 发布：推送 v* tag（如 v0.2.0）时在 Windows 与 Linux 上打包，连同更新包签名与 latest.json 上传到一个草稿 Release，
+# 由项目所有者检查后手动发布。完整步骤与首次配置见 docs/RELEASING.md。
+#
+# 产物：Windows NSIS 安装包（*-setup.exe），Linux AppImage 与 deb；自动更新用的 *.sig 与 latest.json。
+# 不打包 macOS（无法测试，未签名的包会被 Gatekeeper 拦截）。
+#
+# 需要的仓库 Secrets：TAURI_SIGNING_PRIVATE_KEY（updater 私钥的内容）、TAURI_SIGNING_PRIVATE_KEY_PASSWORD（私钥口令）。
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+# 同一个 tag 不并行发布；不取消正在进行的发布
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "26"
+
+jobs:
+  # 检查版本号、CHANGELOG 与 updater 公钥，然后创建草稿 Release（说明取自 CHANGELOG 对应小节）。
+  # 先建好草稿再并行打包，避免两个打包任务各自创建一个 Release。
+  prepare:
+    name: 检查并创建草稿 Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      release-id: ${{ steps.release.outputs.id }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: 检查 tag 与版本号、CHANGELOG、updater 公钥
+        run: node scripts/release.mjs check "$GITHUB_REF_NAME"
+      - name: 检查签名私钥已配置
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::没有设置仓库 Secret TAURI_SIGNING_PRIVATE_KEY，见 docs/RELEASING.md“首次配置”"
+            exit 1
+          fi
+      - name: 创建草稿 Release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/release.mjs notes "$GITHUB_REF_NAME" > release-notes.md
+          if gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft > is-draft.txt 2>/dev/null; then
+            if [ "$(cat is-draft.txt)" != "true" ]; then
+              echo "::error::$GITHUB_REF_NAME 的 Release 已经发布过，不能覆盖"
+              exit 1
+            fi
+            echo "沿用已有的草稿 Release"
+          else
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
+              --title "ClipRecipe ${GITHUB_REF_NAME#v}" --notes-file release-notes.md
+          fi
+          ids=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\" and .draft) | .id")
+          id=${ids%%$'\n'*}
+          if [ -z "$id" ]; then
+            echo "::error::找不到 $GITHUB_REF_NAME 的草稿 Release"
+            exit 1
+          fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: 打包（${{ matrix.name }}）
+    needs: prepare
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      # 逐个平台上传：每个打包任务都会读取、合并、再上传 latest.json，同时进行可能互相覆盖
+      max-parallel: 1
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+          - name: Linux x64
+            os: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      # AppImage 在较旧的 glibc 上打包才能在更多发行版上运行，所以 Linux 用 ubuntu-22.04
+      - name: 安装 Tauri 2 的 Linux 系统依赖
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          # 正式版（release profile）与 CI 的调试构建分开缓存
+          key: release
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          releaseId: ${{ needs.prepare.outputs.release-id }}
+          tagName: ${{ github.ref_name }}
+          releaseDraft: true
+          prerelease: false
+          # 打开 bundle.createUpdaterArtifacts（生成 .sig）；放在单独的配置里，本地构建不需要签名私钥
+          args: --config src-tauri/tauri.release.conf.json
+          uploadUpdaterJson: true
+          uploadUpdaterSignatures: true
+          retryAttempts: 2
+
+  # 检查草稿 Release 里的 latest.json 同时包含 Windows 与 Linux（AppImage）的更新信息
+  verify:
+    name: 检查 latest.json
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # 读取草稿 Release 需要写权限
+    steps:
+      - name: 下载并检查 latest.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern latest.json
+          cat latest.json
+          jq -e --arg v "${GITHUB_REF_NAME#v}" '(.version | ltrimstr("v")) == $v' latest.json > /dev/null \
+            || { echo "::error::latest.json 的版本号与 tag 不一致"; exit 1; }
+          for key in windows-x86_64 linux-x86_64; do
+            jq -e --arg k "$key" '.platforms[$k].url and .platforms[$k].signature' latest.json > /dev/null \
+              || { echo "::error::latest.json 缺少 $key"; exit 1; }
+          done
+          jq -e '.platforms["windows-x86_64"].url | endswith("-setup.exe")' latest.json > /dev/null \
+            || { echo "::error::windows-x86_64 应指向 NSIS 安装包"; exit 1; }
+          jq -e '.platforms["linux-x86_64"].url | endswith(".AppImage")' latest.json > /dev/null \
+            || { echo "::error::linux-x86_64 应指向 AppImage"; exit 1; }
+          echo "latest.json 正常。检查草稿 Release 后在 GitHub 上手动发布。"

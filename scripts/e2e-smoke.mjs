@@ -1897,9 +1897,9 @@ async function cleanup() {
     s.cleanupPreviewDirs();
   }
   killAllChildren();
-  // 单实例测试改用的应用标识（io.github.cliprecipe.e2e）可能让 Tauri / 插件建了空的系统数据目录
+  // 单实例测试改用的应用标识（com.xiaofany.cliprecipe.e2e）可能让 Tauri / 插件建了空的系统数据目录
   for (const base of [process.env.APPDATA, process.env.LOCALAPPDATA]) {
-    const dir = base && path.join(base, "io.github.cliprecipe.e2e");
+    const dir = base && path.join(base, "com.xiaofany.cliprecipe.e2e");
     if (dir && fs.existsSync(dir)) await removeDir(dir);
   }
   if (opt("--keep")) {

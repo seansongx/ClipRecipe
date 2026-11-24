@@ -28,6 +28,8 @@ flate2 = "1"
 tar = { version = "0.4", default-features = false }
 tauri-plugin-window-state = "2"
 tauri-plugin-single-instance = "2"
+# 自动更新：读 GitHub Release 的 latest.json，下载并校验签名（minisign）后安装，见 docs/RELEASING.md
+tauri-plugin-updater = "2.14"
 
 [features]
 # 只用于端到端测试（scripts/e2e-smoke.mjs 以 `--features e2e-hooks` 构建调试版）：允许用环境变量替换内嵌的
@@ -44,3 +46,4 @@ strip = true
 [target."cfg(windows)".dependencies]
 webview2-com = "0.39"
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Dwm"] }
+

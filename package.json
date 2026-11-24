@@ -16,6 +16,8 @@
     "test:debug-panel": "node scripts/test-debug-panel.mjs",
     "check:shadcn": "node scripts/check-shadcn-stock.mjs",
     "sync-ffmpeg-manifest": "node scripts/sync-ffmpeg-manifest.mjs",
+    "release:version": "node scripts/release.mjs version",
+    "release:check": "node scripts/release.mjs check",
     "tauri": "tauri"
   },
   "dependencies": {

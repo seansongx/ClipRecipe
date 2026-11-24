@@ -1,7 +1,7 @@
-//! 系统相关命令：全部完成后关机 / 退出（`set.after-all`）、打开文件夹与项目页面、检查更新、
+//! 系统相关命令：全部完成后关机 / 退出（`set.after-all`）、打开文件夹与项目页面、检查更新与自动更新、
 //! 托盘（`set.tray`）、提示音文件（`set.sound`）。
 //!
-//! 事件：`shutdown-countdown`：`{ remaining }`（剩余秒数；0 表示正在关机）。
+//! 事件：`shutdown-countdown`：`{ remaining }`（剩余秒数；0 表示正在关机）；自动更新的事件见 [`install_update`]。
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -16,7 +16,10 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use super::{blocking, config_dir};
 use crate::desktop::show_main;
 use crate::fsutil::has_extension;
-use crate::system::{self, Countdown, UpdateInfo, SHUTDOWN_COUNTDOWN_SECS};
+use crate::system::{
+    self, Countdown, DownloadProgress, UpdateFlow, UpdateInfo, SHUTDOWN_COUNTDOWN_SECS,
+};
+use tauri_plugin_updater::{Update, UpdaterExt};
 
 const TRAY_ID: &str = "main-tray";
 const MAIN_WINDOW: &str = "main";
@@ -107,10 +110,191 @@ pub fn open_project_page(url: Option<String>) -> Result<(), String> {
     tauri_plugin_opener::open_url(&url, None::<&str>).map_err(|e| format!("无法打开浏览器：{e}"))
 }
 
-/// 检查 GitHub 上的最新发布（离线时返回错误，前端静默或提示）。
+/// 自动更新的状态（单独托管）：状态流转、检查到的待装更新、正在进行的下载。
+#[derive(Default)]
+pub struct UpdateState {
+    flow: Mutex<UpdateFlow>,
+    pending: Mutex<Option<Update>>,
+    download: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
+}
+
+#[derive(Clone, Serialize)]
+struct UpdateProgress {
+    downloaded: u64,
+    total: Option<u64>,
+}
+
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// 本程序 `tauri.conf.json` 里的更新公钥（`plugins.updater.pubkey`）。
+fn configured_pubkey(app: &AppHandle) -> Option<String> {
+    app.config()
+        .plugins
+        .0
+        .get("updater")
+        .and_then(|v| v.get("pubkey"))
+        .and_then(|v| v.as_str())
+        .map(str::to_owned)
+}
+
+/// 程序退出安装新版本前（Windows 上更新插件直接结束进程）：保存窗口位置、清理预览临时文件。
+fn before_update_exit(app: &AppHandle) {
+    use tauri_plugin_window_state::AppHandleExt;
+    let _ = app.save_window_state(crate::desktop::window_state_flags());
+    super::preview::cleanup(app);
+}
+
+/// 用更新插件检查 `latest.json`（见 `tauri.conf.json` 的 `plugins.updater.endpoints`）。
+async fn check_with_updater(app: &AppHandle) -> Result<Option<Update>, String> {
+    let exit_app = app.clone();
+    app.updater_builder()
+        .on_before_exit(move || before_update_exit(&exit_app))
+        .build()
+        .map_err(|e| e.to_string())?
+        .check()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 检查更新（离线时返回错误，前端静默或提示）。
+///
+/// 能自动更新时（配置了公钥，且是用 NSIS 安装包或 AppImage 安装的）读 Release 里的 `latest.json`，记下待装的更新；
+/// 否则、或读取失败时，改为读 GitHub 公开 API 的最新发布，只提示并打开发布页（`auto` 为 false，`manualReason` 说明原因）。
 #[tauri::command]
-pub async fn check_update() -> Result<UpdateInfo, String> {
-    blocking(|| system::check_update(env!("CARGO_PKG_VERSION"), system::http_get)).await?
+pub async fn check_update(
+    app: AppHandle,
+    state: State<'_, UpdateState>,
+) -> Result<UpdateInfo, String> {
+    let current = app.package_info().version.to_string();
+    let pubkey = configured_pubkey(&app);
+    let mut reason = system::manual_update_reason(
+        system::InstallKind::current(),
+        system::pubkey_configured(pubkey.as_deref()),
+    )
+    .map(str::to_owned);
+
+    if reason.is_none() {
+        match check_with_updater(&app).await {
+            Ok(found) => {
+                let info = match &found {
+                    Some(update) => UpdateInfo {
+                        current: current.clone(),
+                        latest: update.version.clone(),
+                        newer: true,
+                        url: system::release_page(&update.version),
+                        notes: system::clean_notes(update.body.as_deref()),
+                        auto: true,
+                        manual_reason: None,
+                    },
+                    None => UpdateInfo {
+                        latest: current.clone(),
+                        newer: false,
+                        url: system::release_page(&current),
+                        notes: None,
+                        auto: true,
+                        manual_reason: None,
+                        current,
+                    },
+                };
+                if lock(&state.flow).checked(found.is_some()) {
+                    *lock(&state.pending) = found;
+                }
+                return Ok(info);
+            }
+            Err(e) => reason = Some(format!("无法读取自动更新信息（{e}），请到发布页下载")),
+        }
+    }
+
+    let version = current.clone();
+    let mut info = blocking(move || system::check_update(&version, system::http_get)).await??;
+    if lock(&state.flow).checked(false) {
+        *lock(&state.pending) = None;
+    }
+    info.manual_reason = reason;
+    Ok(info)
+}
+
+/// 视频处理或工具正在运行时不安装（安装会结束程序）。
+fn busy(app: &AppHandle) -> Result<bool, String> {
+    let state = app.state::<super::AppState>();
+    Ok(super::jobs::jobs_running(app.state())? || super::tools::is_running(&state)?)
+}
+
+/// 下载并安装检查到的更新，然后重启程序。立即返回；进度与结果通过事件通知：
+/// `update-progress`：`{ downloaded, total }`（字节；total 未知时为 null）；`update-installing`（下载并校验完成，
+/// 开始安装，之后程序会退出并重启）；`update-failed`：错误说明（下载、校验或安装失败，可以重试或打开发布页）。
+#[tauri::command]
+pub fn install_update(app: AppHandle, state: State<'_, UpdateState>) -> Result<(), String> {
+    if busy(&app)? {
+        return Err("正在处理视频，请等全部任务结束后再更新".into());
+    }
+    let update = lock(&state.pending)
+        .clone()
+        .ok_or("没有可以安装的更新，请先检查更新")?;
+    lock(&state.flow).start_download()?;
+
+    let task_app = app.clone();
+    let handle = tauri::async_runtime::spawn(async move {
+        let app = task_app;
+        let state = app.state::<UpdateState>();
+        let mut progress = DownloadProgress::default();
+        let progress_app = app.clone();
+        let result = update
+            .download(
+                |chunk, total| {
+                    if progress.add(chunk, total) {
+                        let _ = progress_app.emit(
+                            "update-progress",
+                            UpdateProgress {
+                                downloaded: progress.downloaded,
+                                total: progress.total,
+                            },
+                        );
+                    }
+                },
+                || {},
+            )
+            .await;
+        // 已被取消：不再安装
+        if !lock(&state.flow).download_finished(result.is_ok()) {
+            return;
+        }
+        let bytes = match result {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                let _ = app.emit("update-failed", format!("下载更新失败：{e}"));
+                return;
+            }
+        };
+        let _ = app.emit("update-installing", ());
+        // Windows：启动安装程序后由插件结束本进程，安装完成后安装程序重新打开 ClipRecipe
+        match update.install(bytes) {
+            Ok(()) => {
+                before_update_exit(&app);
+                app.restart();
+            }
+            Err(e) => {
+                lock(&state.flow).install_failed();
+                let _ = app.emit("update-failed", format!("安装更新失败：{e}"));
+            }
+        }
+    });
+    *lock(&state.download) = Some(handle);
+    Ok(())
+}
+
+/// 取消正在进行的下载（安装开始后不能取消），返回是否取消了。
+#[tauri::command]
+pub fn cancel_update(state: State<'_, UpdateState>) -> bool {
+    if !lock(&state.flow).cancel() {
+        return false;
+    }
+    if let Some(handle) = lock(&state.download).take() {
+        handle.abort();
+    }
+    true
 }
 
 /// 允许 WebView 读取自定义提示音（只接受存在的 wav 文件），返回原路径。

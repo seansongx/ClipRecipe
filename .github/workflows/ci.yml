@@ -1,0 +1,94 @@
+# 持续集成：前端检查 + 后端在 Windows 与 Linux 上 fmt / clippy / test。
+# 与本地的验收命令一致（README“测试”、CONTRIBUTING“提交前”）。Linux 没有本地开发环境，这里是它的主要验证手段。
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 同一分支 / PR 有新的推送时取消还在跑的旧运行
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  NODE_VERSION: "26"
+
+jobs:
+  frontend:
+    name: 前端（typecheck / build / shadcn）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      # 联网对比 ui.shadcn.com 注册表：src/components/ui/ 必须与 CLI 生成的原版一致
+      - run: npm run check:shadcn
+      # 版本号在 package.json、Cargo.toml、tauri.conf.json 等几处一致
+      - run: npm run release:check
+
+  backend:
+    name: 后端（${{ matrix.os }}）
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 安装 Tauri 2 的 Linux 系统依赖
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # 测试用 node_modules 里 @seankit/ffmpeg、@seankit/ffprobe 对应本平台的那份（Linux 为 *-linux-x64/bin/）；
+      # 也用于检查内嵌的 FFmpeg 下载清单与已安装的包一致。前端不需要构建（cargo test 是开发构建，不内嵌前端）。
+      - run: npm ci
+      - name: 确认测试用的 FFmpeg 可以运行
+        run: |
+          case "$RUNNER_OS" in
+            Windows) dir=win32-x64; ext=.exe ;;
+            Linux) dir=linux-x64; ext= ;;
+          esac
+          node_modules/@seankit/ffmpeg-$dir/bin/ffmpeg$ext -hide_banner -version
+          node_modules/@seankit/ffprobe-$dir/bin/ffprobe$ext -hide_banner -version
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: cargo fmt --check
+        working-directory: src-tauri
+        run: cargo fmt --check
+      - name: cargo clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test

@@ -653,7 +653,20 @@ export interface UpdateInfo {
   current: string;
   latest: string;
   newer: boolean;
+  /** 发布页（本项目 GitHub 下的地址） */
   url: string;
+  /** 更新说明（发布说明，Markdown 原文；没有时为 null） */
+  notes: string | null;
+  /** 能否在程序内下载并安装；否则只能打开发布页 */
+  auto: boolean;
+  /** 不能自动更新的原因（未配置公钥的构建、deb / rpm 安装、开发版，或读取 latest.json 失败） */
+  manualReason: string | null;
+}
+
+/** 自动更新的下载进度（字节；total 未知时为 null）。 */
+export interface UpdateProgress {
+  downloaded: number;
+  total: number | null;
 }
 
 export const scheduleShutdown = () => call<void>("schedule_shutdown");
@@ -665,6 +678,13 @@ export const openDataDir = () => call<void>("open_data_dir");
 /** 打开本项目的 GitHub 页面（默认仓库首页）。 */
 export const openProjectPage = (url?: string) => call<void>("open_project_page", { url: url ?? null });
 export const checkUpdate = () => call<UpdateInfo>("check_update");
+/** 下载并安装检查到的更新（立即返回；进度与结果见 onUpdateProgress / onUpdateInstalling / onUpdateFailed），安装后程序重启。 */
+export const installUpdate = () => call<void>("install_update");
+/** 取消正在进行的更新下载，返回是否取消了（安装开始后不能取消）。 */
+export const cancelUpdate = () => call<boolean>("cancel_update");
+export const onUpdateProgress = (handler: (progress: UpdateProgress) => void) => subscribe("update-progress", handler);
+export const onUpdateInstalling = (handler: () => void) => subscribe("update-installing", handler);
+export const onUpdateFailed = (handler: (error: string) => void) => subscribe("update-failed", handler);
 /** 允许 WebView 播放自定义提示音（wav），返回原路径。 */
 export const allowSoundFile = (path: string) => call<string>("allow_sound_file", { path });
 

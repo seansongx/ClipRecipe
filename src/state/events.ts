@@ -1,6 +1,15 @@
 // 把后端事件接到各个状态仓库。在 App 挂载时调用一次。
 
-import { isTauri, jobsRunning, onFfmpegDownload, onImportProgress, onJobEvent } from "../lib/backend";
+import {
+  isTauri,
+  jobsRunning,
+  onFfmpegDownload,
+  onImportProgress,
+  onJobEvent,
+  onUpdateFailed,
+  onUpdateInstalling,
+  onUpdateProgress,
+} from "../lib/backend";
 import { loadRealPlatform } from "../lib/platform";
 import { onToolEvent } from "../lib/tools";
 import { useEncoders } from "./encoders";
@@ -9,6 +18,7 @@ import { handleRunFinished } from "./finish";
 import { persistQueue, useQueue } from "./queue";
 import { useSettings } from "./settings";
 import { useTools } from "./tools";
+import { useUpdate } from "./update";
 
 export function initBackend(): () => void {
   let stopPersist: (() => void) | null = null;
@@ -42,6 +52,9 @@ export function initBackend(): () => void {
   });
   const stopImport = onImportProgress((progress) => useQueue.getState().setImportProgress(progress));
   const stopFfmpeg = onFfmpegDownload((progress) => useFfmpeg.getState().setProgress(progress));
+  const stopUpdateProgress = onUpdateProgress((progress) => useUpdate.getState().setProgress(progress));
+  const stopUpdateInstalling = onUpdateInstalling(() => useUpdate.getState().setInstalling());
+  const stopUpdateFailed = onUpdateFailed((error) => useUpdate.getState().setFailed(error));
   if (isTauri) {
     // 真实平台以后端为准（lib/platform.ts；读到之前用 User-Agent 推断）
     void loadRealPlatform();
@@ -59,5 +72,8 @@ export function initBackend(): () => void {
     stopTool();
     stopImport();
     stopFfmpeg();
+    stopUpdateProgress();
+    stopUpdateInstalling();
+    stopUpdateFailed();
   };
 }

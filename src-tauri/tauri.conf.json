@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "ClipRecipe",
   "version": "0.1.0",
-  "identifier": "io.github.cliprecipe",
+  "identifier": "com.xiaofany.cliprecipe",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -43,13 +43,50 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "nsis",
+      "appimage",
+      "deb"
+    ],
+    "publisher": "ClipRecipe contributors",
+    "copyright": "Copyright (c) 2026 ClipRecipe contributors. MIT License.",
+    "homepage": "https://github.com/seansongx/ClipRecipe",
+    "category": "Video",
+    "shortDescription": "开源的视频批量处理桌面工具",
+    "longDescription": "ClipRecipe 是开源的视频批量处理桌面工具：把裁剪、调速、水印、字幕、拼接等处理组成配方，一次应用到整批视频，另有几十个独立的视频小工具。基于 Tauri 2 与 FFmpeg。",
+    "license": "MIT",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "SimpChinese",
+          "English"
+        ],
+        "displayLanguageSelector": false
+      }
+    },
+    "linux": {
+      "deb": {
+        "section": "video"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "REPLACE_WITH_UPDATER_PUBLIC_KEY (see docs/RELEASING.md)",
+      "endpoints": [
+        "https://github.com/seansongx/ClipRecipe/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

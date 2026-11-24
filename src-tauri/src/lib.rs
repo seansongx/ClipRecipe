@@ -67,8 +67,11 @@ pub fn run() {
     builder
         .plugin(window_state_plugin())
         .plugin(tauri_plugin_dialog::init())
+        // 自动更新（只在 Rust 侧调用，没有授权给前端；见 commands::system::check_update）
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(commands::AppState::default())
         .manage(commands::system::SystemState::default())
+        .manage(commands::system::UpdateState::default())
         .manage(desktop::DesktopState::default())
         .setup(|app| {
             if let Err(e) = commands::preview::setup(app.handle()) {
@@ -137,6 +140,8 @@ pub fn run() {
             commands::system::open_data_dir,
             commands::system::open_project_page,
             commands::system::check_update,
+            commands::system::install_update,
+            commands::system::cancel_update,
             commands::system::allow_sound_file,
             commands::window::window_ready,
             commands::window::set_window_chrome,

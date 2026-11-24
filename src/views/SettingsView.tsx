@@ -389,7 +389,7 @@ function GeneralGroup() {
         <Row label="静音预览" hint="预览与播放时默认静音">
           {toggle("mutePreview", "静音预览")}
         </Row>
-        <Row label="启动时检查更新" hint="只访问 GitHub 公开的发布信息，发现新版本时询问是否打开发布页">
+        <Row label="启动时检查更新" hint="只读取 GitHub 上公开的发布信息；发现新版本时先询问，确认后才下载并安装（不支持自动安装的版本改为打开发布页）">
           {toggle("autoUpdate", "启动时检查更新")}
           <div className="mt-1.5 flex items-center gap-2">
             <Button

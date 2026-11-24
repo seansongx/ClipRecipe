@@ -22,7 +22,7 @@
   字幕提取、字幕擦除、封面处理。
 - **设置**：目标格式、重名处理、文件名去除、并行数、H.265、HDR 转 SDR 或保留 HDR、GPU 硬件编码（NVENC / QSV / AMF，
   失败自动回退软件编码，可设核显优先）、体积压缩、版权元数据、完成后打开文件夹 / 提示音 / 关机 / 退出、
-  处理后删除源视频（默认移入回收站）或把输出移回源位置、托盘、深浅色主题、检查更新（只提示并打开 GitHub 发布页）。
+  处理后删除源视频（默认移入回收站）或把输出移回源位置、托盘、深浅色主题、检查更新与程序内自动更新（见下文“下载与更新”）。
 - **桌面程序的用法**：标题栏随主题变色（Windows 11），记住窗口位置与大小，只运行一个实例（再次打开会激活已有窗口，
   拖到程序图标上的文件直接导入），任务栏按钮显示处理进度，底部状态栏显示队列与运行状态。
 
@@ -46,7 +46,7 @@ ClipRecipe 不包含也不分发 FFmpeg，而是把它作为独立程序调用�
   设置 → 关于 → 运行环境 中下载、更新或删除。下载的是 npm 包 [`@seankit/ffmpeg`](https://www.npmjs.com/package/@seankit/ffmpeg) /
   [`@seankit/ffprobe`](https://www.npmjs.com/package/@seankit/ffprobe) 中未经修改的上游静态构建（当前为 FFmpeg 9.0.2，
   Windows 上是 gyan.dev 的 essentials 构建，两个压缩包合计约 75 MB），先从 npmmirror、失败时从 npmjs 下载，
-  按程序内置的大小与 SHA-256 校验后放到本机数据目录（Windows：`%LOCALAPPDATA%\io.github.cliprecipe\ffmpeg\<版本>\`），
+  按程序内置的大小与 SHA-256 校验后放到本机数据目录（Windows：`%LOCALAPPDATA%\com.xiaofany.cliprecipe\ffmpeg\<版本>\`），
   下载后立即生效、无需重启。只有点击按钮时才会联网；请求只是普通的 GET，不带任何用户信息；会使用环境变量
   `HTTPS_PROXY` / `NO_PROXY` 设置的代理。这些 FFmpeg 构建按 GPL-3.0-or-later 授权。
 - **自行安装**：例如 Windows 上 `winget install Gyan.FFmpeg`（full 构建），让 `ffmpeg` / `ffprobe` 在 `PATH` 中，
@@ -64,6 +64,18 @@ ClipRecipe 不使用它们。
 **语音生成字幕的模型**：程序不会自动下载任何东西。请从 whisper.cpp 的 Hugging Face 仓库
 （<https://huggingface.co/ggerganov/whisper.cpp>）下载 ggml 格式的模型（如 `ggml-base.bin`），在工具里选择它。
 
+## 下载与更新
+
+从 [GitHub Releases](https://github.com/seansongx/ClipRecipe/releases) 下载：Windows 10 / 11 用 `*_x64-setup.exe`
+（NSIS 安装包，安装到当前用户），Linux 用 `*.AppImage` 或 `*.deb`。暂不提供 macOS 版本。
+安装包没有 Windows 代码签名，首次运行时 SmartScreen 可能提示“已保护你的电脑”，点“更多信息”→“仍要运行”即可。
+
+**自动更新**：启动时（设置 → 通用 → 启动时检查更新，可关闭）或手动检查 GitHub 上的最新发布。Windows 安装包版与
+AppImage 版发现新版本时显示版本号与更新说明，确认后在程序内下载（可取消）、校验签名、安装并重启；deb 安装的版本、
+开发版，以及下载或校验失败时，改为在浏览器中打开发布页。检查更新只访问 GitHub（Release 里的 `latest.json`，
+必要时 `api.github.com` 的公开发布信息），请求是不带用户信息的普通 GET；确认更新之后才从 GitHub Release 下载安装包。
+发布流程见 [docs/RELEASING.md](docs/RELEASING.md)，各版本的变化见 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 构建与运行
 
 环境要求：
@@ -76,7 +88,7 @@ ClipRecipe 不使用它们。
 ```bash
 npm install
 npm run tauri dev     # 开发运行
-npm run tauri build   # 打包安装程序
+npm run tauri build   # 打包安装程序（Windows：NSIS；Linux：AppImage 与 deb）
 ```
 
 只调试界面时可以 `npm run dev` 后在浏览器打开 <http://localhost:1420>（原生能力不可用，设置不会保存）。
@@ -123,12 +135,15 @@ src-tauri/resources/      ffmpeg-manifest.json：应用内下载的固定清单�
 src-tauri/tests/          集成测试
 docs/FEATURES.md          功能清单与状态
 docs/PLAN.md              架构约定、验收标准、模块 / 工具编写指南、各里程碑的实现说明
+docs/RELEASING.md         发布流程（版本号、CHANGELOG、tag、草稿 Release、updater 签名密钥）
+.github/workflows/        CI（前端检查，Windows / Linux 上的 fmt、clippy、test）与发布流水线
 ```
 
 ## 已知限制
 
 - 只在 Windows 上做过完整测试；代码保持跨平台（macOS / Linux 的托盘、关机、回收站走各自的系统接口，未逐一验证）。
-- 检查更新只提示并打开发布页，不会自动下载或替换程序。
+- 程序内自动更新只支持 Windows 安装包版与 AppImage 版；deb 安装的版本与自行编译的程序只提示并打开发布页。
+- 只发布 Windows 与 Linux 版本；安装包没有 Windows 代码签名（首次运行会有 SmartScreen 提示）。
 - 字幕擦除是本地近似处理（修补 / 模糊 / 遮盖指定区域），不会自动识别字幕位置。
 - 改变视频时长只改容器里的时长元数据，FFmpeg 系的播放器仍显示真实时长。
 - 双击播放源视频时不叠加关联的字幕（预览与处理结果中有）；ass / ssa 字幕保留文件自带样式，设置中的字幕样式只作用于 srt / vtt。

@@ -4,7 +4,7 @@ ClipRecipe 各版本的变化记录在这里。格式参照 [Keep a Changelog](h
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。发布流程见 [docs/RELEASING.md](docs/RELEASING.md)：
 发布时把版本标题里的“未发布”改为发布日期（`YYYY-MM-DD`），该小节的内容会成为 GitHub Release 的说明。
 
-## [0.1.0] - 未发布
+## [0.1.0] - 2026-11-24
 
 首个公开版本。功能清单与说明见 [docs/FEATURES.md](docs/FEATURES.md)。
 
@@ -60,6 +60,7 @@ ClipRecipe 各版本的变化记录在这里。格式参照 [Keep a Changelog](h
 
 - 单实例（再次打开或把视频拖到程序图标上时，交给已运行的窗口）、记住窗口位置与大小、任务栏显示处理进度、
   标题栏随主题配色、首帧画好后再显示窗口。
+- 正在处理视频或运行工具时关闭窗口或从托盘退出，会先询问是否停止并退出；正常退出时会结束仍在运行的 FFmpeg。
 - 安装包：Windows NSIS 安装包（简体中文 / 英文，安装到当前用户），Linux AppImage 与 deb。暂不提供 macOS 版本。
 
 [0.1.0]: https://github.com/seansongx/ClipRecipe/releases/tag/v0.1.0

@@ -19,7 +19,7 @@ export default function ParamField({
       {/* 标签与右侧第一行控件（Mira 的控件高 h-7）居中对齐 */}
       <FieldTitle className="w-16 shrink-0 pt-1">{label}</FieldTitle>
       {/* 单独的开关比输入框矮，上下补齐使其与标签对齐 */}
-      <FieldContent className="min-w-0 flex-1 *:data-[slot=switch]:my-[5px]">
+      <FieldContent className="min-w-0 flex-1 *:data-[slot=switch]:my-1.5">
         {children}
         {hint && <FieldDescription>{hint}</FieldDescription>}
       </FieldContent>

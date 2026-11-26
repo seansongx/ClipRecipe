@@ -17,4 +17,5 @@ src-tauri/binaries/
 .idea/
 
 # Claude Code 本地配置
-.claude/
+.claude/*
+!.claude/project-docs.json

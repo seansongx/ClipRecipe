@@ -1,0 +1,5 @@
+{
+  "allow": ["docs/RELEASING.md", "docs/architecture/**"],
+  "ignore": [],
+  "planStaleDays": 30
+}

@@ -15,6 +15,8 @@
     "e2e:debug-panel": "node scripts/e2e-smoke.mjs --mode dev --debug-panel",
     "test:debug-panel": "node scripts/test-debug-panel.mjs",
     "check:shadcn": "node scripts/check-shadcn-stock.mjs",
+    "docs:check": "node scripts/check-docs.mjs --check",
+    "docs:index": "node scripts/check-docs.mjs --index",
     "sync-ffmpeg-manifest": "node scripts/sync-ffmpeg-manifest.mjs",
     "release:version": "node scripts/release.mjs version",
     "release:check": "node scripts/release.mjs check",

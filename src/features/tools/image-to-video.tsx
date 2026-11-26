@@ -164,7 +164,7 @@ export default defineTool<ImageToVideoParams>({
     width: 1080,
     height: 1920,
     fit: "fit",
-    background: "#000000",
+    background: "#000000", // token-ignore：视频参数默认值，不是界面颜色
     fps: 30,
     duration: 5,
     animation: "none",

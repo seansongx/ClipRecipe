@@ -223,7 +223,7 @@ export default defineModule<AdjustParams>({
     vignette: off(30, 30),
     blackWhite: false,
     fadeOut: off(1, 1),
-    border: { enabled: false, width: { min: 20, max: 20 }, color: "#ffffff", randomColor: false },
+    border: { enabled: false, width: { min: 20, max: 20 }, color: "#ffffff", randomColor: false }, // token-ignore：视频参数默认值，不是界面颜色
     opening: off(1.5, 1.5),
     mosaic: off(10, 10),
     maskInvert: off(0.3, 0.3),

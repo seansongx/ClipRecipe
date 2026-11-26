@@ -417,13 +417,13 @@ const ITEM_DEFAULTS: TextItem = {
   fontFile: "",
   fontSize: 5,
   fitWidth: true,
-  color: "#ffffff",
+  color: "#ffffff", // token-ignore：视频参数默认值，不是界面颜色
   outlineWidth: 8,
-  outlineColor: "#000000",
+  outlineColor: "#000000", // token-ignore
   shadow: false,
   shadowColor: "#000000",
   background: false,
-  backgroundColor: "#000000",
+  backgroundColor: "#000000", // token-ignore
   backgroundOpacity: 0.5,
   lineSpacing: 20,
   align: "center",

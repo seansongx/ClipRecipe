@@ -125,7 +125,7 @@ export default defineTool<OrientationParams>({
     width: 1080,
     height: 1920,
     fill: "blur",
-    color: "#000000",
+    color: "#000000", // token-ignore：视频参数默认值，不是界面颜色
     image: { mode: "file", path: "" },
     blurStrength: 20,
   },

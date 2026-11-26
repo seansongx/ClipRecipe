@@ -183,7 +183,7 @@ export default defineTool<ProgressBarParams>({
     height: 1.5,
     barColor: "#f4b740",
     barOpacity: 100,
-    backgroundColor: "#000000",
+    backgroundColor: "#000000", // token-ignore：视频参数默认值，不是界面颜色
     backgroundOpacity: 40,
     rounded: false,
     chapters: "",

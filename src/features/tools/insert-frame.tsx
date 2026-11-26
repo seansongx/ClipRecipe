@@ -119,7 +119,7 @@ export default defineTool<InsertFrameParams>({
     positions: "50%",
     frames: 1,
     fit: "fit",
-    background: "#000000",
+    background: "#000000", // token-ignore：视频参数默认值，不是界面颜色
     mode: "overlay",
   },
   inputs: VIDEO_INPUTS,

@@ -307,7 +307,7 @@ export default defineTool<SubtitleAsrParams>({
     burn: false,
     fontSize: 5,
     fontColor: "#ffffff",
-    outlineColor: "#000000",
+    outlineColor: "#000000", // token-ignore：视频参数默认值，不是界面颜色
     outlineWidth: 2,
     marginBottom: 5,
   },

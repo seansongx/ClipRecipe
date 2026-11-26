@@ -169,8 +169,8 @@ export const DEFAULT_SETTINGS: Settings = {
   subtitleStyle: {
     font: "",
     size: 48,
-    color: "#ffffff",
-    outlineColor: "#000000",
+    color: "#ffffff", // token-ignore：视频参数默认值，不是界面颜色
+    outlineColor: "#000000", // token-ignore
     outline: 2,
     marginBottom: 60,
   },

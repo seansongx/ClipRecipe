@@ -196,7 +196,7 @@ export default defineTool<StitchParams>({
     width: 1920,
     height: 1080,
     cellFit: "fill",
-    background: "#000000",
+    background: "#000000", // token-ignore：视频参数默认值，不是界面颜色
     fps: 30,
   },
   inputs: { videos: false, folders: [{ key: "source", label: "视频文件夹" }] },

@@ -14,7 +14,7 @@
 //! - [`common`]：多个工具共用的引擎（片段列表、合并、滤镜命令、位置解析、场景分段）。
 //!
 //! 全部 34 个工具已在下方 [`registry!`] 中注册（M3）；实现某个工具只需修改它自己的文件，
-//! 见 docs/PLAN.md“独立工具（tool.*）”。
+//! 见 docs/architecture/tools.md。
 
 pub mod analysis;
 pub mod common;
@@ -44,7 +44,7 @@ pub const NOT_IMPLEMENTED: &str = "该工具尚未实现";
 
 /// 一个独立工具。实现者是该工具的参数结构体（serde camelCase，带 `Default`）。
 pub trait Tool: Send + Sync {
-    /// 功能 ID，与 registry.ts、FEATURES.md 一致，如 `tool.remux`。
+    /// 功能 ID，与 registry.ts、docs/specs/ 一致，如 `tool.remux`。
     fn id(&self) -> &'static str;
 
     /// 是否已实现。占位工具返回 false，界面上不可启动，后端也会拒绝。

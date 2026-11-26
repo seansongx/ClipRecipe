@@ -1,6 +1,6 @@
 // 开发环境的调试面板：状态栏右端的小按钮（或 Ctrl+Shift+D / ⇧⌘D）打开右侧抽屉，内容是平台模拟、主题切换、
 // 界面状态模拟与只读的调试信息。只在 import.meta.env.DEV 时由 App.tsx 动态导入；生产构建里没有这段代码。
-// 说明见 docs/PLAN.md“开发环境的调试面板”。
+// 说明见 docs/architecture/frontend.md“开发环境的调试面板”。
 
 import { useEffect, useRef, useState } from "react";
 import { Bug, Copy, RotateCcw } from "lucide-react";

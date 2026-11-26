@@ -1,6 +1,6 @@
 //! `pipe.adjust` 画面调整：调色、锐化降噪、LUT 与多种画面效果。每一项单独开关。
 //!
-//! 参数与取舍（FEATURES.md 未规定的部分）。范围值每个视频随机取值：
+//! 参数与取舍（docs/specs/pipeline.md 未规定的部分）。范围值每个视频随机取值：
 //! - 亮度 `brightness`（-1～1）、对比度 `contrast`（0～3）、饱和度 `saturation`（0～3）：合并为一个 `eq`，保留 2 位小数；
 //! - 锐化 `sharpen`：`unsharp` 亮度强度（0～5，2 位小数）；降噪 `denoise`：`hqdn3d` 空间强度（0～30，1 位小数）；
 //! - LUT `lut`：`.cube/.3dl/.dat/.m3d/.csp` 文件（单文件或目录随机/依次取），`lut3d`；

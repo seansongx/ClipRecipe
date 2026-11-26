@@ -7,7 +7,7 @@
 
 ## 功能
 
-完整清单与每项的实现说明见 [docs/FEATURES.md](docs/FEATURES.md)（全部条目均已实现）。
+完整清单与每项的实现说明见 [docs/specs/](docs/specs/overview.md)（全部条目均已实现）。
 
 - **批量流水线（18 个模块）**：去水印、加水印、画中画、文本、裁剪、分辨率、旋转翻转、画面调整（含 LUT）、宫格分屏、
   动态缩放、去头尾、加头尾与相框、变速、抽帧、重复帧移除、背景音、帧率、码率。数值参数支持范围值随机取样，
@@ -95,16 +95,7 @@ npm run tauri build   # 打包安装程序（Windows：NSIS；Linux：AppImage �
 
 ## 测试
 
-验收命令（[docs/PLAN.md](docs/PLAN.md#验收标准)）：
-
-```bash
-npm run typecheck
-npm run build
-cd src-tauri
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
-```
+验收命令见 [CONTRIBUTING.md](CONTRIBUTING.md#提交前)。
 
 `cargo test` 中的集成测试用 FFmpeg 的 `lavfi` 现场生成素材并真实运行，需要 FFmpeg 可用（`npm install` 后自动使用
 `node_modules` 里的 FFmpeg 9.0.2 essentials；也可用 `PATH` 或 `CLIPRECIPE_FFMPEG` 指定别的构建，两者都应全部通过），
@@ -123,6 +114,10 @@ src/                      前端（React + TypeScript + Tailwind v4 + shadcn/ui�
   state/                  队列、配方、设置、预览、工具运行等状态
   views/                  页面：批量处理、工具箱、设置
   lib/backend.ts          与后端通信的命令、事件与类型
+  lib/utils.ts            cn()（合并 className）、scrollViewport()
+  lib/platform.ts         平台来源（全应用只从这里读平台）
+  lib/shortcuts.ts        快捷键的定义、显示文字与按键匹配
+  debug/                  开发环境的调试面板（生产构建不含）
 src-tauri/src/            后端（Rust）
   ffmpeg/                 FFmpeg 定位、探测、运行与进度、编码器探测；manifest.rs / managed.rs 应用内下载
 src-tauri/resources/      ffmpeg-manifest.json：应用内下载的固定清单（npm run sync-ffmpeg-manifest 生成）
@@ -133,8 +128,9 @@ src-tauri/resources/      ffmpeg-manifest.json：应用内下载的固定清单�
   commands/               暴露给前端的命令
   desktop.rs              主窗口：首帧后显示、标题栏配色、任务栏进度、单实例、窗口位置
 src-tauri/tests/          集成测试
-docs/FEATURES.md          功能清单与状态
-docs/PLAN.md              架构约定、验收标准、模块 / 工具编写指南、各里程碑的实现说明
+docs/README.md            文档索引
+docs/specs/               功能清单与说明（队列、流水线模块、独立工具、设置）
+docs/architecture.md      架构约定的入口；architecture/ 下是各子系统的约定、模块 / 工具编写指南与实现说明
 docs/RELEASING.md         发布流程（版本号、CHANGELOG、tag、草稿 Release、updater 签名密钥）
 .github/workflows/        CI（前端检查，Windows / Linux 上的 fmt、clippy、test）与发布流水线
 ```

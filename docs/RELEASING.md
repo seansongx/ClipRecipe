@@ -24,8 +24,8 @@ ClipRecipe 通过 GitHub Actions 打包并发布到 [GitHub Releases](https://gi
 ## 首次配置（只做一次）
 
 自动更新要求每个更新包都用项目的 updater 私钥签名（[Tauri updater](https://v2.tauri.app/plugin/updater/) 自带的 minisign 签名），
-程序内置对应的公钥用来校验。仓库里的公钥目前是占位值 `REPLACE_WITH_UPDATER_PUBLIC_KEY (see docs/RELEASING.md)`：
-在换成真正的公钥之前，构建出的程序不会自动更新（只提示并打开发布页），发布流水线也会在检查这一步失败。
+程序内置对应的公钥用来校验。公钥还是占位值 `REPLACE_WITH_UPDATER_PUBLIC_KEY (see docs/RELEASING.md)` 时，
+构建出的程序不会自动更新（只提示并打开发布页），发布流水线也会在检查这一步失败。
 
 1. **生成密钥对**（在自己的电脑上，仓库根目录）：
 

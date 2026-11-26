@@ -1,6 +1,6 @@
 //! `pipe.dedupe-frames` 重复帧移除：用 `mpdecimate` 去掉与前一帧（几乎）相同的连续帧。
 //!
-//! 参数与取值约定（FEATURES 未规定的部分在此说明）：
+//! 参数与取值约定（docs/specs/pipeline.md 未规定的部分在此说明）：
 //! - `sensitivity`：判断“重复”的灵敏度，对应 `mpdecimate` 的 `hi/lo/frac` 阈值：
 //!   - `low`（只去几乎完全相同的帧）：`hi=384:lo=160:frac=0.2`；
 //!   - `normal`（FFmpeg 默认）：`hi=768:lo=320:frac=0.33`，滤镜写作不带参数的 `mpdecimate`；

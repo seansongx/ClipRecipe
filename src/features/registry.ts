@@ -1,4 +1,4 @@
-// 功能注册表：ID 与 docs/FEATURES.md 一一对应。
+// 功能注册表：ID 与 docs/specs/ 一一对应。
 // 界面根据这里的元数据渲染；实现某个功能后把 status 改为 "done"。
 
 export type FeatureStatus = "planned" | "wip" | "done";

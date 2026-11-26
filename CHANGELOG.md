@@ -6,7 +6,7 @@ ClipRecipe 各版本的变化记录在这里。格式参照 [Keep a Changelog](h
 
 ## [0.1.0] - 2026-11-24
 
-首个公开版本。功能清单与说明见 [docs/FEATURES.md](docs/FEATURES.md)。
+首个公开版本。功能清单与说明见 [docs/specs/](docs/specs/overview.md)。
 
 ### 新增
 

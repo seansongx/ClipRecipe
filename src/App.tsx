@@ -30,7 +30,7 @@ import StatusBar from "./views/StatusBar";
 const ToolboxView = lazy(() => import("./views/ToolboxView"));
 const SettingsView = lazy(() => import("./views/SettingsView"));
 const ToolDialog = lazy(() => import("./views/tools/ToolDialog"));
-// 开发环境的调试面板（src/debug/，docs/PLAN.md“开发环境的调试面板”）：生产构建里 import.meta.env.DEV 是常量 false，
+// 开发环境的调试面板（src/debug/，docs/architecture/frontend.md“开发环境的调试面板”）：生产构建里 import.meta.env.DEV 是常量 false，
 // 这个动态导入连同 src/debug/ 一起被剔除，产物里没有面板与入口
 const DebugPanel = import.meta.env.DEV ? lazy(() => import("./debug/DebugPanel")) : null;
 

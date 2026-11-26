@@ -1,4 +1,4 @@
-//! ClipRecipe 后端。目录约定见 docs/PLAN.md。
+//! ClipRecipe 后端。目录约定见 docs/architecture.md。
 
 pub mod commands;
 pub mod desktop;

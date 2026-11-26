@@ -1,6 +1,6 @@
 //! `pipe.pip` 画中画：画面缩小后放在一个背景上。
 //!
-//! 参数与取值约定（FEATURES 未规定的部分在此说明）：
+//! 参数与取值约定（docs/specs/pipeline.md 未规定的部分在此说明）：
 //! - 画布：默认沿用当前画面尺寸；开启 `canvasEnabled` 时改为 `canvasWidth` × `canvasHeight`
 //!   （16～7680，奇数向下取偶并提示），可借此做横竖屏转换（如横屏 → 1080×1920）。`ctx.stream` 的宽高随之更新。
 //! - 背景 `background`：

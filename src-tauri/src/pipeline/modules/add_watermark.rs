@@ -1,6 +1,6 @@
 //! `pipe.add-watermark` 加水印：把图片 / GIF / 视频素材叠加到画面上。
 //!
-//! 参数与取值约定（FEATURES 未规定的部分在此说明）：
+//! 参数与取值约定（docs/specs/pipeline.md 未规定的部分在此说明）：
 //! - 素材：单个文件，或目录（随机 / 依次取，目录模式只认 [`WATERMARK_EXTENSIONS`]）。
 //!   按扩展名区分：png / jpg / jpeg / webp / bmp 为**静态图片**（只有一帧，叠加时一直显示最后一帧）；
 //!   其余（gif、mp4、mov、webm、mkv…，包括带透明通道的 mov）为**动态素材**，用 `-stream_loop -1`

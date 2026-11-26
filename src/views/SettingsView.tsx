@@ -1,4 +1,4 @@
-// 设置页：左侧分组列表 + 右侧当前分组。每个设置项对应 FEATURES.md 第 4 节的一个 ID（set.*），
+// 设置页：左侧分组列表 + 右侧当前分组。每个设置项对应 docs/specs/settings.md的一个 ID（set.*），
 // 字段定义见 lib/backend.ts 的 Settings（与后端 model/settings.rs 一致）。
 
 import { useEffect, useId, useState, type ReactNode } from "react";

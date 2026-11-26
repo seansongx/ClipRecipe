@@ -579,7 +579,7 @@ function saveNativeShot(s, label) {
   }
 }
 
-/** 桌面应用体验：去掉网页行为、标题、光标、首帧主题（docs/PLAN.md“桌面应用体验约定”）。 */
+/** 桌面应用体验：去掉网页行为、标题、光标、首帧主题（docs/architecture/frontend.md“桌面应用体验约定”）。 */
 async function desktopScenarios(s) {
   const { page } = s;
   await scenario(s, "桌面体验：窗口标题、首帧主题、右键菜单、浏览器快捷键与缩放、光标与选择、无原生提示", async () => {

@@ -3,7 +3,7 @@
 //! **合并引擎**（[`MergeOptions`]、[`merge_segments`]、[`encode_segments`] 等）在 [`crate::tools::common::merge_engine`]，
 //! `tool.folder-merge`、`tool.clip-merge` 共用（这里保留同名再导出）。
 //!
-//! 参数与取值约定（FEATURES 未规定的部分）：
+//! 参数与取值约定（docs/specs/tools.md 未规定的部分）：
 //! - 分组 `grouping`：`all` 全部合成一个；`everyN` 每 `groupSize`（1～1000）个合成一个（最后一组可能不足）。
 //!   `shuffle` 先按种子随机打乱顺序再分组。打乱在规划时完成（`req.rng`，由本次运行的种子派生、可复现），
 //!   所以每组都是一个工作项（可并行），界面上显示的就是该组真正的视频与顺序。

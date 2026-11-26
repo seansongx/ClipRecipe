@@ -1,6 +1,6 @@
 //! `pipe.drop-frames` 抽帧：每 N 帧丢掉 1 帧（N 为范围值）。
 //!
-//! 参数与取值约定（FEATURES 未规定的部分在此说明）：
+//! 参数与取值约定（docs/specs/pipeline.md 未规定的部分在此说明）：
 //! - `interval`：N，整数，允许 2～1000；丢掉的是每组的最后一帧（第 N、2N、3N… 帧，从 1 数起），
 //!   即 `select='mod(n+1,N)'`。
 //! - `syncAudio`（同步加速音频，默认开）：

@@ -1,0 +1,42 @@
+---
+status: shipped
+scope: 产品定位、通用约定（范围值、素材来源、预览、硬件加速）、与原软件的差异；各功能的细节在同目录的其它文件
+---
+
+# ClipRecipe 功能总览
+
+> 本文是重构的功能基线：对照 CR VideoMate v1.8.9.1 使用说明书梳理，用自己的话重新描述，
+> 不包含原软件的文档原文、截图与素材。界面重新设计，功能保持一致。
+>
+> 功能 ID 与 [src/features/registry.ts](../../src/features/registry.ts) 一一对应。
+
+| 文档 | 内容 |
+|---|---|
+| [queue.md](queue.md) | 任务队列与导入（`queue.*`） |
+| [pipeline.md](pipeline.md) | 批量流水线模块与流水线级功能（`pipe.*`） |
+| [tools.md](tools.md) | 独立工具（`tool.*`） |
+| [settings.md](settings.md) | 设置（`set.*`） |
+
+## 定位与通用约定
+
+- 定位：面向短视频批量处理的桌面工具，底层调用 FFmpeg。
+- 两类能力：
+  1. **批量流水线**（原“操作面板”）：对队列里每个视频套用同一组参数，一次编码输出。
+  2. **独立工具**（原“队列右键 → 独立功能”）：单一用途的批处理，只沿用流水线里的“码率”和“输出位置”。
+- 通用约定：
+  - **范围值**：大多数数值参数是 `[最小, 最大]`，每个视频（每次裂变）在范围内随机取值；两端相等即固定值。
+  - **素材来源**：水印、背景、片头尾、音乐等均支持“单文件”或“目录（随机/依次取）”两种模式。
+  - **即时预览**：多数模块可对单个视频预览效果；另有“生成预览”预览整条流水线的最终效果。
+  - **硬件加速**：默认启用 GPU 编码（Intel QSV / NVIDIA NVENC / AMD AMF），失败可回退软件编码。
+
+## 开源版与原软件的差异
+
+| 项 | 原软件 | 开源版 |
+|---|---|---|
+| 注册 / 购买 / 设备绑定 | 有 | **不做**，开源免费（MIT） |
+| 语音生成字幕 | 外部 VideoSrt + 阿里云 | 已实现为本地 whisper.cpp（FFmpeg whisper 滤镜或 whisper-cli），模型由用户自备，不用云端 |
+| 字幕擦除 | 阿里云服务 | 已实现为本地近似处理（delogo / 模糊 / 纯色遮盖），不用云服务、不自动识别字幕位置 |
+| 自动更新 | 自建增量包 | 已实现：Tauri updater 读 GitHub Releases 的 latest.json，签名校验后下载安装整包（Windows NSIS、Linux AppImage）；其它安装方式提示打开发布页 |
+| FFmpeg | 随安装包分发 | 不入库、不随安装包分发：缺少时批量处理页提示，用户点击后从 npm（`@seankit/ffmpeg` / `@seankit/ffprobe`，npmmirror 优先）下载程序内固定版本的未修改上游构建（9.0.2 essentials，GPL），按内置的大小与 SHA-256 校验后装到本机数据目录、立即生效；设置 → 关于 可下载 / 更新 / 删除并显示来源与检测结果。仍支持系统 PATH 与环境变量 `CLIPRECIPE_FFMPEG`（优先）。essentials 构建没有 whisper 滤镜，语音生成字幕改用 whisper-cli 或完整构建 |
+| 平台 | 仅 Windows | Windows 优先，代码保持跨平台 |
+| `tool.change-duration`、`tool.freeze-play` 的“暂停图标” | 用于让平台或观众产生误判 | 已实现（见 [tools.md](tools.md)）；是否保留在开源版中由维护者决定 |

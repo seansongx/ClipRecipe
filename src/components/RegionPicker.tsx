@@ -1,6 +1,6 @@
 // 区域框选 / 位置选取：在“当前视频”（useSelectedVideo）的某一帧上拖拽矩形或点选位置。
 // 坐标一律是源视频（按旋转信息转正后）的像素坐标，与 FFmpeg 滤镜看到的画面一致。
-// 用法见 docs/PLAN.md“模块/工具编写指南”。
+// 用法见 docs/architecture/batch.md“区域框选 / 位置选取”。
 
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Crosshair, SquareDashedMousePointer, X } from "lucide-react";

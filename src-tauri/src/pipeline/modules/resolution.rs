@@ -1,6 +1,6 @@
 //! `pipe.resolution` 分辨率。
 //!
-//! 参数与取舍（FEATURES.md 未规定的部分）：
+//! 参数与取舍（docs/specs/pipeline.md 未规定的部分）：
 //! - `standard`（标准档位）：统一**高度**为 `standardHeight`（取偶数），宽度按源比例换算并取最近的偶数；
 //!   与当前尺寸相同时不加滤镜。
 //! - `custom`（自定义宽高）：`width` × `height`，奇数会向下调整为偶数并给出警告；

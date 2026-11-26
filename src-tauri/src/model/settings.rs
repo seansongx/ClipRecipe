@@ -1,4 +1,4 @@
-//! 应用设置（FEATURES 第 4 节），以 JSON 保存在应用配置目录。
+//! 应用设置（docs/specs/settings.md），以 JSON 保存在应用配置目录。
 //!
 //! 新增设置项：在结构体里加字段并在 `Default` 里给默认值即可；
 //! 因为整个结构体带 `#[serde(default)]`，旧的配置文件仍能读取。

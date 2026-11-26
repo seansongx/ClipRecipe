@@ -25,7 +25,7 @@ pub use temp::{TempFiles, TempGuard};
 
 /// 一个流水线模块。实现者是该模块的参数结构体。
 pub trait PipelineModule {
-    /// 功能 ID，与 registry.ts、FEATURES.md 一致，如 `pipe.fps`。
+    /// 功能 ID，与 registry.ts、docs/specs/ 一致，如 `pipe.fps`。
     fn id(&self) -> &'static str;
 
     /// 参数里的开关。

@@ -1,6 +1,6 @@
 //! `pipe.remove-watermark` 去水印：把画面上的一处或几处矩形区域模糊掉（不是修复/填补）。
 //!
-//! 参数与取舍（FEATURES.md 未规定的部分）：
+//! 参数与取舍（docs/specs/pipeline.md 未规定的部分）：
 //! - 区域来源 `mode`：
 //!   - `preset` 预设位置（可多选），按当前画面尺寸换算，不对应任何具体平台：
 //!     - 四角标志 `topLeft` / `topRight` / `bottomLeft` / `bottomRight`：宽为短边的 30%、高为短边的 12%，

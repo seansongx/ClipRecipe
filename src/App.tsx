@@ -1,6 +1,5 @@
 import { lazy, Suspense, useEffect } from "react";
-import { Layers, Moon, Settings, Sun, Wrench } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Layers, Settings, Wrench } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -19,7 +18,7 @@ import { useQueue } from "./state/queue";
 import { useRecipe } from "./state/recipe";
 import { useSettings } from "./state/settings";
 import { syncTaskbarProgress } from "./state/taskbar";
-import { useApplyTheme, useTheme } from "./state/theme";
+import { useWindowChrome } from "./state/window-chrome";
 import { useUpdate } from "./state/update";
 import { useView, type ViewId } from "./state/view";
 import BatchView from "./views/BatchView";
@@ -125,11 +124,10 @@ function ViewFallback() {
 export default function App() {
   const view = useView((s) => s.view);
   const setView = useView((s) => s.setView);
-  const [theme, toggleTheme] = useTheme();
   const settingsLoaded = useSettings((s) => s.loaded);
   const keys = useShortcutLabels();
 
-  useApplyTheme(theme);
+  useWindowChrome();
   useAppShortcuts();
   useLaunchPaths(settingsLoaded);
   useEffect(() => initBackend(), []);
@@ -148,8 +146,8 @@ export default function App() {
           文本模块的“文本 1/2/3”，shadcn Tabs 的样式按“任意祖先”的方向套用）：Tabs 只包住导航条，页面作为 tabpanel 放在下面，
           用 id / aria-controls 与导航按钮关联。
         */}
-        <header className="flex h-11 shrink-0 items-center gap-3 border-b bg-card px-3">
-          <div aria-hidden className="grid size-6 place-items-center rounded-md bg-primary font-bold text-primary-foreground">
+        <header className="flex h-12 shrink-0 items-center gap-4 border-b bg-card px-4">
+          <div aria-hidden className="-mr-1.5 grid size-6 place-items-center rounded-lg bg-primary text-xs font-bold text-primary-foreground">
             CR
           </div>
           <span aria-hidden className="text-sm font-semibold">
@@ -157,10 +155,15 @@ export default function App() {
           </span>
           <Tabs value={view} onValueChange={(v) => setView(v as ViewId)}>
             <nav>
-              <TabsList aria-label="主导航">
+              <TabsList aria-label="主导航" className="group-data-horizontal/tabs:h-8.5 gap-0.5 rounded-lg border bg-background">
                 {NAV.map(({ id, label, icon: Icon, shortcut }) => (
                   <Hint key={id} label={label} keys={keys[shortcut]} side="bottom">
-                    <TabsTrigger value={id} id={triggerId(id)} aria-controls={panelId(id)}>
+                    <TabsTrigger
+                      value={id}
+                      id={triggerId(id)}
+                      aria-controls={panelId(id)}
+                      className="px-3.5 text-muted-foreground data-active:bg-muted data-active:font-semibold data-active:text-foreground dark:text-muted-foreground dark:data-active:border-transparent dark:data-active:bg-muted"
+                    >
                       <Icon />
                       {label}
                     </TabsTrigger>
@@ -169,17 +172,6 @@ export default function App() {
               </TabsList>
             </nav>
           </Tabs>
-          <Hint label={theme === "dark" ? "切换到浅色" : "切换到深色"} side="bottom">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={theme === "dark" ? "切换到浅色" : "切换到深色"}
-              onClick={toggleTheme}
-              className="ml-auto"
-            >
-              {theme === "dark" ? <Sun /> : <Moon />}
-            </Button>
-          </Hint>
         </header>
 
         <main

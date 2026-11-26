@@ -92,7 +92,6 @@ export type TargetFormat = "mp4" | "source";
 export type OnExists = "rename" | "overwrite";
 /** set.after-all：只对一次运行有效（每次启动恢复为 none，触发后也改回 none） */
 export type AfterAll = "none" | "shutdown" | "quit";
-export type ThemeSetting = "system" | "light" | "dark";
 
 /** 烧录字幕的样式；尺寸以 1080 高的画面为基准，按实际画面等比缩放 */
 export interface SubtitleStyle {
@@ -146,7 +145,6 @@ export interface Settings {
   autoUpdate: boolean;
   tray: boolean;
   mutePreview: boolean;
-  theme: ThemeSetting;
   // 4.3 高级
   /** set.fission-folder：每次裂变输出到“第 x 次裂变”目录 */
   fissionFolder: boolean;
@@ -199,7 +197,6 @@ export const DEFAULT_SETTINGS: Settings = {
   autoUpdate: false,
   tray: false,
   mutePreview: false,
-  theme: "system",
   fissionFolder: false,
   speedFit: false,
   reduceSize: false,
@@ -700,10 +697,8 @@ export const onShutdownFailed = (handler: (error: string) => void) => subscribe(
 
 // ---------- 主窗口（src-tauri/src/commands/window.rs，实现见 src-tauri/src/desktop.rs） ----------
 
-/** 窗口配色：设置里的主题偏好、当前是否深色、主题变量的实际值（#rrggbb）。 */
+/** 窗口配色：index.css 颜色变量的实际值（#rrggbb）；标题栏三项为空串时恢复系统默认。 */
 export interface WindowChrome {
-  preference: ThemeSetting;
-  dark: boolean;
   titlebar: string;
   text: string;
   border: string;
@@ -714,7 +709,7 @@ export type TaskbarProgressState = "none" | "normal" | "indeterminate" | "paused
 
 /** 首帧已画好：第一次调用时显示主窗口。 */
 export const windowReady = () => call<void>("window_ready");
-/** 按应用主题设置窗口主题、底色与标题栏颜色。 */
+/** 按应用配色设置窗口底色与标题栏颜色。 */
 export const setWindowChrome = (chrome: WindowChrome) => call<void>("set_window_chrome", { chrome });
 /** 任务栏按钮上的进度（progress 为 0～100）。 */
 export const setTaskbarProgress = (state: TaskbarProgressState, progress?: number) =>

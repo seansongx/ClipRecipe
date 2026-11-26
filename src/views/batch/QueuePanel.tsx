@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpToLine, FileCog, FolderPlus, MoreHorizontal, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpToLine, ChevronDown, FileCog, FolderPlus, MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -14,7 +14,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import ChoiceGroup from "@/components/ChoiceGroup";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import Hint from "@/components/Hint";
 import { isTauri } from "@/lib/backend";
 import { formatDuration } from "@/lib/format";
@@ -36,6 +36,13 @@ const SORT_OPTIONS: { value: string; label: string; key: SortKey; descending: bo
   { value: "size-desc", label: "大小 大→小", key: "size", descending: true },
 ];
 
+const FILTERS: { value: StatusFilter; label: string }[] = [
+  { value: "all", label: "全部" },
+  { value: "pending", label: "待处理" },
+  { value: "done", label: "完成" },
+  { value: "failed", label: "失败" },
+];
+
 /** 标题行：“添加”下拉菜单（添加视频 / 添加文件夹）。 */
 function AddMenu() {
   const importing = useQueue((s) => s.importing);
@@ -44,7 +51,7 @@ function AddMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger disabled={!isTauri || !!importing} render={<Button variant="outline" size="sm" />}>
-        <Plus /> 添加
+        <Plus /> 添加 <ChevronDown />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-auto min-w-48">
         <DropdownMenuItem onClick={() => void addVideos()}>
@@ -113,8 +120,8 @@ function SelectionBar() {
   const keys = useShortcutLabels();
   if (selected.size === 0) return null;
   return (
-    <div className="flex shrink-0 items-center gap-0.5 border-t px-2 py-1.5">
-      <span className="mr-auto pl-1 text-xs text-muted-foreground">已选 {selected.size} 个</span>
+    <div className="m-2 mt-1 flex shrink-0 items-center gap-0.5 rounded-xl border bg-secondary py-1.5 pr-1.5 pl-3">
+      <span className="mr-auto text-muted-foreground">已选 {selected.size} 个</span>
       <Hint label="插队：移到最前（处理中时优先处理）">
         <Button variant="ghost" size="icon-sm" aria-label="置顶" onClick={moveSelectedToTop}>
           <ArrowUpToLine />
@@ -132,7 +139,12 @@ function SelectionBar() {
       </Hint>
       <QueueToolsMenu />
       <Hint label="从队列移除所选（不删除文件）" keys={keys.remove}>
-        <Button variant="ghost" size="sm" onClick={() => requestRemove({ kind: "ids", ids: [...selected] })}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-[color-mix(in_oklab,var(--destructive)_80%,var(--foreground))] hover:text-[color-mix(in_oklab,var(--destructive)_80%,var(--foreground))]"
+          onClick={() => requestRemove({ kind: "ids", ids: [...selected] })}
+        >
           <Trash2 /> 移除
         </Button>
       </Hint>
@@ -158,10 +170,10 @@ export default function QueuePanel({ hover }: { hover: DropHover }) {
 
   return (
     <section className="flex w-80 shrink-0 flex-col border-r bg-card">
-      <header className="flex h-11 shrink-0 items-center gap-2 px-3">
+      <header className="flex h-12 shrink-0 items-center gap-2 pr-3 pl-4">
         <h1 className="text-sm font-semibold">视频队列</h1>
         {items.length > 0 && (
-          <span className="truncate text-xs text-muted-foreground">
+          <span className="truncate text-muted-foreground">
             {items.length} 个{totalDuration > 0 && ` · 共 ${formatDuration(totalDuration)}`}
           </span>
         )}
@@ -171,18 +183,24 @@ export default function QueuePanel({ hover }: { hover: DropHover }) {
         </div>
       </header>
       {items.length > 0 && (
-        <div className="shrink-0 px-3 pb-2">
-          <ChoiceGroup
-            label="按状态筛选"
-            value={filter}
-            onChange={setFilter}
-            options={[
-              { value: "all", label: `全部 ${counts.all}` },
-              { value: "pending", label: `待处理 ${counts.pending}` },
-              { value: "done", label: `完成 ${counts.done}` },
-              { value: "failed", label: `失败 ${counts.failed}` },
-            ]}
-          />
+        <div className="shrink-0 px-3 pb-2.5">
+          <ToggleGroup
+            variant="pill"
+            size="sm"
+            spacing={1}
+            aria-label="按状态筛选"
+            value={[filter]}
+            onValueChange={(next) => {
+              const chosen = FILTERS.find((f) => f.value === next[0]);
+              if (chosen) setFilter(chosen.value);
+            }}
+          >
+            {FILTERS.map((f) => (
+              <ToggleGroupItem key={f.value} value={f.value}>
+                {f.label} {counts[f.value]}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
         </div>
       )}
       <div className="relative flex min-h-0 flex-1 flex-col px-2 pb-2">
@@ -190,7 +208,7 @@ export default function QueuePanel({ hover }: { hover: DropHover }) {
         {hover?.target === "queue" && hover.recipe && (
           <div className="pointer-events-none absolute inset-x-2 top-0 bottom-2 grid place-items-center rounded-md border border-dashed border-primary bg-card/90">
             <p className="flex items-center gap-2">
-              <FileCog className="size-4 text-primary" /> 松开以加载配方
+              <FileCog className="size-4 text-primary-ink" /> 松开以加载配方
             </p>
           </div>
         )}

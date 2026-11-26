@@ -87,18 +87,22 @@ export default function OutputPicker({
             </InputGroupButton>
           </Hint>
         </InputGroupAddon>
-        <InputGroupInput
-          value={outputDir}
-          aria-label="输出文件夹"
-          onChange={(e) => update({ outputDir: e.target.value })}
-          onPaste={(e) => {
-            const text = e.clipboardData.getData("text");
-            if (!text) return;
-            e.preventDefault();
-            update({ outputDir: cleanPastedPath(text) });
-          }}
-          placeholder={dropTarget ? "松开以设为输出文件夹" : "选择、粘贴或拖入输出文件夹"}
-        />
+        {/* 路径放不下时以省略号结尾（输入框失去焦点时生效），悬停可看完整路径 */}
+        <Hint label={outputDir || null} side="top">
+          <InputGroupInput
+            value={outputDir}
+            aria-label="输出文件夹"
+            className="text-ellipsis"
+            onChange={(e) => update({ outputDir: e.target.value })}
+            onPaste={(e) => {
+              const text = e.clipboardData.getData("text");
+              if (!text) return;
+              e.preventDefault();
+              update({ outputDir: cleanPastedPath(text) });
+            }}
+            placeholder={dropTarget ? "松开以设为输出文件夹" : "选择、粘贴或拖入输出文件夹"}
+          />
+        </Hint>
         <InputGroupAddon align="inline-end">
           <Hint label="粘贴剪贴板中的路径">
             <InputGroupButton size="icon-xs" aria-label="粘贴剪贴板中的路径" onClick={() => void pasteFromClipboard()}>

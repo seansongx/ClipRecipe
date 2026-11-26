@@ -134,14 +134,14 @@ try {
     assert.equal(useFfmpeg.getState().status, null);
   });
 
-  await test("全部恢复默认：关掉全部模拟与平台模拟，不改设置里的主题", () => {
+  await test("全部恢复默认：关掉全部模拟与平台模拟，不改设置", () => {
     reset();
-    useSettings.getState().update({ theme: "dark" });
+    const settings = useSettings.getState().settings;
     useDebug.getState().setPlatform("macos");
     useDebug.getState().setSimulation("queueStates", true);
     useDebug.getState().setSimulation("logLevels", true);
     useDebug.getState().resetAll();
-    assert.equal(useSettings.getState().settings.theme, "dark");
+    assert.equal(useSettings.getState().settings, settings);
     assert.deepEqual(useDebug.getState().simulations, []);
     assert.equal(useDebug.getState().platform, null);
     assert.deepEqual(

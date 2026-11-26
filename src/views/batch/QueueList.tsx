@@ -50,7 +50,7 @@ const STATE_LABEL: Record<QueueItem["state"], string> = {
 const STATE_TONE: Record<QueueItem["state"], string> = {
   idle: "text-muted-foreground",
   waiting: "text-muted-foreground",
-  running: "text-primary",
+  running: "text-primary-ink",
   done: "text-success",
   failed: "text-destructive",
   cancelled: "text-muted-foreground",
@@ -119,7 +119,7 @@ function mediaSummary(item: QueueItem): string {
 function StreamBadge({ title, children }: { title: string; children: string }) {
   return (
     <Hint label={title}>
-      <Badge variant="outline" aria-label={title}>
+      <Badge variant="outline" aria-label={title} className="h-4 rounded-sm px-1.5">
         {children}
       </Badge>
     </Hint>
@@ -130,7 +130,7 @@ function StreamBadge({ title, children }: { title: string; children: string }) {
 function AttachmentBadge({ title, children }: { title: string; children: string }) {
   return (
     <Hint label={title}>
-      <Badge variant="secondary" aria-label={title}>
+      <Badge variant="secondary" aria-label={title} className="h-4 rounded-sm px-1.5">
         {children}
       </Badge>
     </Hint>
@@ -256,9 +256,9 @@ function Row({
             }}
             onDoubleClick={() => usePreview.getState().playSource(item)}
             className={cn(
-              "group relative flex items-start gap-1.5 py-1.5 pr-2 pl-1",
+              "group relative flex items-start gap-1.5 rounded-lg py-1.5 pr-2 pl-1",
               selected
-                ? "bg-primary/15 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-primary"
+                ? "bg-primary/15 before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary"
                 : "hover:bg-muted/60",
               "group-focus-visible/list:data-active:outline group-focus-visible/list:data-active:-outline-offset-1 group-focus-visible/list:data-active:outline-ring",
             )}
@@ -553,7 +553,7 @@ export default function QueueList({ hovering, filter = "all" }: { hovering: bool
   return (
     <div
       className={cn(
-        "relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border bg-card transition-colors",
+        "relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-transparent bg-card transition-colors",
         hovering && "border-dashed border-primary bg-muted",
         dragId && "cursor-grabbing",
       )}
@@ -582,7 +582,7 @@ export default function QueueList({ hovering, filter = "all" }: { hovering: bool
           </div>
         </div>
       ) : visible.length === 0 ? (
-        <p className="px-3 py-4 text-xs text-muted-foreground">{EMPTY_FILTER_TEXT[filter]}</p>
+        <p className="px-3 py-4 text-muted-foreground">{EMPTY_FILTER_TEXT[filter]}</p>
       ) : (
         <ScrollArea ref={container} className="min-h-0 flex-1">
           <ul
@@ -594,7 +594,7 @@ export default function QueueList({ hovering, filter = "all" }: { hovering: bool
             tabIndex={0}
             onKeyDown={onKeyDown}
             onFocus={onFocus}
-            className="group/list divide-y outline-none"
+            className="group/list flex flex-col gap-0.5 outline-none"
           >
             {items.map((item, index) =>
               matchesFilter(item, filter) ? (

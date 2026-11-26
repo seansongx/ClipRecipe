@@ -28,7 +28,7 @@ function BatchStatus() {
     const percent = batchPercent(runIds, items);
     return (
       <span className="flex items-center gap-2">
-        <Loader className="size-3 animate-spin text-primary motion-reduce:animate-none" aria-hidden />
+        <Loader className="size-3 animate-spin text-primary-ink motion-reduce:animate-none" aria-hidden />
         <span>
           处理中 {count("running")} · 等待 {count("waiting")} · 完成 {count("done")}
           {count("failed") > 0 && ` · 失败 ${count("failed")}`}
@@ -56,7 +56,7 @@ function ToolStatus() {
     <>
       <Divider />
       <span className="flex items-center gap-2">
-        <Loader className="size-3 animate-spin text-primary motion-reduce:animate-none" aria-hidden />
+        <Loader className="size-3 animate-spin text-primary-ink motion-reduce:animate-none" aria-hidden />
         工具“{toolName(run.toolId)}” {done}/{run.items.length} · {toolPercent(run.items).toFixed(0)}%
       </span>
     </>

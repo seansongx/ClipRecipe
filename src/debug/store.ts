@@ -1,31 +1,26 @@
-// 调试面板的状态：面板是否打开、模拟的平台、浏览器里选的主题、打开的状态模拟。选择保存在 localStorage，刷新后恢复。
-// “全部恢复默认”只恢复面板自己的东西，不改设置（主题是真实设置）。
+// 调试面板的状态：面板是否打开、模拟的平台、打开的状态模拟。选择保存在 localStorage，刷新后恢复。
+// “全部恢复默认”只恢复面板自己的东西，不改设置。
 // 只在开发环境存在（App.tsx 在 import.meta.env.DEV 时才动态导入 DebugPanel，生产构建里整个 src/debug/ 被剔除）。
 
 import { create } from "zustand";
-import { isTauri, type ThemeSetting } from "@/lib/backend";
 import { PLATFORMS, simulatePlatform, type Platform } from "@/lib/platform";
-import { useSettings } from "@/state/settings";
 import { connectSimulationSwitch, isSimulationId, SIMULATIONS, type SimulationId } from "./simulations";
 
 const STORAGE_KEY = "cliprecipe.debug-panel";
 
 type Saved = {
   platform: Platform | null;
-  /** 浏览器里没有设置文件，主题选择由这里保存（桌面应用里由设置保存，不存这里） */
-  theme: ThemeSetting | null;
   simulations: SimulationId[];
 };
 
 function load(): Saved {
-  const empty: Saved = { platform: null, theme: null, simulations: [] };
+  const empty: Saved = { platform: null, simulations: [] };
   try {
     const raw: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
     if (!raw || typeof raw !== "object") return empty;
     const saved = raw as Partial<Record<keyof Saved, unknown>>;
     return {
       platform: PLATFORMS.includes(saved.platform as Platform) ? (saved.platform as Platform) : null,
-      theme: ["system", "light", "dark"].includes(saved.theme as string) ? (saved.theme as ThemeSetting) : null,
       simulations: Array.isArray(saved.simulations) ? saved.simulations.filter(isSimulationId) : [],
     };
   } catch {
@@ -35,8 +30,8 @@ function load(): Saved {
 
 function save(state: Saved) {
   try {
-    const { platform, theme, simulations } = state;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ platform, theme, simulations }));
+    const { platform, simulations } = state;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ platform, simulations }));
   } catch {
     // 存不了只是刷新后不保留
   }
@@ -46,7 +41,6 @@ type DebugState = Saved & {
   open: boolean;
   setOpen: (open: boolean) => void;
   setPlatform: (platform: Platform | null) => void;
-  setTheme: (theme: ThemeSetting) => void;
   setSimulation: (id: SimulationId, on: boolean) => void;
   resetAll: () => void;
 };
@@ -83,21 +77,16 @@ export const useDebug = create<DebugState>((set, get) => {
       set({ platform });
       persist();
     },
-    setTheme: (theme) => {
-      useSettings.getState().update({ theme });
-      set({ theme: isTauri ? null : theme });
-      persist();
-    },
     setSimulation: (id, on) => {
       if (on) start(id);
       else stop(id);
       persist();
     },
-    // 只恢复面板自己的东西：平台模拟、状态模拟、面板的 localStorage。主题是真实设置（与设置页同一个），不动。
+    // 只恢复面板自己的东西：平台模拟、状态模拟、面板的 localStorage。
     resetAll: () => {
       for (const id of [...get().simulations]) stop(id);
       simulatePlatform(null);
-      set({ platform: null, theme: null, simulations: [] });
+      set({ platform: null, simulations: [] });
       try {
         localStorage.removeItem(STORAGE_KEY);
       } catch {
@@ -116,9 +105,8 @@ let started = false;
 export function restoreSavedChoices(): void {
   if (started) return;
   started = true;
-  const { platform, theme, simulations } = useDebug.getState();
+  const { platform, simulations } = useDebug.getState();
   if (platform) simulatePlatform(platform);
-  if (theme && !isTauri) useSettings.getState().update({ theme });
   useDebug.setState({ simulations: [] });
   for (const id of simulations) useDebug.getState().setSimulation(id, true);
 }

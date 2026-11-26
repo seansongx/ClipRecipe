@@ -1,9 +1,10 @@
-//! 桌面窗口体验：主窗口的创建（隐藏创建、首帧画好后再显示，避免白屏与主题闪烁）、标题栏配色、
+//! 桌面窗口体验：主窗口的创建（隐藏创建、首帧画好后再显示，避免白屏）、标题栏配色、
 //! 任务栏进度、单实例、窗口位置与大小的记忆。前端接口见 `commands::window`，约定见 docs/architecture/frontend.md“桌面应用体验约定”。
 //!
+//! 应用只有深色主题：窗口主题固定为深色（系统标题栏、WebView 的 prefers-color-scheme 都是深色，不随系统切换）。
 //! 标题栏：保留系统窗口框架（贴靠布局、缩放边框、阴影、圆角、系统菜单、双击最大化都由系统提供），
-//! 只把颜色改成应用主题的颜色。Windows 11（22000+）用 DWM 的 `DWMWA_CAPTION_COLOR` / `DWMWA_TEXT_COLOR` /
-//! `DWMWA_BORDER_COLOR`；Windows 10 与其它平台只设置窗口的深浅主题（系统标题栏随之变深 / 变浅）。
+//! 只把颜色改成应用的颜色。Windows 11（22000+）用 DWM 的 `DWMWA_CAPTION_COLOR` / `DWMWA_TEXT_COLOR` /
+//! `DWMWA_BORDER_COLOR`；Windows 10 与其它平台只有系统的深色标题栏。
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -14,18 +15,14 @@ use serde::Deserialize;
 use tauri::window::{Color, ProgressBarState, ProgressBarStatus};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Runtime, WebviewWindow};
 
-use crate::model::settings::{Theme as ThemeSetting, SETTINGS_FILE};
-use crate::model::Settings;
-
 pub const MAIN_WINDOW: &str = "main";
 
 /// 前端没有在这段时间内报告“首帧已画好”（脚本出错、调试时断点）时也显示窗口，免得窗口永远不出现。
 const SHOW_FALLBACK: Duration = Duration::from_secs(6);
 
 /// 窗口显示前与调整大小时露出的底色：`src/index.css` 的 `--background`（oklch）换算成的 sRGB（单元测试核对）。
-/// 前端加载后会用主题变量的实际值再设置一次（`set_window_chrome`）。
-pub const BOOT_BACKGROUND_DARK: &str = "#0a0a0a";
-pub const BOOT_BACKGROUND_LIGHT: &str = "#ffffff";
+/// 前端加载后会用变量的实际值再设置一次（`set_window_chrome`）。
+pub const BOOT_BACKGROUND: &str = "#0f1012";
 
 /// 第二次启动时转交给已运行实例的文件（事件 `open-paths`，内容为路径数组）。
 pub const OPEN_PATHS_EVENT: &str = "open-paths";
@@ -62,40 +59,6 @@ fn color_of(hex: &str) -> Option<Color> {
     parse_hex(hex).map(|(r, g, b)| Color(r, g, b, 255))
 }
 
-/// 设置里的主题偏好 → 窗口主题（跟随系统时为 None，窗口与 WebView 的 prefers-color-scheme 随系统变化）。
-pub fn window_theme(setting: ThemeSetting) -> Option<tauri::Theme> {
-    match setting {
-        ThemeSetting::System => None,
-        ThemeSetting::Light => Some(tauri::Theme::Light),
-        ThemeSetting::Dark => Some(tauri::Theme::Dark),
-    }
-}
-
-fn setting_name(setting: ThemeSetting) -> &'static str {
-    match setting {
-        ThemeSetting::System => "system",
-        ThemeSetting::Light => "light",
-        ThemeSetting::Dark => "dark",
-    }
-}
-
-/// 在页面任何脚本之前执行：告诉 `public/boot-theme.js` 设置里的主题，首帧就用正确的主题绘制。
-pub fn boot_script(setting: ThemeSetting) -> String {
-    format!(
-        "window.__CLIPRECIPE_BOOT__ = Object.freeze({{ theme: \"{}\" }});",
-        setting_name(setting)
-    )
-}
-
-/// 读取设置里的主题（读不到时跟随系统）。
-fn theme_setting(app: &AppHandle) -> ThemeSetting {
-    crate::commands::config_dir(app)
-        .ok()
-        .and_then(|dir| Settings::load(&dir.join(SETTINGS_FILE)).ok())
-        .map(|s| s.theme)
-        .unwrap_or_default()
-}
-
 /// 命令行参数里的文件 / 文件夹（相对路径按 `cwd` 解析，只保留存在的；以 `-` 开头的参数忽略）。
 pub fn launch_paths(args: &[String], cwd: &Path) -> Vec<String> {
     args.iter()
@@ -113,7 +76,7 @@ pub fn launch_paths(args: &[String], cwd: &Path) -> Vec<String> {
         .collect()
 }
 
-/// 创建主窗口：先隐藏，按设置的主题设置窗口主题与底色，恢复上次的位置大小（window-state 插件在创建时完成），
+/// 创建主窗口：先隐藏，设为深色窗口主题与深色底色，恢复上次的位置大小（window-state 插件在创建时完成），
 /// 再确认标题栏在某个显示器上。前端画好第一帧后调用 `window_ready` 显示。
 pub fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let config = app
@@ -124,27 +87,16 @@ pub fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .find(|w| w.label == MAIN_WINDOW)
         .cloned()
         .unwrap_or_default();
-    let setting = theme_setting(app);
     let window = tauri::WebviewWindowBuilder::from_config(app, &config)?
         .visible(false)
-        .theme(window_theme(setting))
-        .initialization_script(boot_script(setting))
+        .theme(Some(tauri::Theme::Dark))
         .build()?;
 
-    let dark = window
-        .theme()
-        .map(|t| t == tauri::Theme::Dark)
-        .unwrap_or(true);
-    let boot = if dark {
-        BOOT_BACKGROUND_DARK
-    } else {
-        BOOT_BACKGROUND_LIGHT
-    };
-    if let Some(color) = color_of(boot) {
+    if let Some(color) = color_of(BOOT_BACKGROUND) {
         let _ = window.set_background_color(Some(color));
     }
     #[cfg(windows)]
-    windows_chrome::set_dark(&window, dark);
+    windows_chrome::set_dark(&window);
     keep_title_bar_reachable(&window);
     configure_webview(&window);
 
@@ -303,14 +255,10 @@ pub fn on_second_instance(app: &AppHandle, argv: Vec<String>, cwd: String) {
     }
 }
 
-/// 前端传来的窗口配色（主题变量的实际值，`#rrggbb`）。
+/// 前端传来的窗口配色（`src/index.css` 颜色变量的实际值，`#rrggbb`）。
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WindowChrome {
-    /// 设置里的主题偏好：跟随系统时窗口主题也跟随系统
-    pub preference: ThemeSetting,
-    /// 当前实际是否为深色
-    pub dark: bool,
     /// 标题栏底色（`--titlebar`）；标题栏、标题文字、边框三个颜色为空串时恢复系统默认（前端只在 Windows 平台着色）
     pub titlebar: String,
     /// 标题文字（`--foreground`）
@@ -321,14 +269,11 @@ pub struct WindowChrome {
     pub background: String,
 }
 
-/// 按应用主题设置窗口：窗口主题（系统标题栏深浅）、底色，Windows 11 上再设置标题栏、标题文字与边框颜色。
+/// 按应用配色设置窗口：底色，Windows 11 上再设置标题栏、标题文字与边框颜色（窗口主题创建时已固定为深色）。
 pub fn apply_chrome<R: Runtime>(
     window: &WebviewWindow<R>,
     chrome: &WindowChrome,
 ) -> Result<(), String> {
-    window
-        .set_theme(window_theme(chrome.preference))
-        .map_err(|e| e.to_string())?;
     if let Some(color) = color_of(&chrome.background) {
         window
             .set_background_color(Some(color))
@@ -383,7 +328,7 @@ mod windows_chrome {
         attribute: DWMWINDOWATTRIBUTE,
         value: &T,
     ) {
-        // Windows 10 不认识标题栏颜色属性，调用失败时什么也不做（系统标题栏仍随窗口主题变深 / 变浅）
+        // Windows 10 不认识标题栏颜色属性，调用失败时什么也不做（系统标题栏仍是深色）
         let _ = unsafe {
             DwmSetWindowAttribute(
                 window_hwnd,
@@ -395,9 +340,9 @@ mod windows_chrome {
     }
 
     /// 深色标题栏（沉浸式深色模式）。tao 设置窗口主题时也会做，这里在窗口创建后立即做一次，首次显示就正确。
-    pub fn set_dark<R: Runtime>(window: &WebviewWindow<R>, dark: bool) {
+    pub fn set_dark<R: Runtime>(window: &WebviewWindow<R>) {
         if let Ok(hwnd) = window.hwnd() {
-            set(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &BOOL::from(dark));
+            set(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &BOOL::from(true));
         }
     }
 
@@ -405,11 +350,6 @@ mod windows_chrome {
         let Ok(hwnd) = window.hwnd() else {
             return;
         };
-        set(
-            hwnd,
-            DWMWA_USE_IMMERSIVE_DARK_MODE,
-            &BOOL::from(chrome.dark),
-        );
         set(
             hwnd,
             DWMWA_CAPTION_COLOR,
@@ -507,51 +447,19 @@ mod tests {
         assert_eq!(oklch_to_hex("oklch(0.577 0.245 27.325)"), "#e7000b");
     }
 
-    /// 启动底色必须与 index.css 的 --background 一致，否则窗口显示瞬间或调整大小时露出另一种颜色。
+    /// 启动底色必须与 index.css 的 --background 一致（全文件只有一处定义），否则窗口显示瞬间或调整大小时露出另一种颜色。
     #[test]
-    fn boot_backgrounds_match_theme_tokens() {
+    fn boot_background_matches_theme_token() {
         let css =
             std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/index.css"))
                 .unwrap();
-        let block = |selector: &str| {
-            let start = css
-                .find(selector)
-                .unwrap_or_else(|| panic!("index.css 缺少 {selector}"));
-            let end = start + css[start..].find('}').unwrap();
-            css[start..end].to_owned()
-        };
-        let background = |block: String| {
-            let line = block
-                .lines()
-                .find(|l| l.trim_start().starts_with("--background:"))
-                .unwrap()
-                .to_owned();
-            line.split(':')
-                .nth(1)
-                .unwrap()
-                .trim()
-                .trim_end_matches(';')
-                .to_owned()
-        };
-        assert_eq!(
-            oklch_to_hex(&background(block(":root {"))),
-            BOOT_BACKGROUND_LIGHT
-        );
-        assert_eq!(
-            oklch_to_hex(&background(block("[data-theme=\"dark\"] {"))),
-            BOOT_BACKGROUND_DARK
-        );
-    }
-
-    #[test]
-    fn theme_setting_maps_to_window_theme_and_boot_script() {
-        assert_eq!(window_theme(ThemeSetting::System), None);
-        assert_eq!(window_theme(ThemeSetting::Dark), Some(tauri::Theme::Dark));
-        assert_eq!(window_theme(ThemeSetting::Light), Some(tauri::Theme::Light));
-        assert_eq!(
-            boot_script(ThemeSetting::Dark),
-            "window.__CLIPRECIPE_BOOT__ = Object.freeze({ theme: \"dark\" });"
-        );
+        let values: Vec<&str> = css
+            .lines()
+            .filter_map(|l| l.trim_start().strip_prefix("--background:"))
+            .map(|v| v.trim().trim_end_matches(';'))
+            .collect();
+        assert_eq!(values.len(), 1, "index.css 应只定义一次 --background");
+        assert_eq!(oklch_to_hex(values[0]), BOOT_BACKGROUND);
     }
 
     #[test]

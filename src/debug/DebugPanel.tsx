@@ -1,4 +1,4 @@
-// 开发环境的调试面板：状态栏右端的小按钮（或 Ctrl+Shift+D / ⇧⌘D）打开右侧抽屉，内容是平台模拟、主题切换、
+// 开发环境的调试面板：状态栏右端的小按钮（或 Ctrl+Shift+D / ⇧⌘D）打开右侧抽屉，内容是平台模拟、
 // 界面状态模拟与只读的调试信息。只在 import.meta.env.DEV 时由 App.tsx 动态导入；生产构建里没有这段代码。
 // 说明见 docs/architecture/frontend.md“开发环境的调试面板”。
 
@@ -12,22 +12,15 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { Switch } from "@/components/ui/switch";
 import ChoiceGroup from "@/components/ChoiceGroup";
 import Hint from "@/components/Hint";
-import { getAppInfo, isTauri, type ThemeSetting } from "@/lib/backend";
+import { getAppInfo, isTauri } from "@/lib/backend";
 import { getRealPlatform, PLATFORM_LABELS, PLATFORMS, usePlatform, type Platform } from "@/lib/platform";
 import { formatCombo, matchShortcut, shortcutLabel } from "@/lib/shortcuts";
 import { useFfmpeg } from "@/state/ffmpeg";
-import { useSettings } from "@/state/settings";
 import { realFfmpegStatus, SIMULATIONS } from "./simulations";
 import { restoreSavedChoices, useDebug } from "./store";
 import { version as packageVersion } from "../../package.json";
 
 const REAL = "real";
-
-const THEME_OPTIONS: { value: ThemeSetting; label: string }[] = [
-  { value: "system", label: "跟随系统" },
-  { value: "light", label: "浅色" },
-  { value: "dark", label: "深色" },
-];
 
 /**
  * Ctrl+Shift+D（macOS ⇧⌘D）开关面板。按真实平台匹配（模拟 macOS 时在 Windows 键盘上仍按 Ctrl+Shift+D，
@@ -137,20 +130,6 @@ function PlatformSection() {
   );
 }
 
-function ThemeSection() {
-  const theme = useSettings((s) => s.settings.theme);
-  const setTheme = useDebug((s) => s.setTheme);
-  return (
-    <FieldSet>
-      <FieldLegend>主题</FieldLegend>
-      <FieldDescription>
-        与设置 → 通用里的“主题”是同一个设置{isTauri ? "（会保存到设置文件）" : ""}，不在“全部恢复默认”的范围内。
-      </FieldDescription>
-      <ChoiceGroup label="主题" value={theme} options={THEME_OPTIONS} onChange={setTheme} />
-    </FieldSet>
-  );
-}
-
 function SimulationSection() {
   const active = useDebug((s) => s.simulations);
   const setSimulation = useDebug((s) => s.setSimulation);
@@ -245,8 +224,6 @@ export default function DebugPanel() {
           <ScrollArea className="min-h-0 flex-1">
             <div className="flex flex-col gap-6 px-6 pb-6">
               <PlatformSection />
-              <Separator />
-              <ThemeSection />
               <Separator />
               <SimulationSection />
               <Separator />

@@ -17,9 +17,9 @@
 - 参数结构体用 serde（`camelCase`、`#[serde(default)]`，都有 `Default`）；前端 `defaults` 必须与后端 `Default` 一致，
   设置项的 `DEFAULT_SETTINGS` 必须与 `Settings::default()` 一致（`cargo test` 会自动检查）。
 - 界面文字用中文；控件一律用 shadcn/ui（`npx shadcn@latest add <组件>` 添加），不要手写 `<button>` / `<input>` /
-  `<select>` / `<textarea>` 等原生控件；颜色用 `index.css` 的主题变量，深浅色都要正常。shadcn 风格是 Mira，
-  `src/components/ui/` 是 CLI 生成的原版，不要手改（`npm run check:shadcn` 核对）；外观只改 `index.css` 的主题变量，
-  组件尺寸用自带的 `size` 变体，不给组件写改外观的类（详见 [docs/architecture/frontend.md](docs/architecture/frontend.md)）。
+  `<select>` / `<textarea>` 等原生控件；颜色用 `index.css` 的主题变量（应用只有深色主题）。shadcn 风格是 Mira，
+  `src/components/ui/` 由 CLI 生成后按本应用的设计改过，可以改组件；颜色只引用 `index.css` 的 token
+  （琥珀色文字用 `text-primary-ink`），更新某个组件时要手动合并本应用的改动（详见 [docs/architecture/frontend.md](docs/architecture/frontend.md)）。
 - 每个模块 / 工具都要有单元测试（断言生成的滤镜或命令行）和集成测试（`src-tauri/tests/`，用 `lavfi` 现场生成素材真实运行）。
   不提交媒体文件、FFmpeg 二进制或原软件的截图素材。
 - 不留 `todo!()`、`unimplemented!()`、空实现或被注释掉的测试；做不到的点在交付说明里明确列出。
@@ -38,7 +38,7 @@ cargo test
 ```
 
 推送到 `main` 或提交 PR 时，GitHub Actions（`.github/workflows/ci.yml`）会在 Windows 与 Linux 上跑同样的检查，
-外加 `npm run check:shadcn` 与版本号一致性检查（`npm run release:check`）。
+外加版本号一致性检查（`npm run release:check`）。
 
 集成测试需要 FFmpeg 与 Node.js。`npm install` 会装上开发依赖 `@seankit/ffmpeg` / `@seankit/ffprobe`
 （FFmpeg 9.0.2 essentials），`cargo test` 与调试构建找不到别的 FFmpeg 时自动使用 `node_modules` 里的这份，不必另装；

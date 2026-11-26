@@ -2,88 +2,57 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-/* 深色模式：<html data-theme="dark">（首帧前由 public/boot-theme.js 写好，之后由 state/theme.ts 更新），shadcn 组件里的 dark: 变体据此生效。 */
+/*
+ * 应用只有深色主题。shadcn 组件里的 dark: 变体（深色专用的底色、描边等）必须始终生效：index.html 把
+ * <html data-theme="dark"> 写死（没有任何代码改它），这里让 dark: 匹配它。不要删掉 index.html 上的这个属性。
+ */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /*
  * ============================================================================================
- * 主题 token（全应用只有这一套）
+ * 主题 token（全应用只有这一套，深色，都定义在 :root 上）
  *
  * 1. shadcn 主题变量（style：base-mira，即 Base UI 版的 Mira；基础色 neutral）：
- *    与 `shadcn init --base base --preset b1D0dv72`（Mira + neutral）写出的变量、取值、@theme inline 映射、圆角刻度完全相同，
- *    只是深色挂在 [data-theme="dark"] 上（CLI 写的是 .dark）。src/components/ui/ 是 CLI 原版（`npm run check:shadcn` 核对），
- *    不要用全局规则覆盖组件外观。
- *    例外：为通过界面审计（scripts/e2e-audit-page.js：控件 / 输入框边界与焦点环对比 ≥ 3、选中项底色对比 ≥ 1.2、文字 ≥ 4.5），
- *    浅色的 --muted / --muted-foreground / --input / --ring 与深色的 --muted / --input / --ring 在 CLI 默认值上做了最小调整
- *    （行尾注明默认值），仍是中性灰。调整时同时满足：--input 与 background / card 对比 ≥ 3（深色按开关的 bg-input/80 算），
- *    --muted 与 background / card ≥ 1.2，--ring 与 --muted（标签栏底色）≥ 3，占位符 --muted-foreground 与输入框的
- *    bg-input/20（深色 /30）底色 ≥ 4.5。--background 不要动（见下方“窗口颜色”）。
- *    另一处例外：--primary 是本应用的主色（蓝），用在主按钮、开关、进度条、选中行与画面上的框线；不用琥珀色是因为它和
- *    --warning 分不开。取值要同时满足：作底色时 --primary-foreground 在上面 ≥ 4.5，作文字时在 background / card / muted 上 ≥ 4.5。
- * 2. 本应用自有 token（shadcn 没有的语义）：写法与 shadcn 变量相同（:root 与 [data-theme="dark"] 各一组 oklch 值），
+ *    变量名、@theme inline 映射、圆角刻度与 `shadcn init --base base --preset b1D0dv72`（Mira + neutral）写出的相同，
+ *    取值以 CLI 的深色（.dark）一组为基础。src/components/ui/ 由 CLI 生成后按本应用的设计改过
+ *    （docs/architecture/frontend.md）；组件的外观改在组件文件或使用处，不要用全局规则覆盖。
+ *    中性色（background / card / secondary / muted / accent / border 与两级文字）取自设计稿，带一点冷色调，不是 CLI 的纯灰。
+ *    为通过界面审计（scripts/e2e-audit-page.js：控件 / 输入框边界与焦点环对比 ≥ 3、选中项底色对比 ≥ 1.2、文字 ≥ 4.5），
+ *    --muted / --input / --ring 在 CLI 默认值上做了调整（行尾注明默认值）。调整时同时满足：--input 与 background / card
+ *    对比 ≥ 3（按开关的 bg-input/80 算），--muted 与 background / card ≥ 1.2，--ring 与 --muted（标签栏底色）≥ 3，
+ *    占位符 --muted-foreground 与输入框的 bg-input/30 底色 ≥ 4.5。--background 不要随意动（见下方“窗口颜色”）。
+ *    --primary 是本应用的主色（琥珀），用在主按钮、开关、进度条、选中项的描边与浅底、画面上的框线。
+ *    取值要同时满足：作底色时 --primary-foreground（深色字）在上面 ≥ 4.5，作控件底色 / 描边时与 background / card ≥ 3。
+ * 2. 本应用自有 token（shadcn 没有的语义）：写法与 shadcn 变量相同（:root 上的 oklch 值），
  *    在 @theme inline 里暴露成 Tailwind 颜色（bg-success、text-warning、bg-media…）。新颜色先找已有 token，确实没有再加在这里。
  *
- * 窗口颜色：--background 也是窗口显示前的底色（src-tauri/src/desktop.rs 的 BOOT_BACKGROUND_*，单元测试把这里的 oklch 值
- * 换算成 #rrggbb 后核对）；--titlebar / --foreground / --border / --background 由 state/theme.ts 换算成 #rrggbb 写进
- * Windows 11 标题栏（DWM 只接受 RGB）。
+ * 窗口颜色：--background 也是窗口显示前的底色（src-tauri/src/desktop.rs 的 BOOT_BACKGROUND，单元测试把这里的 oklch 值
+ * 换算成 #rrggbb 后核对，要求全文件只有这一处 --background）；--titlebar / --foreground / --border / --background 由
+ * state/window-chrome.ts 换算成 #rrggbb 写进 Windows 11 标题栏（DWM 只接受 RGB）。
  * ============================================================================================
  */
 :root {
-  color-scheme: light;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.5 0.17 255); /* 主色：蓝。CLI 默认 0.205 0 0（中性黑），见上方说明 */
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.925 0 0); /* CLI 默认 0.97，见上方说明 */
-  --muted-foreground: oklch(0.51 0 0); /* CLI 默认 0.556 */
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.64 0 0); /* CLI 默认 0.922 */
-  --ring: oklch(0.6 0 0); /* CLI 默认 0.708 */
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
-[data-theme="dark"] {
   color-scheme: dark;
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.72 0.14 250); /* 主色：蓝。CLI 默认 0.922 0 0 */
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.29 0 0); /* CLI 默认 0.269 */
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  /* 设计稿的 #0f1012；CLI 默认 0.145 0 0。改它要同时改 desktop.rs 的 BOOT_BACKGROUND（这一行的值后面不要写注释：desktop.rs 的单元测试按整行解析） */
+  --background: oklch(0.1728 0.0044 264.45);
+  --foreground: oklch(0.9482 0.0034 247.86);
+  --card: oklch(0.2038 0.0067 258.37);
+  --card-foreground: oklch(0.9482 0.0034 247.86);
+  --popover: oklch(0.2038 0.0067 258.37);
+  --popover-foreground: oklch(0.9482 0.0034 247.86);
+  --primary: oklch(0.7761 0.1478 69.41); /* 主色：琥珀，设计稿的 #f2a33a。CLI 默认 0.922 0 0 */
+  --primary-foreground: oklch(0.2 0.03 70);
+  --secondary: oklch(0.2379 0.0089 255.60);
+  --secondary-foreground: oklch(0.9482 0.0034 247.86);
+  --muted: oklch(0.2997 0.0123 258.37); /* CLI 默认 0.269 0 0，见上方说明 */
+  --muted-foreground: oklch(0.7225 0.0122 252.12);
+  --accent: oklch(0.2667 0.0110 254.03);
+  --accent-foreground: oklch(0.9482 0.0034 247.86);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
+  --border: oklch(0.2997 0.0123 258.37); /* CLI 默认 白 10% */
   --input: oklch(1 0 0 / 45%); /* CLI 默认 15% */
   --ring: oklch(0.6 0 0); /* CLI 默认 0.556 */
+  --radius: 0.625rem;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -101,21 +70,20 @@
 
 /*
  * 本应用自有 token：
- *   success / warning   状态色（与 shadcn 的 destructive 并列，用在文字、图标与浅色提示底上）
+ *   success / warning   状态色（与 shadcn 的 destructive 并列，用在文字、图标与浅色提示底上）；warning 是偏黄的色相，
+ *                       与琥珀主色、红色的 destructive 拉开
+ *   primary-ink         主色的文字 / 图标色（text-primary-ink）：在 background / card / muted 上 ≥ 4.5；现在就是 --primary，
+ *                       琥珀色的文字与图标仍写 text-primary-ink，主色调整到当文字不够时只改这里
  *   titlebar            系统标题栏底色（与导航栏同为 card 面）
- *   media / media-foreground  视频画面区（预览、框选）的底色与压在画面上的文字、框线：画面本身的颜色，深浅主题相同
+ *   media / media-foreground  视频画面区（预览、框选）的底色与压在画面上的文字、框线：画面本身的颜色
  */
 :root {
-  --success: oklch(0.527 0.154 150.069);
-  --warning: oklch(0.555 0.163 48.998);
+  --success: oklch(0.792 0.209 151.711);
+  --warning: oklch(0.87 0.17 100);
+  --primary-ink: var(--primary);
   --titlebar: var(--card);
   --media: oklch(0 0 0);
   --media-foreground: oklch(1 0 0);
-}
-
-[data-theme="dark"] {
-  --success: oklch(0.792 0.209 151.711);
-  --warning: oklch(0.828 0.189 84.429);
 }
 
 /*
@@ -180,9 +148,20 @@
   /* 本应用自有 token */
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-primary-ink: var(--primary-ink);
   --color-titlebar: var(--titlebar);
   --color-media: var(--media);
   --color-media-foreground: var(--media-foreground);
+}
+
+/*
+ * 密度：比 Mira 默认值大一档。正文字号 text-xs 由 12 px 改为 13 px，间距刻度由 0.25rem 改为 0.265rem
+ *（控件 h-7 约 30 px、标题栏 h-11 约 47 px）。全应用（含 shadcn 组件）都经这两个主题变量生效，不要在组件上另写字号 / 高度去凑。
+ */
+@theme {
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.4;
+  --spacing: 0.265rem;
 }
 
 @layer base {

@@ -17,16 +17,27 @@ import ToolWorkspace, { STATUS_LABEL, TOOL_PANEL_ID, toolTabId } from "./tools/T
 const ALL = "all";
 const CATEGORIES = groupBy(TOOLS);
 
+/** 竖向 Tabs 里“一列平铺条目”的标签栏：不要 Tabs 默认的整块灰底容器。 */
+const FLAT_LIST = "h-fit w-full gap-0.5 rounded-none bg-transparent p-0";
+
+/** 分类条目：选中是 muted 底 + 前景色，未选中是次要色。 */
+const CATEGORY_TAB =
+  "h-8 flex-none rounded-md px-2.5 text-muted-foreground hover:bg-muted/60 data-active:bg-muted data-active:text-foreground dark:text-muted-foreground dark:data-active:border-transparent dark:data-active:bg-muted dark:data-active:text-foreground";
+
+/** 工具条目（两行）：选中是 secondary 底 + 主色描边 + 名称加粗，未选中透明底、悬停有浅底。 */
+const TOOL_TAB =
+  "h-auto flex-none gap-2 rounded-lg px-2.5 text-muted-foreground group-data-vertical/tabs:py-2 not-data-active:hover:bg-muted/60 data-active:border-primary data-active:bg-secondary data-active:text-foreground dark:text-muted-foreground dark:data-active:border-primary dark:data-active:bg-secondary dark:data-active:text-foreground";
+
 function Categories({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   return (
     <Tabs value={value} onValueChange={(v) => onChange(String(v))} orientation="vertical" className="gap-0">
-      <VerticalTabsList aria-label="工具分类" className="w-full">
-        <TabsTrigger value={ALL} className="flex-none">
+      <VerticalTabsList aria-label="工具分类" className={FLAT_LIST}>
+        <TabsTrigger value={ALL} className={CATEGORY_TAB}>
           全部
           <span className="ml-auto text-muted-foreground in-data-active:text-inherit">{TOOLS.length}</span>
         </TabsTrigger>
         {CATEGORIES.map(([group, tools]) => (
-          <TabsTrigger key={group} value={group} className="flex-none">
+          <TabsTrigger key={group} value={group} className={CATEGORY_TAB}>
             {group}
             <span className="ml-auto text-muted-foreground in-data-active:text-inherit">{tools.length}</span>
           </TabsTrigger>
@@ -47,29 +58,38 @@ function ToolList({ query, category }: { query: string; category: string }) {
     return category === ALL ? TOOLS : TOOLS.filter((t) => t.group === category);
   }, [query, category]);
 
-  if (tools.length === 0) return <p className="px-3 py-6 text-xs text-muted-foreground">没有匹配的工具</p>;
+  const heading = `${query.trim() ? "搜索结果" : category === ALL ? "全部工具" : category} · ${tools.length} 个`;
   return (
-    <Tabs value={openId ?? ""} onValueChange={(v) => select(String(v))} orientation="vertical" className="gap-0">
-      <VerticalTabsList aria-label="工具" className="w-full gap-0.5">
-        {tools.map((tool) => (
-          <TabsTrigger
-            key={tool.id}
-            value={tool.id}
-            id={toolTabId(tool.id)}
-            aria-controls={tool.id === openId ? TOOL_PANEL_ID : undefined}
-            aria-label={`打开 ${tool.name}`}
-            className="flex-none"
-          >
-            <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
-              <span className="max-w-full truncate">{tool.name}</span>
-              <span className="max-w-full truncate font-normal text-muted-foreground in-data-active:text-inherit">{tool.summary}</span>
-            </span>
-            {tool.status !== "done" && <Badge variant="outline">{STATUS_LABEL[tool.status]}</Badge>}
-            {runningId === tool.id && <Spinner aria-label="运行中" />}
-          </TabsTrigger>
-        ))}
-      </VerticalTabsList>
-    </Tabs>
+    <>
+      <p className="px-2.5 pt-1 pb-2 text-xs font-medium text-muted-foreground">{heading}</p>
+      {tools.length === 0 ? (
+        <p className="px-2.5 py-4 text-xs text-muted-foreground">没有匹配的工具</p>
+      ) : (
+        <Tabs value={openId ?? ""} onValueChange={(v) => select(String(v))} orientation="vertical" className="gap-0">
+          <VerticalTabsList aria-label="工具" className={FLAT_LIST}>
+            {tools.map((tool) => (
+              <TabsTrigger
+                key={tool.id}
+                value={tool.id}
+                id={toolTabId(tool.id)}
+                aria-controls={tool.id === openId ? TOOL_PANEL_ID : undefined}
+                aria-label={`打开 ${tool.name}`}
+                className={TOOL_TAB}
+              >
+                <span className="flex min-w-0 flex-1 flex-col items-start">
+                  <span className="max-w-full truncate text-foreground in-data-active:font-semibold">{tool.name}</span>
+                  <span className="max-w-full truncate font-normal text-muted-foreground in-data-active:text-inherit">
+                    {tool.summary}
+                  </span>
+                </span>
+                {tool.status !== "done" && <Badge variant="outline">{STATUS_LABEL[tool.status]}</Badge>}
+                {runningId === tool.id && <Spinner aria-label="运行中" />}
+              </TabsTrigger>
+            ))}
+          </VerticalTabsList>
+        </Tabs>
+      )}
+    </>
   );
 }
 
@@ -92,12 +112,12 @@ export default function ToolboxView() {
 
   return (
     <div className="flex h-full">
-      <nav className="w-[180px] shrink-0 border-r px-2 py-2">
+      <nav className="w-[200px] shrink-0 border-r bg-card px-2 py-3">
         <Categories value={category} onChange={setCategory} />
       </nav>
 
-      <section aria-label="工具列表" className="flex w-[300px] shrink-0 flex-col border-r">
-        <div className="shrink-0 px-2 pt-2 pb-1">
+      <section aria-label="工具列表" className="flex w-[300px] shrink-0 flex-col border-r bg-card">
+        <div className="shrink-0 px-2 pt-3 pb-2">
           <InputGroup>
             <InputGroupAddon>
               <Search />
@@ -111,13 +131,13 @@ export default function ToolboxView() {
           </InputGroup>
         </div>
         <ScrollArea className="min-h-0 flex-1">
-          <div className="px-2 pb-2">
+          <div className="px-2 pb-3">
             <ToolList query={query} category={category} />
           </div>
         </ScrollArea>
       </section>
 
-      <div className="min-w-0 flex-1">{openId && <ToolWorkspace id={openId} />}</div>
+      <div className="min-w-0 flex-1 bg-background">{openId && <ToolWorkspace id={openId} />}</div>
     </div>
   );
 }

@@ -1,7 +1,8 @@
 //! 应用设置（docs/specs/settings.md），以 JSON 保存在应用配置目录。
 //!
 //! 新增设置项：在结构体里加字段并在 `Default` 里给默认值即可；
-//! 因为整个结构体带 `#[serde(default)]`，旧的配置文件仍能读取。
+//! 因为整个结构体带 `#[serde(default)]`，旧的配置文件仍能读取。删掉的设置项（例如 0.1.0 的 `theme`）
+//! 直接从结构体去掉：读取时忽略未知字段（不要加 `deny_unknown_fields`），下次保存时不再写出。
 //! 前端 `src/lib/backend.ts` 的 `Settings` / `DEFAULT_SETTINGS` 必须同步（`tests/recipe_defaults.rs` 会检查）。
 
 use std::path::Path;
@@ -40,16 +41,6 @@ pub enum AfterAll {
     Shutdown,
     /// 退出程序
     Quit,
-}
-
-/// `set.theme`
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum Theme {
-    #[default]
-    System,
-    Light,
-    Dark,
 }
 
 /// 烧录字幕（`set.auto-subtitle` 与队列里手动关联的字幕）的样式。
@@ -164,8 +155,6 @@ pub struct Settings {
     pub tray: bool,
     /// `set.mute-preview`
     pub mute_preview: bool,
-    /// `set.theme`
-    pub theme: Theme,
 
     // ---- 4.3 高级开关 ----
     /// `set.fission-folder`：裂变次数 >1 时，每次裂变输出到“第 x 次裂变”目录
@@ -218,7 +207,6 @@ impl Default for Settings {
             auto_update: false,
             tray: false,
             mute_preview: false,
-            theme: Theme::System,
             fission_folder: false,
             speed_fit: false,
             reduce_size: false,
@@ -288,7 +276,6 @@ mod tests {
                 text: "_raw".into(),
                 regex: false,
             },
-            theme: Theme::Dark,
             copyright: "© 2026".into(),
             ..Settings::default()
         };
@@ -326,10 +313,38 @@ mod tests {
         assert_eq!(loaded.subtitle_style.color, "#ffffff");
         assert!(loaded.delete_to_trash && !loaded.delete_source);
         assert_eq!(loaded.cover_frames, 1);
-        assert_eq!(loaded.theme, Theme::System);
         let startup = Settings::load_for_startup(&path).unwrap();
         assert_eq!(startup.after_all, AfterAll::None);
         assert_eq!(startup.parallel, 3);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// 已删除的设置项（0.1.0 的 `theme`：跟随系统 / 浅色 / 深色）留在旧文件里时照常读取、其它设置不丢，保存后不再写出。
+    #[test]
+    fn removed_fields_are_ignored() {
+        let dir = std::env::temp_dir().join(format!("cr-settings-removed-{}", std::process::id()));
+        let path = dir.join(SETTINGS_FILE);
+        std::fs::create_dir_all(&dir).unwrap();
+        let expected = Settings {
+            parallel: 3,
+            mute_preview: true,
+            copyright: "x".into(),
+            ..Settings::default()
+        };
+        for theme in ["light", "system", "dark"] {
+            std::fs::write(
+                &path,
+                format!(
+                    r#"{{"version":1,"parallel":3,"theme":"{theme}","mutePreview":true,"copyright":"x"}}"#
+                ),
+            )
+            .unwrap();
+            assert_eq!(Settings::load(&path).unwrap(), expected);
+        }
+        Settings::load(&path).unwrap().save(&path).unwrap();
+        assert!(!std::fs::read_to_string(&path)
+            .unwrap()
+            .contains("\"theme\""));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

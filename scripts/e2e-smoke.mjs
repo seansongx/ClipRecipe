@@ -18,7 +18,7 @@
 // 通过界面从本机假服务器（scripts/e2e-ffmpeg-server.mjs）真实地下载、取消、安装、删除 FFmpeg。
 // 应用窗口会出现在桌面上，测试结束（含失败、Ctrl+C）时关闭。
 //
-// 隔离：CLIPRECIPE_CONFIG_DIR（设置、队列）与 WEBVIEW2_USER_DATA_FOLDER（localStorage：配方、工具参数、主题）
+// 隔离：CLIPRECIPE_CONFIG_DIR（设置、队列）与 WEBVIEW2_USER_DATA_FOLDER（localStorage：配方、工具参数）
 // 都指向临时目录，不碰用户的真实数据；启动后用 data_dir 命令确认，不一致时立即停止。
 // 系统文件对话框无法自动操作：探针（scripts/e2e-cdp.mjs 的 PROBE_SCRIPT）在 fetch 层用预先排队的路径代替其结果。
 // 拖放：通过 Tauri 事件 tauri://drag-enter / drag-over / drag-drop 模拟（与系统拖放进入前端的路径相同，
@@ -422,12 +422,12 @@ const ui = {
 
   /** 配方面板里列出的步骤开关（名称）。 */
   listedSteps(page) {
-    return page.evaluate(() => [...document.querySelectorAll("aside [role=switch]")].filter(window.__e2e.visible).map((s) => s.getAttribute("aria-label")));
+    return page.evaluate(() => [...document.querySelectorAll("aside [data-slot=collapsible] > div > [role=switch]")].filter(window.__e2e.visible).map((s) => s.getAttribute("aria-label")));
   },
 
   /** “添加步骤”菜单里的模块名（菜单项的第一行）；打开后用 Esc 关上。 */
   async addableSteps(page) {
-    await page.click({ selector: "aside button", text: "添加步骤" });
+    await page.click({ selector: "aside button", textStarts: "添加步骤" });
     const names = await page.waitFor("添加步骤菜单", () => {
       const items = [...document.querySelectorAll("[role=menu] [role=menuitem]")];
       return items.length ? items.map((m) => m.querySelector("span > span")?.textContent.trim()) : null;
@@ -438,7 +438,7 @@ const ui = {
   /** 模块不在列表里时经“添加步骤”加进来（直接启用并展开）；已列出时什么也不做。返回是否经菜单添加。 */
   async ensureStep(page, name) {
     if ((await ui.listedSteps(page)).includes(name)) return false;
-    await page.click({ selector: "aside button", text: "添加步骤" });
+    await page.click({ selector: "aside button", textStarts: "添加步骤" });
     const nth = await page.waitFor(`添加步骤菜单里的 ${name}`, (n) => {
       const items = [...document.querySelectorAll("[role=menu] [role=menuitem]")].filter(window.__e2e.visible);
       const i = items.findIndex((m) => m.querySelector("span > span")?.textContent.trim() === n);
@@ -687,11 +687,11 @@ function partials(dir) {
 
 // ------------------------------------------------------------------ 场景
 
-/** 首帧主题检查：首帧已带主题与对应底色，之后 data-theme 没有变成别的值（没有先浅后深的闪烁）。 */
-async function checkFirstFrame(page, expectTheme) {
+/** 首帧检查：应用只有深色主题，第一帧就是 data-theme="dark" 与深色底色，之后 data-theme 没有变化过。 */
+async function checkFirstFrame(page) {
   const boot = await page.evaluate(() => {
     const first = window.__e2e.firstFrame;
-    // 主题变量是 oklch：经 canvas 换算成 sRGB 再比较亮度
+    // 颜色变量是 oklch：经 canvas 换算成 sRGB 再比较亮度
     let rgba = null;
     if (first?.background) {
       const ctx = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
@@ -703,16 +703,14 @@ async function checkFirstFrame(page, expectTheme) {
     return { first, rgba, history: window.__e2e.themeHistory, now: document.documentElement.dataset.theme };
   });
   assert(boot.first, "没有记录到首帧");
-  const theme = expectTheme ?? boot.now;
-  assert(boot.first.theme === theme, `首帧主题 ${boot.first.theme}，应为 ${theme}（${JSON.stringify(boot)}）`);
-  const flips = boot.history.filter((h) => h.theme !== theme);
-  assert(flips.length === 0, `启动过程中主题变化过：${JSON.stringify(boot.history)}`);
+  assert(boot.first.theme === "dark" && boot.now === "dark", `首帧主题 ${boot.first.theme}、现在 ${boot.now}，应都为 dark（${JSON.stringify(boot)}）`);
+  assert(boot.history.length === 0, `启动后 data-theme 变化过：${JSON.stringify(boot.history)}`);
   const rgb = boot.rgba ?? [];
   const transparent = rgb.length === 4 && rgb[3] === 0;
   const luminance = rgb.length >= 3 ? (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255 : -1;
-  // 底色透明时露出的是 WebView 底色（后端按同一主题设置），也不会闪白
-  assert(transparent || (theme === "dark" ? luminance < 0.2 : luminance > 0.8), `首帧底色 ${boot.first.background} 与主题 ${theme} 不符`);
-  return `首帧主题 ${boot.first.theme}（底色 ${boot.first.background}，设置偏好 ${boot.first.boot?.theme ?? "无"}），启动中 data-theme 变化 ${boot.history.length} 次、均为 ${theme}`;
+  // 底色透明时露出的是 WebView 底色（后端创建窗口时设为同一深色），也不会闪白
+  assert(transparent || luminance < 0.2, `首帧底色 ${boot.first.background} 不是深色`);
+  return `首帧主题 ${boot.first.theme}（底色 ${boot.first.background}），启动后 data-theme 没有变化`;
 }
 
 /** 在主窗口截一张包含系统标题栏的真实屏幕截图（尽力而为）。 */
@@ -740,14 +738,14 @@ async function desktopScenarios(s) {
     assert(win && win.title === "ClipRecipe" && win.visible, `原生窗口：${JSON.stringify(win)}`);
     notes.push(`窗口“${win.title}” ${win.width}×${win.height}`);
     notes.push(await checkFirstFrame(page));
-    // 窗口配色（标题栏、底色）：启动时按主题设置，颜色都是 #rrggbb
+    // 窗口配色（标题栏、底色）：启动时设置，颜色都是 #rrggbb，底色是深色
     const chrome = await page.evaluate(() => window.__e2e.ipc.filter((r) => r.cmd === "set_window_chrome").map((r) => ({ ok: r.ok, ...r.args?.chrome })));
     const hex = /^#[0-9a-f]{6}$/;
     assert(chrome.length > 0 && chrome.every((c) => c.ok && [c.titlebar, c.text, c.border, c.background].every((v) => hex.test(v))), `set_window_chrome：${JSON.stringify(chrome)}`);
     const last = chrome.at(-1);
-    const pageTheme = await page.evaluate(() => document.documentElement.dataset.theme);
-    assert(last.dark === (pageTheme === "dark"), `窗口配色与页面主题不一致：${JSON.stringify(last)}，页面 ${pageTheme}`);
-    notes.push(`窗口配色 ${last.dark ? "深色" : "浅色"}：标题栏 ${last.titlebar}、文字 ${last.text}、边框 ${last.border}`);
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(last.background.slice(i, i + 2), 16));
+    assert((0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.2, `窗口底色不是深色：${JSON.stringify(last)}`);
+    notes.push(`窗口配色：底色 ${last.background}、标题栏 ${last.titlebar}、文字 ${last.text}、边框 ${last.border}`);
 
     // 右键空白处：没有菜单（默认行为被取消）；输入框保留系统编辑菜单（不取消）
     const mark = await page.evaluate(() => window.__e2e.events.length);
@@ -832,7 +830,7 @@ async function desktopScenarios(s) {
     notes.push("按钮 / 标签 / 开关为箭头光标，输入框为文本光标，界面文字不可选，没有 title 提示");
     return notes.join("；");
   });
-  saveNativeShot(s, `boot-${await page.evaluate(() => document.documentElement.dataset.theme)}`);
+  saveNativeShot(s, "boot");
 }
 
 async function bootScenarios(s, media) {
@@ -842,7 +840,7 @@ async function bootScenarios(s, media) {
 
   await scenario(
     s,
-    "启动：无错误、CSP 生效、三个页面、主题切换",
+    "启动：无错误、CSP 生效、三个页面、没有主题切换",
     async () => {
       const info = await page.evaluate(() => ({ origin: location.origin, ua: navigator.userAgent.match(/Edg\/[\d.]+/)?.[0] }));
       // 启动阶段（重新加载前后）的控制台错误
@@ -886,18 +884,19 @@ async function bootScenarios(s, media) {
       await page.escape();
       await page.waitFor("添加步骤菜单关闭", () => !document.querySelector("[role=menu]"));
       assert(addable.length === 17 && !addable.includes("帧率"), `“添加步骤”菜单应有其余 17 个模块：${addable}`);
-      const theme0 = await page.evaluate(() => document.documentElement.dataset.theme);
-      await page.click({ selector: "button", label: theme0 === "dark" ? "切换到浅色" : "切换到深色" });
-      const theme1 = await page.evaluate(() => document.documentElement.dataset.theme);
-      assert(theme1 && theme1 !== theme0, `主题未切换：${theme0} → ${theme1}`);
+      // 只有深色主题：界面上没有主题切换
+      const themeControls = await page.evaluate(() =>
+        [...document.querySelectorAll("button, [role=radio], [role=tab]")]
+          .map((e) => e.getAttribute("aria-label") || e.textContent || "")
+          .filter((t) => /主题|浅色|深色/.test(t)),
+      );
+      assert(themeControls.length === 0, `界面上还有主题控件：${themeControls.join("、")}`);
       const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-      s.theme = theme1;
-      return `${info.origin}，${info.ua ?? "WebView2"}；${cspNote}；工具 ${cards} 个（默认选中 ${firstTool}）；配方列出 ${listed.join("、")}，可添加 ${addable.length} 个；主题 ${theme0} → ${theme1}（背景 ${bg}）`;
+      return `${info.origin}，${info.ua ?? "WebView2"}；${cspNote}；工具 ${cards} 个（默认选中 ${firstTool}）；配方列出 ${listed.join("、")}，可添加 ${addable.length} 个；没有主题控件（背景 ${bg}）`;
     },
     { csp: [/e2e-csp-probe/], console: [/e2e-csp-probe/, /Content Security Policy/] },
   );
   await saveShot(s, "boot");
-  saveNativeShot(s, `boot-${s.theme ?? "toggled"}`);
 
   await scenario(s, "环境命令：app_info / ffmpeg_status / encoder_info", async () => {
     const app = await page.invoke("app_info");
@@ -1005,12 +1004,12 @@ async function assertNavSelected(page, listSelector, expectText) {
   return `${expectText}（底色 rgba(${selected[0].bg.join(",")})）`;
 }
 
-/** 全部页面、18 个模块、34 个工具工作区，在深色与浅色下各审计一遍。 */
+/** 全部页面、18 个模块、34 个工具工作区审计一遍（应用只有深色主题）。 */
 async function auditScenario(s) {
   const { page } = s;
-  await scenario(s, "界面状态审计：三个页面、设置各分组、18 个模块、34 个工具工作区（深色 + 浅色）", async () => {
-    const original = await page.evaluate(() => document.documentElement.dataset.theme);
-    const themes = original === "dark" ? ["dark", "light"] : ["light", "dark"];
+  await scenario(s, "界面状态审计：三个页面、设置各分组、18 个模块、34 个工具工作区（深色）", async () => {
+    const theme = await page.evaluate(() => document.documentElement.dataset.theme);
+    assert(theme === "dark", `页面主题应为 dark：${theme}`);
     const counts = { audits: 0, groups: 0, texts: 0, boundaries: 0 };
     const add = (r) => {
       counts.audits++;
@@ -1020,79 +1019,84 @@ async function auditScenario(s) {
     };
     const notes = [];
     const found = [];
-    for (const theme of themes) {
-      if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== theme) {
-        await page.click({ selector: "button", label: theme === "dark" ? "切换到深色" : "切换到浅色" });
-        await page.waitFor(`主题 ${theme}`, (t) => document.documentElement.dataset.theme === t, [theme]);
-      }
-      // 三个页面：顶栏导航的选中项明确
-      for (const [id, heading, label] of [["batch", "视频队列", "批量处理"], ["toolbox", "工具箱", "工具箱"], ["settings", "设置", "设置"]]) {
-        await ui.nav(page, id, heading);
-        if (id === "batch") await ui.waitStageImage(page, "审计前舞台出图");
-        add(await auditUi(page, `${theme} ${heading}`, undefined, found));
-        notes.push(`${theme} 顶栏导航 ${await assertNavSelected(page, TOPNAV, label)}`);
-      }
-      // 顶栏导航的键盘焦点环与选中底色同时可见、互相区分
-      const ring = await page.evaluate(() => window.__e2e.focusRing("#nav-settings"));
-      assert(ring.ok, `顶栏导航焦点环：${JSON.stringify(ring)}`);
-      if (ring.contrast < 3) {
-        const soft = await page.evaluate(() => window.__e2e.softRules?.["focus-ring-contrast"]);
-        const message = `顶栏导航焦点环描边对比 ${ring.contrast} < 3（${JSON.stringify(ring)}）`;
-        if (!soft) found.push(`（${theme}）${message}`);
-        else {
-          const text = `[focus-ring-contrast] ${message}【降级为警告：${soft}】`;
-          log(`  ⚠ 审计警告（${theme} 顶栏导航焦点环）：${text}`);
-          auditWarnings.push({ label: `${theme} 顶栏导航焦点环`, text });
+    // 三个页面：顶栏导航的选中项明确
+    for (const [id, heading, label] of [["batch", "视频队列", "批量处理"], ["toolbox", "工具箱", "工具箱"], ["settings", "设置", "设置"]]) {
+      await ui.nav(page, id, heading);
+      if (id === "batch") await ui.waitStageImage(page, "审计前舞台出图");
+      add(await auditUi(page, `${theme} ${heading}`, undefined, found));
+      await saveShot(s, `audit-${theme}-${id}`);
+      notes.push(`${theme} 顶栏导航 ${await assertNavSelected(page, TOPNAV, label)}`);
+      if (id === "batch") {
+        // 选中一行：选中行的样式与只在有选择时出现的操作条（置顶、工具菜单、移除）也要审计；审计后 Ctrl+点击取消选择，不改变后续场景的状态
+        const row = { selector: "li[data-row-index] p[data-path]", nth: 0 };
+        await page.click(row);
+        await page.waitFor("操作条显示已选 1 个", (sel) => document.querySelector(sel)?.innerText.includes("已选 1 个"), [QUEUE]);
+        add(await auditUi(page, `${theme} 视频队列 · 已选 1 个`, QUEUE, found));
+        const pos = await page.waitLocate(row, 5000);
+        for (const type of ["mousePressed", "mouseReleased"]) {
+          await page.cdp.send("Input.dispatchMouseEvent", { type, x: pos.x, y: pos.y, button: "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: 1, modifiers: 2, pointerType: "mouse" });
         }
+        await page.waitFor("取消选择后操作条消失", (sel) => !document.querySelector(sel)?.innerText.includes("已选"), [QUEUE]);
       }
-      // 设置的每个分组
-      for (const tab of ["转换", "字幕与封面", "通用", "完成后", "高级", "关于"]) {
-        await page.click({ selector: "[role=tab]", text: tab });
-        await sleep(200);
-        add(await auditUi(page, `${theme} 设置 · ${tab}`, "main", found));
-        await assertNavSelected(page, "main [aria-label=设置分组]", tab);
+    }
+    // 顶栏导航的键盘焦点环与选中底色同时可见、互相区分
+    const ring = await page.evaluate(() => window.__e2e.focusRing("#nav-settings"));
+    assert(ring.ok, `顶栏导航焦点环：${JSON.stringify(ring)}`);
+    if (ring.contrast < 3) {
+      const soft = await page.evaluate(() => window.__e2e.softRules?.["focus-ring-contrast"]);
+      const message = `顶栏导航焦点环描边对比 ${ring.contrast} < 3（${JSON.stringify(ring)}）`;
+      if (!soft) found.push(`（${theme}）${message}`);
+      else {
+        const text = `[focus-ring-contrast] ${message}【降级为警告：${soft}】`;
+        log(`  ⚠ 审计警告（${theme} 顶栏导航焦点环）：${text}`);
+        auditWarnings.push({ label: `${theme} 顶栏导航焦点环`, text });
       }
-      // 18 个模块的参数表单：没列出的经“添加步骤”加进来（会启用），马上关掉开关（行仍在，显示“已停用”），逐个展开审计
-      await ui.nav(page, "batch", "视频队列");
-      const addable = await ui.addableSteps(page);
+    }
+    // 设置的每个分组
+    for (const tab of ["转换", "字幕与封面", "通用", "完成后", "高级", "关于"]) {
+      await page.click({ selector: "[role=tab]", text: tab });
+      await sleep(200);
+      add(await auditUi(page, `${theme} 设置 · ${tab}`, "main", found));
+      await assertNavSelected(page, "main [aria-label=设置分组]", tab);
+    }
+    // 18 个模块的参数表单：没列出的经“添加步骤”加进来（会启用），马上关掉开关（行仍在，显示“已停用”），逐个展开审计
+    await ui.nav(page, "batch", "视频队列");
+    const addable = await ui.addableSteps(page);
+    await page.escape();
+    await page.waitFor("添加步骤菜单关闭", () => !document.querySelector("[role=menu]"));
+    if (addable.length > 0) {
+      await page.click({ selector: "aside button", textStarts: "添加步骤" });
+      add(await auditUi(page, `${theme} 添加步骤菜单`, "[role=menu]", found));
       await page.escape();
       await page.waitFor("添加步骤菜单关闭", () => !document.querySelector("[role=menu]"));
-      if (addable.length > 0) {
-        await page.click({ selector: "aside button", text: "添加步骤" });
-        add(await auditUi(page, `${theme} 添加步骤菜单`, "[role=menu]", found));
-        await page.escape();
-        await page.waitFor("添加步骤菜单关闭", () => !document.querySelector("[role=menu]"));
-      }
-      for (const name of addable) {
-        await ui.ensureStep(page, name);
-        if (name !== "帧率") await ui.setSwitch(page, name, false);
-      }
-      const modules = await ui.listedSteps(page);
-      assert(modules.length === 18, `配方面板列出的模块数 ${modules.length}：${modules}`);
-      const disabledSummary = await page.evaluate(() => [...document.querySelectorAll("aside button[aria-expanded]")].filter((b) => b.textContent.includes("已停用")).length);
-      assert(disabledSummary === 17, `关掉开关后应有 17 行显示“已停用”，实际 ${disabledSummary}`);
-      for (const name of modules) {
-        await ui.expandModule(page, name);
-        add(await auditUi(page, `${theme} 模块 ${name}`, "aside", found));
-      }
-      await ui.expandModule(page, "帧率");
-      // 34 个工具：依次选中，审计工作区
-      await ui.nav(page, "toolbox", "工具箱");
-      await ui.openTool(page, "视频合并");
-      const tools = await page.evaluate(() => [...document.querySelectorAll("[role=tablist][aria-label=工具] [role=tab][aria-label^='打开 ']")].map((b) => b.getAttribute("aria-label").slice(3)));
-      for (const name of tools) {
-        await ui.openTool(page, name);
-        add(await auditUi(page, `${theme} 工具 ${name}`, WORKSPACE, found));
-      }
-      notes.push(`${theme}：${modules.length} 个模块、${tools.length} 个工具`);
     }
-    if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== original) {
-      await page.click({ selector: "button", label: original === "dark" ? "切换到深色" : "切换到浅色" });
+    for (const name of addable) {
+      await ui.ensureStep(page, name);
+      if (name !== "帧率") await ui.setSwitch(page, name, false);
     }
+    const modules = await ui.listedSteps(page);
+    assert(modules.length === 18, `配方面板列出的模块数 ${modules.length}：${modules}`);
+    const disabledSummary = await page.evaluate(() => [...document.querySelectorAll("aside button[aria-expanded]")].filter((b) => b.textContent.includes("已停用")).length);
+    assert(disabledSummary === 17, `关掉开关后应有 17 行显示“已停用”，实际 ${disabledSummary}`);
+    for (const name of modules) {
+      await ui.expandModule(page, name);
+      add(await auditUi(page, `${theme} 模块 ${name}`, "aside", found));
+      if (name === "文本") await saveShot(s, `audit-${theme}-module-text`);
+    }
+    await ui.expandModule(page, "帧率");
+    // 34 个工具：依次选中，审计工作区
+    await ui.nav(page, "toolbox", "工具箱");
+    await ui.openTool(page, "视频合并");
+    const tools = await page.evaluate(() => [...document.querySelectorAll("[role=tablist][aria-label=工具] [role=tab][aria-label^='打开 ']")].map((b) => b.getAttribute("aria-label").slice(3)));
+    for (const name of tools) {
+      await ui.openTool(page, name);
+      add(await auditUi(page, `${theme} 工具 ${name}`, WORKSPACE, found));
+    }
+    notes.push(`${theme}：${modules.length} 个模块、${tools.length} 个工具`);
     await ui.nav(page, "batch", "视频队列");
     // 恢复默认配方（只有帧率；没启用的模块从列表消失），后面的场景从默认配方开始
     await ui.resetRecipe(page);
-    await page.waitFor("重置后只列出帧率", () => [...document.querySelectorAll("aside [role=switch]")].map((x) => x.getAttribute("aria-label")).join() === "帧率");
+    await page.waitFor("重置后只列出帧率", () => [...document.querySelectorAll("aside [data-slot=collapsible] > div > [role=switch]")].map((x) => x.getAttribute("aria-label")).join() === "帧率");
     if (found.length) throw new Error(`界面审计发现 ${found.length} 个问题（${counts.audits} 次审计）：\n${[...new Set(found)].join("\n")}`);
     return `${counts.audits} 次审计无问题（${counts.groups} 组选项、${counts.texts} 处文字、${counts.boundaries} 个控件边界）；${notes.join("；")}`;
   });
@@ -1169,10 +1173,10 @@ async function batchScenarios(s, media) {
       await ui.choose(page, "百分比");
       await ui.ensureStep(page, "文本");
       await ui.ensureStep(page, "码率");
-      await page.waitFor("已启用 4 个步骤", () => document.querySelector("aside header").innerText.includes("已启用 4 个步骤"));
+      await page.waitFor("已启用 4 个步骤", () => document.querySelector("aside").innerText.includes("已启用 4 个步骤"));
       await ui.waitStageImage(page, "改参数后舞台刷新", { notSrc: before.src });
       const result = await page.waitFor("舞台的参与预览步骤包含裁剪与文本", (sel) => {
-        const t = [...document.querySelectorAll(`${sel} p`)].map((p) => p.textContent).find((x) => x.startsWith("参与预览："));
+        const t = [...document.querySelectorAll(`${sel} span`)].map((x) => x.textContent).find((x) => x.startsWith("参与预览："));
         return t?.includes("裁剪") && t.includes("文本") ? t : null;
       }, [STAGE], { timeout: 60000 });
       const after = await ui.waitStageImage(page, "舞台最新的效果帧", { notSrc: before.src });
@@ -1434,7 +1438,7 @@ async function batchScenarios(s, media) {
     // 重置 / 导入整份替换配方后，配方面板只列出启用的步骤（停用的“加水印”等从列表消失）
     const reset = async () => {
       await ui.resetRecipe(page);
-      await page.waitFor("重置后只列出帧率", () => [...document.querySelectorAll("aside [role=switch]")].map((x) => x.getAttribute("aria-label")).join() === "帧率");
+      await page.waitFor("重置后只列出帧率", () => [...document.querySelectorAll("aside [data-slot=collapsible] > div > [role=switch]")].map((x) => x.getAttribute("aria-label")).join() === "帧率");
       assert((await ui.switchState(page, "帧率")) === "checked", "重置后应只启用帧率");
     };
     const restored = async (how) => {
@@ -1653,14 +1657,9 @@ async function batchScenarios(s, media) {
 async function persistenceScenarios(s, media) {
   const { page } = s;
   // 准备：队列里留一个已取消（上一场景）+ 一个未处理的视频
-  await scenario(s, "重启前：队列与设置已保存到隔离的配置目录；深色主题；移动窗口", async () => {
+  await scenario(s, "重启前：队列与设置已保存到隔离的配置目录；移动窗口", async () => {
     await ui.dropOnQueue(page, [media.extra]);
     await ui.waitRows(page, "extra 导入", (r) => r.some((x) => x.name === "extra.mp4"));
-    // 深色主题（重启后检查首帧就是深色，没有白屏、先浅后深）
-    if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== "dark") {
-      await page.click({ selector: "button", label: "切换到深色" });
-    }
-    s.theme = "dark";
     // 像用户拖动一样移动、缩放窗口（物理像素），重启后应恢复
     const pid = s.appPid();
     moveNativeWindow(pid, 60, 40, 1560, 1000);
@@ -1673,8 +1672,9 @@ async function persistenceScenarios(s, media) {
     const queued = (Array.isArray(queue) ? queue : queue.tasks ?? []).map((t) => path.basename(t.path));
     assert(queued.includes("extra.mp4"), `queue.json：${JSON.stringify(queue).slice(0, 300)}`);
     assert(settings.numberPrefix === true && settings.mutePreview === true && settings.autoSubtitle === true, `settings.json：${JSON.stringify(settings).slice(0, 300)}`);
+    assert(!("theme" in settings), `settings.json 不应再有 theme：${JSON.stringify(settings).slice(0, 300)}`);
     s.expectQueue = queued;
-    return `queue.json：${queued.join("、")}；settings.json：numberPrefix / mutePreview / autoSubtitle = true，theme = ${settings.theme}`;
+    return `queue.json：${queued.join("、")}；settings.json：numberPrefix / mutePreview / autoSubtitle = true，没有 theme`;
   });
 
   log("  重启应用（quit_app）…");
@@ -1683,6 +1683,9 @@ async function persistenceScenarios(s, media) {
   // 正常退出时（RunEvent::Exit）应删除本进程的预览目录
   const leftPreview = oldPids.map((pid) => path.join(os.tmpdir(), "cliprecipe-preview", String(pid))).filter((d) => fs.existsSync(d));
   s.appPids.clear();
+  // 旧版本（0.1.0）的设置文件里有 theme（浅色）：重启后照常读取、其它设置不丢、首帧仍是深色
+  const settingsFile = path.join(s.configDir, "settings.json");
+  fs.writeFileSync(settingsFile, JSON.stringify({ ...JSON.parse(fs.readFileSync(settingsFile, "utf8")), theme: "light" }, null, 2));
   await s.start();
   await scenario(s, "正常退出：删除本进程的预览目录", async () => {
     assert(oldPids.length > 0, "没有记录到应用进程号");
@@ -1690,14 +1693,12 @@ async function persistenceScenarios(s, media) {
     return `进程 ${oldPids.join("、")} 的预览目录已删除`;
   });
 
-  await scenario(s, "重启后：设置保留、未完成的任务恢复、配方保留", async () => {
+  await scenario(s, "重启后：设置保留（旧设置文件里的浅色主题被忽略）、未完成的任务恢复、配方保留、首帧深色", async () => {
     const loaded = await s.page.invoke("load_settings");
     assert(loaded.ok && loaded.value.numberPrefix && loaded.value.mutePreview && loaded.value.autoSubtitle, `load_settings：${JSON.stringify(loaded).slice(0, 300)}`);
     const rows = await ui.waitRows(s.page, "队列恢复", (r) => (s.expectQueue ?? []).every((n) => r.some((x) => x.name === n)), 20000);
     assert(rows.every((r) => r.summary.includes("×")), "恢复的任务缺少媒体信息");
-    const theme = await s.page.evaluate(() => document.documentElement.dataset.theme);
-    assert(!s.theme || theme === s.theme, `主题未保留：${theme}，应为 ${s.theme}`);
-    const firstFrame = await checkFirstFrame(s.page, "dark");
+    const firstFrame = await checkFirstFrame(s.page);
     // 窗口位置与大小（tauri-plugin-window-state，保存在隔离的配置目录）
     const win = nativeWindow(s.appPid());
     const b = s.windowBefore;
@@ -1716,7 +1717,7 @@ async function persistenceScenarios(s, media) {
     assert(shown === "checked", "设置页没有显示保存的开关状态");
     await ui.nav(s.page, "batch", "视频队列");
     await saveShot(s, "after-restart");
-    return `恢复 ${rows.length} 个任务（${rows.map((r) => `${r.name} ${r.state}`).join("、")}）；主题 ${theme}；${firstFrame}；窗口 ${win.x},${win.y} ${win.width}×${win.height} 已恢复；设置页显示已保存的开关`;
+    return `恢复 ${rows.length} 个任务（${rows.map((r) => `${r.name} ${r.state}`).join("、")}）；${firstFrame}；窗口 ${win.x},${win.y} ${win.width}×${win.height} 已恢复；设置页显示已保存的开关`;
   });
 
   await scenario(s, "单实例：再次启动程序时激活已运行的窗口（从最小化恢复），并导入命令行里的文件", async () => {
@@ -1913,7 +1914,7 @@ const panel = {
       [label, on],
     );
   },
-  /** 点面板里文字以 text 开头的按钮（平台、主题选项，“全部恢复默认”）。 */
+  /** 点面板里文字以 text 开头的按钮（平台选项，“全部恢复默认”）。 */
   async press(page, text) {
     await panel.open(page);
     const ok = await page.evaluate(
@@ -1930,11 +1931,10 @@ const panel = {
 
 const ipcCount = (page) => page.evaluate(() => window.__e2e.ipc.length);
 const ipcSince = (page, n) => page.evaluate((n) => window.__e2e.ipc.slice(n).map((r) => ({ cmd: r.cmd, args: JSON.stringify(r.args ?? null) })), n);
-const readJson = (file) => (fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : null);
 
 /**
  * 调试面板在真实的桌面应用（tauri dev）里不改动、不污染真实数据：模拟的队列行不写进 queue.json、对模拟数据的操作不发给后端、
- * 重启后没有“文件缺失”；FFmpeg 模拟时下载 / 取消 / 重新检测不调用后端；“全部恢复默认”不改主题；模拟非 Windows 平台时标题栏恢复系统默认。
+ * 重启后没有“文件缺失”；FFmpeg 模拟时下载 / 取消 / 重新检测不调用后端；“全部恢复默认”不改设置；模拟非 Windows 平台时标题栏恢复系统默认。
  */
 async function debugPanelScenarios(s, media) {
   const queueFile = path.join(s.configDir, "queue.json");
@@ -2017,12 +2017,10 @@ async function debugPanelScenarios(s, media) {
     return "下载、取消、重新检测都只在前端模拟";
   });
 
-  await scenario(s, "调试面板：“全部恢复默认”只恢复面板自己的选择，不改设置里的主题", async () => {
+  await scenario(s, "调试面板：“全部恢复默认”只恢复面板自己的选择，不改设置", async () => {
     const page = s.page;
-    await panel.press(page, "深色");
-    await page.waitFor("深色主题", () => document.documentElement.dataset.theme === "dark");
     await sleep(800); // 设置保存的防抖是 300 ms
-    assert(readJson(settingsFile)?.theme === "dark", `settings.json 的主题应为 dark：${JSON.stringify(readJson(settingsFile))}`);
+    const before = fs.readFileSync(settingsFile, "utf8");
     await panel.press(page, "macOS");
     await page.waitFor("模拟 macOS", () => document.documentElement.dataset.platform === "macos");
     await panel.sim(page, "处理记录里各级别日志", true);
@@ -2030,17 +2028,16 @@ async function debugPanelScenarios(s, media) {
     await page.waitFor("平台恢复为真实的 Windows", () => document.documentElement.dataset.platform === "windows");
     await sleep(800);
     const state = await page.evaluate(() => ({
-      theme: document.documentElement.dataset.theme,
       stored: localStorage.getItem("cliprecipe.debug-panel"),
       switches: [...document.querySelectorAll("[data-slot=sheet-content] [role=switch]")].map((s) => s.getAttribute("aria-checked")),
     }));
-    assert(readJson(settingsFile)?.theme === "dark", `恢复默认改了 settings.json 的主题：${JSON.stringify(readJson(settingsFile))}`);
-    assert(state.theme === "dark" && state.stored === null && state.switches.every((v) => v === "false"), JSON.stringify(state));
+    assert(fs.readFileSync(settingsFile, "utf8") === before, `恢复默认改了 settings.json：${before.slice(0, 300)} → ${fs.readFileSync(settingsFile, "utf8").slice(0, 300)}`);
+    assert(state.stored === null && state.switches.every((v) => v === "false"), JSON.stringify(state));
     await panel.close(page);
-    return "主题仍为深色（settings.json 与页面），模拟全部关闭，面板的 localStorage 已清除";
+    return "settings.json 未变，模拟全部关闭，面板的 localStorage 已清除";
   });
 
-  await scenario(s, "调试面板：模拟 macOS / Linux 时标题栏恢复系统默认颜色，切回 Windows 重新按主题着色", async () => {
+  await scenario(s, "调试面板：模拟 macOS / Linux 时标题栏恢复系统默认颜色，切回 Windows 重新着色", async () => {
     const page = s.page;
     const pid = s.appPid();
     // 看系统标题栏实际显示的像素（Windows 不能读回 DWM 的标题栏颜色属性）
@@ -2053,7 +2050,7 @@ async function debugPanelScenarios(s, media) {
     };
     const near = (a, b, tol = 3) => a.every((v, i) => Math.abs(v - b[i]) <= tol);
     const hex = (c) => `#${c.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
-    // 主题的 --titlebar（深色主题，上一个场景设为深色）换算成 sRGB
+    // --titlebar 换算成 sRGB
     const expected = await page.evaluate(() => {
       const probe = document.createElement("span");
       probe.style.color = "var(--titlebar)";

@@ -17,7 +17,7 @@
         "title": "ClipRecipe",
         "width": 1280,
         "height": 800,
-        "minWidth": 960,
+        "minWidth": 1180,
         "minHeight": 600,
         "dragDropEnabled": true
       }

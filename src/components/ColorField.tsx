@@ -53,7 +53,8 @@ export default function ColorField({
     <Popover>
       <PopoverTrigger
         disabled={disabled}
-        render={<Button type="button" variant="outline" size="sm" aria-label={`${label}：${value}`} />}
+        // 显示的是取值：用正文色，不随外层的次要文字色变淡
+        render={<Button type="button" variant="outline" size="sm" aria-label={`${label}：${value}`} className="text-foreground" />}
       >
         <span className="size-4 rounded-sm ring-1 ring-foreground/20" style={{ backgroundColor: value }} />
         {value}

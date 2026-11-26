@@ -9,6 +9,7 @@
 |---|---|
 | `src-tauri/src/pipeline/modules/<模块>.rs` | 参数结构体加字段（`camelCase`、`#[serde(default)]`，`Default` 给默认值）；实现 `apply`；**删除** `implemented()` 的覆盖；写单元测试 |
 | `src/features/pipeline/<模块>.tsx` | 参数类型与后端一致；`defaults` 与后端 `Default` 一致；`Form` 换成真正的表单 |
+| `src/features/pipeline/icons.ts` | 在这里给模块加一个 lucide 图标（配方栏步骤行左侧的图标块；没有时显示通用图标） |
 | `src-tauri/tests/pipeline_<模块>.rs` | 新建集成测试文件（不要改别人的测试文件） |
 | `src/features/registry.ts` | 该模块调用 `f(...)` 末尾加 `"done"` |
 | `docs/specs/pipeline.md` | 在对应分组的表里加上该模块 |

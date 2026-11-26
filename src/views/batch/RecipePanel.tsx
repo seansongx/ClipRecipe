@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type Ref } from "react";
 import {
-  ChevronDown,
-  ChevronRight,
   Ellipsis,
   Eye,
   FileDown,
@@ -35,7 +33,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import Hint from "@/components/Hint";
 import NumberInput from "@/components/NumberInput";
@@ -44,6 +41,7 @@ import { useShortcutLabels } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 import { useQueue } from "@/state/queue";
 import { moduleSummary, PIPELINE_DEFS, PREVIEW_EXCLUDED } from "@/features/pipeline";
+import { moduleIcon } from "@/features/pipeline/icons";
 import { PIPELINE_MODULES, groupBy, type Feature } from "@/features/registry";
 import { isTauri, MAX_FISSION, previewCommand, type ModuleParams } from "@/lib/backend";
 import { useLog } from "@/state/log";
@@ -83,25 +81,33 @@ function useVisibleSteps(
   return { visible, touch };
 }
 
+/**
+ * 展开卡片是 secondary 底：输入框、下拉框、分段按钮（未选中项）默认是半透明底，压在 secondary 上
+ * 占位符与选中 / 未选中的对比都不够，卡片里改为不透明的 card 底（与设计稿一致）。
+ */
+const CARD_CONTROLS = [
+  "[&_[data-slot=input]]:bg-card",
+  "[&_[data-slot=input-group]]:bg-card",
+  "[&_[data-slot=textarea]]:bg-card",
+  "[&_[data-slot=select-trigger]]:bg-card",
+  "[&_[data-slot=toggle-group-item]:not([aria-pressed=true]):not(:hover)]:bg-card",
+].join(" ");
+
 function ModulePreviewButton({ id }: { id: string }) {
   const video = useSelectedVideo();
   return (
-    <>
-      <Separator className="mt-2" />
-      <div className="flex items-center gap-2 pt-2">
-        <Hint label={video ? `只启用此步骤，预览「${video.item.name}」` : "先在队列中添加视频"} disabledTrigger>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => usePreview.getState().previewPipeline(id)}
-            disabled={!isTauri || !video}
-          >
-            <Eye /> 预览此步骤
-          </Button>
-        </Hint>
-        {video && <span className="min-w-0 truncate text-muted-foreground">{video.item.name}</span>}
-      </div>
-    </>
+    <div className="mt-3 flex items-center gap-2">
+      <Hint label={video ? `只启用此步骤，预览「${video.item.name}」` : "先在队列中添加视频"} disabledTrigger>
+        <Button
+          variant="outline"
+          onClick={() => usePreview.getState().previewPipeline(id)}
+          disabled={!isTauri || !video}
+        >
+          <Eye /> 预览此步骤
+        </Button>
+      </Hint>
+      {video && <span className="min-w-0 truncate text-muted-foreground">{video.item.name}</span>}
+    </div>
   );
 }
 
@@ -127,6 +133,7 @@ function ModuleRow({
   const planned = feature.status === "planned";
   const enabled = params?.enabled ?? false;
   const Form = def?.Form;
+  const Icon = moduleIcon(feature.id);
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -140,48 +147,51 @@ function ModuleRow({
   }, [scrollIntoView, onScrolled]);
 
   return (
-    // 展开的步骤用 primary 描边标出（不只靠文字颜色）
-    <div ref={box} className={cn("rounded-lg border", open ? "border-primary" : "border-transparent")}>
-      <Collapsible open={open} onOpenChange={onToggleOpen}>
-        <div className="flex items-center gap-1 rounded-md pl-2 hover:bg-muted">
-          <Switch
-            checked={enabled}
-            disabled={planned && !enabled}
-            aria-label={feature.name}
-            onCheckedChange={onToggleEnabled}
-          />
-          <CollapsibleTrigger
-            render={
-              <Button
-                variant="ghost"
-                // 两行内容（名称 + 摘要）：高度随内容（Mira 的按钮是固定高度 h-7）
-                className="h-auto min-w-0 flex-1 justify-start text-left whitespace-normal"
-              />
-            }
+    // 展开的步骤是一张卡片：primary 描边（选中态不只靠底色深浅）+ secondary 底；卡片里的控件见 CARD_CONTROLS
+    <Collapsible
+      ref={box}
+      open={open}
+      onOpenChange={onToggleOpen}
+      className={cn("rounded-lg border", open ? "border-primary bg-secondary" : "border-transparent")}
+    >
+      <div className={cn("flex items-center gap-2.5 rounded-md pr-2", !open && "hover:bg-muted/50")}>
+        <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md py-1.5 pl-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <span
+            aria-hidden
+            className={cn(
+              "grid size-6.5 shrink-0 place-items-center rounded-md [&_svg]:size-3.5",
+              open ? "bg-primary/15 text-primary-ink" : "bg-secondary text-muted-foreground",
+              !enabled && !open && "opacity-60",
+            )}
           >
-            <span className="min-w-0 flex-1">
-              <span className="flex items-center gap-1.5">
-                {feature.name}
-                {planned && <Badge variant="secondary">规划中</Badge>}
-              </span>
-              {/* 摘要是次要文字；展开 / 悬停时按钮是 muted 底，muted 文字在上面不够 4.5:1，改为继承按钮的前景色 */}
-              <span className="block truncate text-xs text-muted-foreground group-hover/button:text-inherit group-aria-expanded/button:text-inherit">
-                {enabled ? moduleSummary(feature.id, params) : "已停用"}
-              </span>
+            <Icon />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className={cn("flex items-center gap-1.5", open && "font-semibold", !enabled && "text-muted-foreground")}>
+              {feature.name}
+              {planned && <Badge variant="secondary">规划中</Badge>}
             </span>
-            {open ? <ChevronDown /> : <ChevronRight />}
-          </CollapsibleTrigger>
-        </div>
-        <CollapsibleContent className="px-3 pb-3">
-          {Form && params ? (
-            <Form value={params} onChange={(patch) => updateModule(feature.id, patch)} />
-          ) : (
-            <p className="py-1 text-xs text-muted-foreground">参数表单尚未实现。</p>
-          )}
-          {canPreview(feature.id) && <ModulePreviewButton id={feature.id} />}
-        </CollapsibleContent>
-      </Collapsible>
-    </div>
+            <span className="block truncate text-muted-foreground">
+              {enabled ? moduleSummary(feature.id, params) : "已停用"}
+            </span>
+          </span>
+        </CollapsibleTrigger>
+        <Switch
+          checked={enabled}
+          disabled={planned && !enabled}
+          aria-label={feature.name}
+          onCheckedChange={onToggleEnabled}
+        />
+      </div>
+      <CollapsibleContent className={cn("px-3 pt-1.5 pb-3", CARD_CONTROLS)}>
+        {Form && params ? (
+          <Form value={params} onChange={(patch) => updateModule(feature.id, patch)} />
+        ) : (
+          <p className="py-1 text-muted-foreground">参数表单尚未实现。</p>
+        )}
+        {canPreview(feature.id) && <ModulePreviewButton id={feature.id} />}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -189,34 +199,39 @@ function ModuleRow({
 function AddStepMenu({ hidden, onAdd }: { hidden: Feature[]; onAdd: (id: string) => void }) {
   const groups = groupBy(hidden);
   return (
-    <div className="flex items-center gap-2 px-1 pt-1.5">
-      <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
-          <Plus /> 添加步骤
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-auto min-w-56">
-          {groups.map(([group, features], i) => (
-            <DropdownMenuGroup key={group}>
-              {i > 0 && <DropdownMenuSeparator />}
-              <DropdownMenuLabel>{group}</DropdownMenuLabel>
-              {features.map((feature) => (
-                <DropdownMenuItem
-                  key={feature.id}
-                  disabled={feature.status === "planned"}
-                  onClick={() => onAdd(feature.id)}
-                >
-                  <span className="flex min-w-0 flex-col">
-                    <span>{feature.name}</span>
-                    <span className="text-muted-foreground">{feature.summary}</span>
-                  </span>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuGroup>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <span className="text-xs text-muted-foreground">还有 {hidden.length} 个</span>
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            variant="outline"
+            className="mt-1.5 h-8 w-full gap-1.5 rounded-md border-dashed border-input bg-transparent text-muted-foreground hover:bg-muted/50 dark:bg-transparent"
+          />
+        }
+      >
+        <Plus /> 添加步骤
+        <span className="font-normal">还有 {hidden.length} 个</span>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-auto min-w-56">
+        {groups.map(([group, features], i) => (
+          <DropdownMenuGroup key={group}>
+            {i > 0 && <DropdownMenuSeparator />}
+            <DropdownMenuLabel>{group}</DropdownMenuLabel>
+            {features.map((feature) => (
+              <DropdownMenuItem
+                key={feature.id}
+                disabled={feature.status === "planned"}
+                onClick={() => onAdd(feature.id)}
+              >
+                <span className="flex min-w-0 flex-col">
+                  <span>{feature.name}</span>
+                  <span className="text-muted-foreground">{feature.summary}</span>
+                </span>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -240,9 +255,9 @@ function RecipeFooter({ outputBox, outputDropTarget }: OutputDropProps) {
   return (
     // Hint 的 disabledTrigger 把按钮包在一层 inline-flex 的 span 里（只有文字那么宽）：在底部改为块级 flex，
     // 让“开始处理”和“停止”一样占满整行
-    <footer className="space-y-2 border-t px-4 py-2.5 *:data-[slot=hint-wrapper]:flex">
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">裂变次数</span>
+    <footer className="flex flex-col gap-2.5 border-t px-4 pt-3 pb-3.5 *:data-[slot=hint-wrapper]:flex">
+      <div className="flex items-center gap-2.5">
+        <span className="text-muted-foreground">裂变次数</span>
         <NumberInput value={fission} onChange={setFission} min={1} max={MAX_FISSION} integer className="w-16" label="裂变次数" />
         <span className="min-w-0 flex-1 text-muted-foreground">
           {fission > 1
@@ -252,19 +267,20 @@ function RecipeFooter({ outputBox, outputDropTarget }: OutputDropProps) {
       </div>
       <OutputPicker boxRef={outputBox} dropTarget={outputDropTarget} />
       {items.length > 0 && (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-muted-foreground">
           {items.length} 个视频 → {items.length * fission} 个输出
         </p>
       )}
       {running ? (
         <Hint label="停止处理" keys={keys.stop}>
-          <Button variant="outline" onClick={() => void stop()} className="w-full">
+          <Button variant="outline" size="xl" onClick={() => void stop()} className="w-full">
             <Square /> 停止
           </Button>
         </Hint>
       ) : (
         <Hint label="按当前配方处理队列" keys={keys.start} disabledTrigger>
           <Button
+            size="xl"
             onClick={() => void start(useRecipe.getState().recipe)}
             disabled={!isTauri || items.length === 0 || !!importing}
             className="w-full"
@@ -303,30 +319,27 @@ async function showCommand() {
 }
 
 /** 标题区：导入、导出，“更多”里是查看命令与重置（pipe.reset，二次确认）。 */
-function RecipeHeader({ enabledCount }: { enabledCount: number }) {
+function RecipeHeader() {
   const { importFile, exportFile, reset } = useRecipe.getState();
   // 受控：shadcn（Base UI）的 AlertDialogAction 只是按钮，不会自己关闭对话框
   const [resetOpen, setResetOpen] = useState(false);
 
   return (
-    <header className="flex items-center gap-1 border-b px-4 py-2">
-      <div className="mr-auto">
-        <h2 className="text-sm font-semibold">配方</h2>
-        <p className="text-xs text-muted-foreground">已启用 {enabledCount} 个步骤</p>
-      </div>
+    <header className="flex h-12 shrink-0 items-center gap-1 pr-2.5 pl-4">
+      <h2 className="mr-auto text-sm font-semibold">配方</h2>
       <Hint label="从配方文件导入全部参数（也可以把配方文件拖进窗口）" disabledTrigger>
-        <Button variant="ghost" size="icon-sm" aria-label="导入配方" onClick={() => void importFile()} disabled={!isTauri}>
+        <Button variant="ghost" size="icon" className="text-muted-foreground" aria-label="导入配方" onClick={() => void importFile()} disabled={!isTauri}>
           <FileUp />
         </Button>
       </Hint>
       <Hint label="把当前全部参数保存为配方文件" disabledTrigger>
-        <Button variant="ghost" size="icon-sm" aria-label="导出配方" onClick={() => void exportFile()} disabled={!isTauri}>
+        <Button variant="ghost" size="icon" className="text-muted-foreground" aria-label="导出配方" onClick={() => void exportFile()} disabled={!isTauri}>
           <FileDown />
         </Button>
       </Hint>
       <DropdownMenu>
         <Hint label="更多">
-          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="更多" />}>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="text-muted-foreground" aria-label="更多" />}>
             <Ellipsis />
           </DropdownMenuTrigger>
         </Hint>
@@ -387,12 +400,10 @@ export default function RecipePanel({ outputBox, outputDropTarget }: OutputDropP
 
   return (
     <aside className="flex w-[380px] shrink-0 flex-col border-l bg-card">
-      <RecipeHeader enabledCount={enabledCount} />
+      <RecipeHeader />
       <ScrollArea className="min-h-0 flex-1">
-        <div className="space-y-0.5 px-2 py-1.5">
-          {visible.length === 0 && (
-            <p className="px-2 py-1 text-xs text-muted-foreground">还没有启用任何步骤。</p>
-          )}
+        <div className="flex flex-col gap-0.5 px-2 pb-2">
+          <p className="px-2 pb-1.5 text-muted-foreground">已启用 {enabledCount} 个步骤</p>
           {visible.map((feature) => (
             <ModuleRow
               key={feature.id}

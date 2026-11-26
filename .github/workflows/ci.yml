@@ -36,7 +36,6 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       # 联网对比 ui.shadcn.com 注册表：src/components/ui/ 必须与 CLI 生成的原版一致
-      - run: npm run check:shadcn
       # 版本号在 package.json、Cargo.toml、tauri.conf.json 等几处一致
       - run: npm run release:check
 

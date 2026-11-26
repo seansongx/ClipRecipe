@@ -142,7 +142,7 @@ export const PROBE_SCRIPT = String.raw`
       e2e.events.push({ type, key: e.key, code: e.code, ctrl: e.ctrlKey, shift: e.shiftKey, alt: e.altKey, button: e.button, prevented: e.defaultPrevented, target: e.target && e.target.tagName });
     }, { passive: true });
   }
-  // 首帧的主题与底色，以及之后 data-theme 的每次变化（检查启动时没有先浅后深的闪烁）
+  // 首帧的主题与底色，以及之后 data-theme 的每次变化（检查第一帧就是深色、之后不变）
   e2e.firstFrame = null;
   e2e.themeHistory = [];
   requestAnimationFrame(() => {
@@ -151,7 +151,6 @@ export const PROBE_SCRIPT = String.raw`
       theme: root ? root.dataset.theme || null : null,
       background: root ? getComputedStyle(root).backgroundColor : null,
       bodyBackground: document.body ? getComputedStyle(document.body).backgroundColor : null,
-      boot: window.__CLIPRECIPE_BOOT__ || null,
     };
   });
   new MutationObserver(() => {

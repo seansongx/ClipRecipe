@@ -46,10 +46,10 @@ import {
   type Settings,
   type SubtitleStyle,
   type TargetFormat,
-  type ThemeSetting,
 } from "@/lib/backend";
 import { formatSize } from "@/lib/format";
 import { EXAMPLE_PATHS, usePlatform } from "@/lib/platform";
+import { cn } from "@/lib/utils";
 import { shortcutGroups } from "@/lib/shortcuts";
 import { useEncoders } from "@/state/encoders";
 import { SOURCE_LABELS, useFfmpeg } from "@/state/ffmpeg";
@@ -72,26 +72,48 @@ const GROUPS = [
 ] as const;
 type GroupId = (typeof GROUPS)[number]["id"];
 
-function Row({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
+/**
+ * 设置项一行：左边名称 + 次要色说明，右边控件（固定宽度的一列，各行的控件左对齐）。
+ * `stacked` 用于内容很长的信息行（路径、版本、说明文字）：名称在上，内容占满整行。
+ */
+function Row({
+  label,
+  hint,
+  stacked = false,
+  children,
+}: {
+  label: string;
+  hint?: ReactNode;
+  stacked?: boolean;
+  children: ReactNode;
+}) {
   return (
-    <div className="flex items-start gap-4 border-b px-4 py-2.5 last:border-b-0">
-      <div className="w-44 shrink-0">
-        <p>{label}</p>
+    <div className={cn("flex gap-x-6 gap-y-2 px-4 py-3", stacked ? "flex-col" : "items-start")}>
+      <div className={cn("min-w-0", !stacked && "flex-1")}>
+        <p className="font-medium">{label}</p>
         {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
       </div>
-      <div className="min-w-0 flex-1 select-text break-words">{children}</div>
+      <div className={cn("min-w-0 select-text break-words", stacked ? "w-full" : "w-[22rem] max-w-[50%] shrink-0")}>
+        {children}
+      </div>
     </div>
   );
 }
 
+/** 一组设置项：圆角 card 容器，行间细分隔线；可带小标题。 */
 function Section({ title, children }: { title?: string; children: ReactNode }) {
   return (
-    <section className="mb-5">
-      {title && <h2 className="mb-1.5 text-xs font-medium text-muted-foreground">{title}</h2>}
-      <Card className="gap-0">{children}</Card>
+    <section className="mb-6">
+      {title && <h3 className="mb-2 px-1 text-xs font-medium text-muted-foreground">{title}</h3>}
+      <Card className="gap-0 divide-y py-0">{children}</Card>
     </section>
   );
 }
+
+/** 左侧分组栏的样式，与工具箱的分类栏一致（一列平铺条目，选中是 muted 底 + 前景色，未选中是次要色）。 */
+const NAV_LIST = "h-fit w-full gap-0.5 rounded-none bg-transparent p-0";
+const NAV_TAB =
+  "h-8 flex-none rounded-md px-2.5 text-muted-foreground hover:bg-muted/60 data-active:bg-muted data-active:text-foreground dark:text-muted-foreground dark:data-active:border-transparent dark:data-active:bg-muted dark:data-active:text-foreground";
 
 function useToggle() {
   const settings = useSettings((s) => s.settings);
@@ -327,7 +349,6 @@ function GpuHint() {
 
 function GeneralGroup() {
   const settings = useSettings((s) => s.settings);
-  const update = useSettings((s) => s.update);
   const toggle = useToggle();
   const checking = useUpdate((s) => s.checking);
   const updateInfo = useUpdate((s) => s.info);
@@ -371,18 +392,6 @@ function GeneralGroup() {
         </Row>
       </Section>
       <Section title="界面">
-        <Row label="主题" hint="左侧导航栏底部的按钮可快速切换浅色 / 深色">
-          <ChoiceGroup<ThemeSetting>
-            label="主题"
-            value={settings.theme}
-            onChange={(theme) => update({ theme })}
-            options={[
-              { value: "system", label: "跟随系统" },
-              { value: "light", label: "浅色" },
-              { value: "dark", label: "深色" },
-            ]}
-          />
-        </Row>
         <Row label="关闭窗口时最小化到托盘" hint="点托盘图标显示窗口；托盘菜单里可退出">
           {toggle("tray", "关闭窗口时最小化到托盘")}
         </Row>
@@ -588,7 +597,7 @@ function FfmpegRow({ ffmpeg }: { ffmpeg: FfmpegStatus | null }) {
   const checking = useFfmpeg((s) => s.checking);
   const platform = usePlatform();
   return (
-    <Row label="FFmpeg" hint="查找顺序：环境变量 CLIPRECIPE_FFMPEG → 应用内下载 → 程序目录 → 系统 PATH">
+    <Row stacked label="FFmpeg" hint="查找顺序：环境变量 CLIPRECIPE_FFMPEG → 应用内下载 → 程序目录 → 系统 PATH">
       {!ffmpeg && "检测中…"}
       {ffmpeg?.available && (
         <>
@@ -633,7 +642,7 @@ function ManagedFfmpegRow({ ffmpeg }: { ffmpeg: FfmpegStatus }) {
   const installed = managed.installedVersion;
   const running = download.kind === "running";
   return (
-    <Row label="应用内下载" hint="下载固定版本的 FFmpeg 到本机数据目录，不影响系统里已安装的 FFmpeg">
+    <Row stacked label="应用内下载" hint="下载固定版本的 FFmpeg 到本机数据目录，不影响系统里已安装的 FFmpeg">
       {!managed.supported ? (
         <p className="text-xs text-muted-foreground">{managed.unsupportedReason}</p>
       ) : (
@@ -738,7 +747,7 @@ function EnvironmentSection() {
     <Section title="运行环境">
       {!isTauri ? (
         <>
-          <Row label="状态">当前在浏览器中预览，环境信息需要在桌面应用中查看。</Row>
+          <Row stacked label="状态">当前在浏览器中预览，环境信息需要在桌面应用中查看。</Row>
           {/* 浏览器里没有检测结果；状态层里有 FFmpeg 状态时（开发环境的调试面板注入）照常显示 */}
           {ffmpeg && <FfmpegRow ffmpeg={ffmpeg} />}
           {ffmpeg && <ManagedFfmpegRow ffmpeg={ffmpeg} />}
@@ -748,7 +757,7 @@ function EnvironmentSection() {
           <Row label="CPU 核心">{info ? info.cpuCores : "读取中…"}</Row>
           <FfmpegRow ffmpeg={ffmpeg} />
           {ffmpeg && <ManagedFfmpegRow ffmpeg={ffmpeg} />}
-          <Row label="硬件编码器" hint="通过实际试编码检测">
+          <Row stacked label="硬件编码器" hint="通过实际试编码检测">
             {detecting && <p className="text-muted-foreground">检测中…</p>}
             {!detecting && encoders && (
               <>
@@ -774,7 +783,7 @@ function EnvironmentSection() {
             </Button>
           </Row>
           {dataDir && (
-            <Row label="数据目录" hint="设置、保存的队列">
+            <Row stacked label="数据目录" hint="设置、保存的队列">
               <p>{dataDir}</p>
               <Button
                 variant="outline"
@@ -786,7 +795,7 @@ function EnvironmentSection() {
               </Button>
             </Row>
           )}
-          {error && <Row label="错误">{error}</Row>}
+          {error && <Row stacked label="错误">{error}</Row>}
         </>
       )}
     </Section>
@@ -802,8 +811,8 @@ function AboutGroup() {
     openProjectPage().catch((e) => useLog.getState().add("error", `无法打开使用文档：${String(e)}`));
   return (
     <>
-      <Section title="关于">
-        <Row label="ClipRecipe">
+      <Section>
+        <Row label="ClipRecipe" stacked>
           <p>{info ? `版本 ${info.version}` : "开源的视频批量处理桌面工具"}</p>
           <p className="mt-1 text-xs text-muted-foreground">以 MIT 许可证开源，免费使用，无需注册。</p>
           <Button
@@ -816,7 +825,7 @@ function AboutGroup() {
             <BookOpen /> 使用文档（GitHub）
           </Button>
         </Row>
-        <Row label="FFmpeg 说明">
+        <Row label="FFmpeg 说明" stacked>
           <p className="text-xs text-muted-foreground">
             本程序调用 FFmpeg / FFprobe（作为独立程序运行）完成全部音视频处理，本身不包含也不分发 FFmpeg：可以使用系统中安装的
             FFmpeg，或在下方“运行环境”中点击下载（只在点击时下载未经修改的上游构建）。FFmpeg 是 FFmpeg 项目的商标，
@@ -838,8 +847,8 @@ function ShortcutsSection() {
       {shortcutGroups(platform).map((group) => (
         <Section key={group.title} title={`键盘快捷键 · ${group.title}`}>
           {group.items.map((item) => (
-            <div key={item.label} className="flex items-center gap-4 border-b px-4 py-1.5 last:border-b-0">
-              <KbdGroup className="w-44 shrink-0 flex-wrap">
+            <div key={item.label} className="flex items-center gap-4 px-4 py-2">
+              <KbdGroup className="w-56 shrink-0 flex-wrap">
                 {item.keys.map((k) => (
                   <Kbd key={k}>{k}</Kbd>
                 ))}
@@ -865,44 +874,38 @@ const GROUP_VIEWS: Record<GroupId, () => ReactNode> = {
 export default function SettingsView() {
   const [group, setGroup] = useState<GroupId>("convert");
   return (
-    <div className="flex h-full flex-col">
-      <header className="flex h-11 shrink-0 items-center border-b px-4">
-        <h1 className="text-sm font-semibold">设置</h1>
-      </header>
-      <Tabs
-        value={group}
-        onValueChange={(v) => setGroup(v as GroupId)}
-        orientation="vertical"
-        className="min-h-0 flex-1 gap-0"
-      >
-        <div className="w-36 shrink-0 border-r px-2 py-2">
-          <VerticalTabsList aria-label="设置分组" className="w-full">
+    <Tabs
+      value={group}
+      onValueChange={(v) => setGroup(v as GroupId)}
+      orientation="vertical"
+      className="h-full min-h-0 gap-0"
+    >
+      <nav className="w-[200px] shrink-0 border-r bg-card px-2 py-3">
+        {/* 页面标题只给读屏和端到端测试（main h1）用：顶栏导航已经写着“设置”，不再显示一遍 */}
+        <h1 className="sr-only">设置</h1>
+        <VerticalTabsList aria-label="设置分组" className={NAV_LIST}>
           {GROUPS.map((g) => (
-            <TabsTrigger
-              key={g.id}
-              value={g.id}
-              className="flex-none"
-            >
+            <TabsTrigger key={g.id} value={g.id} className={NAV_TAB}>
               {g.label}
             </TabsTrigger>
           ))}
-          </VerticalTabsList>
-        </div>
-        {GROUPS.map((g) => (
-          <TabsContent key={g.id} value={g.id} className="min-h-0 min-w-0">
-            <ScrollArea className="h-full">
-              <div className="max-w-3xl px-5 py-4">
-                {!isTauri && (
-                  <p className="mb-4 rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground">
-                    浏览器预览模式：设置只在本次页面中生效，不会保存。
-                  </p>
-                )}
-                {GROUP_VIEWS[g.id]()}
-              </div>
-            </ScrollArea>
-          </TabsContent>
-        ))}
-      </Tabs>
-    </div>
+        </VerticalTabsList>
+      </nav>
+      {GROUPS.map((g) => (
+        <TabsContent key={g.id} value={g.id} className="min-h-0 min-w-0 bg-background">
+          <ScrollArea className="h-full">
+            <div className="max-w-4xl px-8 py-6">
+              <h2 className="mb-5 text-lg font-semibold">{g.label}</h2>
+              {!isTauri && (
+                <p className="mb-4 rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground">
+                  浏览器预览模式：设置只在本次页面中生效，不会保存。
+                </p>
+              )}
+              {GROUP_VIEWS[g.id]()}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+      ))}
+    </Tabs>
   );
 }

@@ -62,7 +62,7 @@ function useBitrateNote(): string {
 }
 
 function SectionTitle({ children }: { children: string }) {
-  return <h3 className="mb-1.5 text-xs font-medium text-muted-foreground">{children}</h3>;
+  return <h3 className="mb-2 text-xs font-medium text-muted-foreground">{children}</h3>;
 }
 
 /** 处理对象：队列视频（选中 / 全部）与工具声明的文件夹。 */
@@ -188,9 +188,10 @@ function LoadedToolBody({ def }: { def: ToolDef }) {
   return (
     <>
       <div className="@container min-h-0 flex-1">
-        <div className="flex h-full flex-col @2xl:flex-row">
-          <section className="flex min-h-0 flex-1 flex-col border-b @2xl:w-[300px] @2xl:flex-none @2xl:border-r @2xl:border-b-0">
-            <header className="flex items-center gap-2 px-4 pt-3 pb-1">
+        <div className="flex h-full flex-col gap-4 px-6 pb-4 @2xl:flex-row @2xl:gap-6">
+          {/* 两列等分（参数列不窄于 340px）：参数说明文字不至于被折成很短的几行 */}
+          <section className="flex min-h-0 flex-1 flex-col @2xl:min-w-[340px]">
+            <header className="flex items-center gap-2 pb-2">
               <SectionTitle>参数</SectionTitle>
               {Form && (
                 <Button
@@ -205,46 +206,48 @@ function LoadedToolBody({ def }: { def: ToolDef }) {
               )}
             </header>
             <ScrollArea className="min-h-0 flex-1">
-              <div className="px-4 pb-4">
+              <div className="pr-3 pb-2">
                 {Form ? (
                   <Form value={value} onChange={(patch) => setParams(id, patch)} />
                 ) : (
-                  <p className="py-6 text-center text-xs text-muted-foreground">该工具尚未实现，敬请期待。</p>
+                  <p className="py-6 text-xs text-muted-foreground">该工具尚未实现，敬请期待。</p>
                 )}
               </div>
             </ScrollArea>
           </section>
 
-          <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <div className="space-y-3 border-b px-4 py-3">
+          <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
+            <div className="space-y-4">
               <Inputs def={def} dropBox={dropBox} dropHover={dropHover} />
               <div>
                 <SectionTitle>输出位置</SectionTitle>
                 <OutputPicker boxRef={dropBox(OUTPUT_DROP)} dropTarget={dropHover === OUTPUT_DROP} />
-                <p className="mt-1 text-xs text-muted-foreground">
+                <p className="mt-1.5 text-xs text-muted-foreground">
                   与批量处理共用输出位置；视频码率沿用批量处理的“码率”设置（当前：{bitrateNote}）。
                 </p>
               </div>
             </div>
-            <ScrollArea className="min-h-0 flex-1">
-              {thisRun && thisRun.items.length > 0 ? (
-                <ul className="divide-y">
-                  {thisRun.items.map((item) => (
-                    <ItemRow key={item.id} item={item} active={thisRun.running} />
-                  ))}
-                </ul>
-              ) : (
-                <p className="py-10 text-center text-xs text-muted-foreground">
-                  {thisRun?.running ? "正在准备…" : "点击“开始”后在这里显示每一项的进度与结果"}
-                </p>
-              )}
-            </ScrollArea>
-            <LogPanel filter={logFilter} className="mx-4 mt-2 mb-3" bodyClassName="h-28" />
+            <div className="min-h-0 flex-1 overflow-hidden rounded-lg border bg-card">
+              <ScrollArea className="h-full">
+                {thisRun && thisRun.items.length > 0 ? (
+                  <ul className="divide-y">
+                    {thisRun.items.map((item) => (
+                      <ItemRow key={item.id} item={item} active={thisRun.running} />
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="px-4 py-6 text-xs text-muted-foreground">
+                    {thisRun?.running ? "正在准备…" : "点击“开始”后在这里显示每一项的进度与结果"}
+                  </p>
+                )}
+              </ScrollArea>
+            </div>
+            <LogPanel filter={logFilter} className="mx-0 mb-0 rounded-lg" bodyClassName="h-28" />
           </section>
         </div>
       </div>
 
-      <footer className="flex shrink-0 items-center justify-between gap-2 border-t px-4 py-2">
+      <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t bg-card px-6 py-3">
         <span className="text-xs text-muted-foreground tabular-nums">
           {otherRunning
             ? `“${otherName ?? ""}”正在运行，结束后才能开始新的工具`
@@ -257,6 +260,7 @@ function LoadedToolBody({ def }: { def: ToolDef }) {
             <Hint label="用当前参数处理当前视频的几秒低清片段，在预览窗口播放">
               <Button
                 variant="outline"
+                size="xl"
                 onClick={() => usePreview.getState().previewTool(id, value)}
                 disabled={!isTauri || !ready}
               >
@@ -291,12 +295,12 @@ function RunButton({
   disabledReason: string | undefined;
 }) {
   return running ? (
-    <Button variant="outline" onClick={onStop}>
+    <Button variant="outline" size="xl" onClick={onStop}>
       <Square /> 停止
     </Button>
   ) : (
     <Hint label={disabledReason ?? null} disabledTrigger>
-      <Button onClick={onStart} disabled={disabled}>
+      <Button size="xl" onClick={onStart} disabled={disabled}>
         <Play /> 开始
       </Button>
     </Hint>
@@ -327,13 +331,13 @@ function WorkspaceBody({ id }: { id: string }) {
 
 function ToolHeader({ feature }: { feature: Feature }) {
   return (
-    <header className="shrink-0 space-y-1 border-b px-4 py-3">
-      <h2 className="flex items-center gap-2 text-sm font-semibold">
+    <header className="shrink-0 px-6 pt-5 pb-4">
+      <h2 className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xl font-semibold">
         {feature.name}
         <Badge variant="secondary">{feature.group}</Badge>
         {feature.status !== "done" && <Badge variant="outline">{STATUS_LABEL[feature.status]}</Badge>}
       </h2>
-      <p className="text-xs text-muted-foreground">{feature.summary}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{feature.summary}</p>
     </header>
   );
 }

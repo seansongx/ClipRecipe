@@ -1,14 +1,13 @@
 <!doctype html>
-<html lang="zh-CN">
+<!-- 应用只有深色主题：data-theme 写死在这里，index.css 的 dark: 变体据此始终生效 -->
+<html lang="zh-CN" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-    <meta name="color-scheme" content="dark light" />
+    <meta name="color-scheme" content="dark" />
     <!-- 不请求 /favicon.ico（开发服务器上是 404 控制台错误）；窗口图标由 Tauri 设置 -->
     <link rel="icon" href="data:," />
     <title>ClipRecipe</title>
-    <!-- 首帧前确定主题（同步执行；CSP 只允许同源脚本，所以是单独的文件而不是内联脚本） -->
-    <script src="/boot-theme.js"></script>
   </head>
   <body>
     <div id="root"></div>

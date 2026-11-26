@@ -2,14 +2,13 @@ import { lazy, Suspense, useEffect } from "react";
 import { Layers, Moon, Settings, Sun, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { Tabs, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Hint from "./components/Hint";
 import PreviewModal from "./components/PreviewModal";
 import QuitConfirmDialog from "./components/QuitConfirmDialog";
 import ShutdownDialog from "./components/ShutdownDialog";
 import UpdateDialog from "./components/UpdateDialog";
-import VerticalTabsList from "./components/VerticalTabsList";
 import { isTauri, onOpenPaths, openProjectPage, takeLaunchPaths } from "./lib/backend";
 import { browserKeyEvents, isEditable } from "./lib/desktop";
 import { matchShortcut, useShortcutLabels, type ShortcutId } from "./lib/shortcuts";
@@ -29,7 +28,6 @@ import StatusBar from "./views/StatusBar";
 // 不在首屏的页面与工具对话框按需加载（减小首屏脚本）
 const ToolboxView = lazy(() => import("./views/ToolboxView"));
 const SettingsView = lazy(() => import("./views/SettingsView"));
-const ToolDialog = lazy(() => import("./views/tools/ToolDialog"));
 // 开发环境的调试面板（src/debug/，docs/architecture/frontend.md“开发环境的调试面板”）：生产构建里 import.meta.env.DEV 是常量 false，
 // 这个动态导入连同 src/debug/ 一起被剔除，产物里没有面板与入口
 const DebugPanel = import.meta.env.DEV ? lazy(() => import("./debug/DebugPanel")) : null;
@@ -145,69 +143,58 @@ export default function App() {
   return (
     <TooltipProvider delay={500} timeout={300}>
       <div className="flex h-full flex-col">
-        <div className="flex min-h-0 flex-1">
-          {/*
-            主导航是竖向 Tabs，但页面内容不放在它的 Tabs 根节点里：shadcn Tabs 的样式用
-            group-data-vertical/tabs 这类“任意祖先”变体，页面若在竖向根节点之内，嵌套在页面里的横向 Tabs
-            （如文本模块的“文本 1/2/3”）也会被套上竖向样式。所以 Tabs 只包住导航条，页面作为 tabpanel 放在旁边，
-            用 id / aria-controls 与导航按钮关联。
-          */}
-          <Tabs
-            value={view}
-            onValueChange={(v) => setView(v as ViewId)}
-            orientation="vertical"
-            className="shrink-0 gap-0"
-          >
-            <nav className="flex h-full w-18 flex-col items-center gap-1 border-r bg-card px-1 py-2.5">
-              <div
-                aria-hidden
-                className="mb-2 grid size-8 place-items-center rounded-md bg-primary font-bold text-primary-foreground"
-              >
-                CR
-              </div>
-              <VerticalTabsList aria-label="主导航" className="w-full">
+        {/*
+          顶栏：主导航是横向 Tabs。页面内容不放在它的 Tabs 根节点里（页面里还有自己的 Tabs，如设置分组的竖向 Tabs、
+          文本模块的“文本 1/2/3”，shadcn Tabs 的样式按“任意祖先”的方向套用）：Tabs 只包住导航条，页面作为 tabpanel 放在下面，
+          用 id / aria-controls 与导航按钮关联。
+        */}
+        <header className="flex h-11 shrink-0 items-center gap-3 border-b bg-card px-3">
+          <div aria-hidden className="grid size-6 place-items-center rounded-md bg-primary font-bold text-primary-foreground">
+            CR
+          </div>
+          <span aria-hidden className="text-sm font-semibold">
+            ClipRecipe
+          </span>
+          <Tabs value={view} onValueChange={(v) => setView(v as ViewId)}>
+            <nav>
+              <TabsList aria-label="主导航">
                 {NAV.map(({ id, label, icon: Icon, shortcut }) => (
-                  <Hint key={id} label={label} keys={keys[shortcut]} side="right">
-                    <TabsTrigger
-                      value={id}
-                      id={triggerId(id)}
-                      aria-controls={panelId(id)}
-                      className="flex-col"
-                    >
+                  <Hint key={id} label={label} keys={keys[shortcut]} side="bottom">
+                    <TabsTrigger value={id} id={triggerId(id)} aria-controls={panelId(id)}>
                       <Icon />
                       {label}
                     </TabsTrigger>
                   </Hint>
                 ))}
-              </VerticalTabsList>
-              <Hint label={theme === "dark" ? "切换到浅色" : "切换到深色"} side="right">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={theme === "dark" ? "切换到浅色" : "切换到深色"}
-                  onClick={toggleTheme}
-                  className="mt-auto"
-                >
-                  {theme === "dark" ? <Sun /> : <Moon />}
-                </Button>
-              </Hint>
+              </TabsList>
             </nav>
           </Tabs>
+          <Hint label={theme === "dark" ? "切换到浅色" : "切换到深色"} side="bottom">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={theme === "dark" ? "切换到浅色" : "切换到深色"}
+              onClick={toggleTheme}
+              className="ml-auto"
+            >
+              {theme === "dark" ? <Sun /> : <Moon />}
+            </Button>
+          </Hint>
+        </header>
 
-          <main
-            key={view}
-            role="tabpanel"
-            id={panelId(view)}
-            aria-labelledby={triggerId(view)}
-            className="h-full min-w-0 flex-1"
-          >
-            <Suspense fallback={<ViewFallback />}>
-              {view === "batch" && <BatchView />}
-              {view === "toolbox" && <ToolboxView />}
-              {view === "settings" && <SettingsView />}
-            </Suspense>
-          </main>
-        </div>
+        <main
+          key={view}
+          role="tabpanel"
+          id={panelId(view)}
+          aria-labelledby={triggerId(view)}
+          className="min-h-0 min-w-0 flex-1"
+        >
+          <Suspense fallback={<ViewFallback />}>
+            {view === "batch" && <BatchView />}
+            {view === "toolbox" && <ToolboxView />}
+            {view === "settings" && <SettingsView />}
+          </Suspense>
+        </main>
         <StatusBar
           extra={
             DebugPanel && (
@@ -222,9 +209,6 @@ export default function App() {
       <ShutdownDialog />
       <QuitConfirmDialog />
       <UpdateDialog />
-      <Suspense fallback={null}>
-        <ToolDialog />
-      </Suspense>
     </TooltipProvider>
   );
 }

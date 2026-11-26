@@ -112,6 +112,10 @@ use common::*; // ffmpeg_paths()、TempDir、make_clip、probe、collector
 
 参数区宽度约 240px：控件用紧凑尺寸（输入框 `h-7 text-xs`，按钮 `size="xs"`），说明文字放进 `ParamField` 的 `hint`。
 
+**当前取值摘要**：`defineModule` 可加可选的 `summary: (params) => string`，配方面板的模块行在名称下一行显示它（已停用时显示“已停用”）；
+尽量不超过 24 个汉字宽，没写或出错时退回 `registry.ts` 里的静态说明。数字、范围值、素材来源的格式化用 `features/pipeline/summary.ts`
+的 `num` / `range` / `asset` / `join`（例：`summary: (p) => range(p.fps, " fps")`）。
+
 **默认值一致性检查**：`cargo test` 里的 `tests/recipe_defaults.rs` 会运行 `node scripts/dump-recipe-defaults.mjs`
 （用 Vite 直接执行前端源码得到 `defaultRecipe()`），与 `Recipe::default()` 逐字段比较（数字按数值比较，前端缺省的键等同后端 `null`）。
 `.tsx` 的 `defaults` 与 `.rs` 的 `Default` 不一致时测试失败并列出差异；不需要维护任何共享快照文件。需要 Node.js 和 `npm install`。
@@ -121,7 +125,12 @@ use common::*; // ffmpeg_paths()、TempDir、make_clip、probe、collector
 - **单模块预览**：配方面板里展开模块后，表单下方有“预览此步骤”按钮——只启用本模块、按当前参数对“当前视频”生成
   5 秒低清片段并在预览窗口播放。前提是模块有 `Form`（不为 null）且不在 `PREVIEW_EXCLUDED`（变速、背景音、加头尾、帧率、码率）中。
   预览走的就是 `apply`，所以模块必须正确更新 `ctx.stream`（预览据此缩小画面、截取时长）。
-- **整条流水线预览**（`pipe.preview`）：配方面板底部“生成预览”，同样排除上述五个模块。
+- **整条流水线预览**（`pipe.preview`）：中栏预览舞台标题栏的“生成预览”，同样排除上述五个模块。
+- **预览舞台**（`views/batch/PreviewStage.tsx`、`state/stage.ts`）：常驻显示当前视频套用当前配方后的一帧（单帧，不播放），
+  视频、配方、相关设置、取帧时间或随机值变化后防抖自动刷新；批量处理中暂停自动刷新（只能手动刷新），预览窗口打开期间不渲染。
+  后端只有一个预览槽、新预览会取消旧预览，所以舞台的主画面与裂变变体（`fission` > 1 时最多 3 个，各用不同随机值）依次渲染，
+  这些约束与重试写在 `state/stage.ts` 的注释里。
+  舞台走的也是 `pipeline::build_preview`，模块不需要为它额外写代码。
 
 **当前视频**：`import { useSelectedVideo } from "../../state/selection"`，返回 `{ item: QueueItem, number } | null`
 ——队列中第一个选中的视频，没有选中时为第一个。可用来显示源尺寸（`item.info.video`）等；只读。
@@ -185,7 +194,7 @@ import RegionPicker, { PointPicker, type Rect, type Point } from "@/components/R
 - **配方文件**：JSON（`*.json`），与 `Recipe` 的 serde 结构相同。导入走 `Recipe::from_json_lenient`：版本高于当前程序时拒绝；
   缺失的模块 / 字段取默认值；未知模块、类型不对的字段逐个改用默认值并在处理记录里提示。拖进窗口时，`.json` 文件按配方加载，
   其余按视频导入；拖到“输出到”输入框上的文件夹（或文件所在文件夹）设为输出目录。
-- **队列**：拖动把手排序（因为窗口启用了系统拖放，不能用 HTML5 拖放，改用指针事件）；“置顶”在处理中会调用
+- **队列**：拖动把手排序（因为窗口启用了系统拖放，不能用 HTML5 拖放，改用指针事件；按状态筛选不是“全部”时不能拖动排序）；“置顶”在处理中会调用
   `prioritize_task` 让等待中的任务提前；排序按名称（自然顺序）/ 时长 / 大小。
 
 ## 设置与收尾的实现说明

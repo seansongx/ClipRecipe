@@ -1,23 +1,16 @@
-// 独立工具对话框：左侧参数表单，右侧处理对象（队列视频 / 文件夹）、输出位置、逐项进度与处理记录。
-// 从工具箱或批量队列（工具栏“工具”菜单、行右键菜单）打开；关闭对话框不会中断运行。
+// 独立工具工作区（工具箱右栏）：参数表单、处理对象（队列视频 / 文件夹）、输出位置、逐项进度与处理记录。
+// 在工具箱里选中工具，或从批量队列（工具栏“工具”菜单、行右键菜单）跳转过来时显示；切换工具不会中断运行。
 //
-// 结构：ToolDialog（外壳：标题与说明，不依赖工具定义）→ ToolDialogBody（按需加载工具定义，加载中 / 失败的状态）
+// 结构：ToolWorkspace（外壳：标题与说明，不依赖工具定义）→ WorkspaceBody（按需加载工具定义，加载中 / 失败的状态）
 // → LoadedToolBody（拿到定义 def 与参数 value 之后的全部内容：参数表单、处理对象、输出位置、进度、底栏）。
 // 需要工具定义的功能（如预览：def.preview 为 true 时底栏有“预览”按钮）加在 LoadedToolBody 里。
-// 文件夹可以拖到“处理对象”的文件夹输入框和输出位置上；对话框打开时主窗口不会把拖入的文件导入队列。
+// 文件夹可以拖到“处理对象”的文件夹输入框和输出位置上（批量处理页的窗口级拖放只在批量处理页挂载）。
+// 宽度够时参数表单与其余内容左右两列，否则上下两段（容器查询）。
 
 import { useCallback, useMemo } from "react";
 import { CircleAlert, Eye, Play, RotateCcw, Square, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
@@ -41,6 +34,16 @@ import { useSettings } from "@/state/settings";
 import { isToolReady, useTools, type ToolRunItem, type VideoScope } from "@/state/tools";
 import LogPanel from "../batch/LogPanel";
 import { TOOL_STATE_TONE, toolItemPercent, toolItemStatus } from "./itemStatus";
+
+/** 还不能用的工具的状态徽标文字（可用是常态，不加徽标）。 */
+export const STATUS_LABEL: Record<Exclude<Feature["status"], "done">, string> = {
+  planned: "规划中",
+  wip: "开发中",
+};
+
+/** 工具列表里的标签与右侧工作区（tabpanel）的关联。 */
+export const TOOL_PANEL_ID = "tool-workspace";
+export const toolTabId = (id: string) => `tool-tab-${id}`;
 
 /** 拖放目标“输出位置”的键；文件夹输入的键为 `folder:<键>`。 */
 const OUTPUT_DROP = "output";
@@ -184,62 +187,64 @@ function LoadedToolBody({ def }: { def: ToolDef }) {
 
   return (
     <>
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border">
-        <section className="flex w-[300px] shrink-0 flex-col border-r">
-          <header className="flex items-center gap-2 px-4 pt-3 pb-1">
-            <SectionTitle>参数</SectionTitle>
-            {Form && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => resetParams(id)}
-                disabled={thisRun?.running}
-                className="ml-auto"
-              >
-                <RotateCcw /> 恢复默认
-              </Button>
-            )}
-          </header>
-          <ScrollArea className="min-h-0 flex-1">
-            <div className="px-4 pb-4">
-              {Form ? (
-                <Form value={value} onChange={(patch) => setParams(id, patch)} />
-              ) : (
-                <p className="py-6 text-center text-xs text-muted-foreground">该工具尚未实现，敬请期待。</p>
+      <div className="@container min-h-0 flex-1">
+        <div className="flex h-full flex-col @2xl:flex-row">
+          <section className="flex min-h-0 flex-1 flex-col border-b @2xl:w-[300px] @2xl:flex-none @2xl:border-r @2xl:border-b-0">
+            <header className="flex items-center gap-2 px-4 pt-3 pb-1">
+              <SectionTitle>参数</SectionTitle>
+              {Form && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => resetParams(id)}
+                  disabled={thisRun?.running}
+                  className="ml-auto"
+                >
+                  <RotateCcw /> 恢复默认
+                </Button>
               )}
-            </div>
-          </ScrollArea>
-        </section>
+            </header>
+            <ScrollArea className="min-h-0 flex-1">
+              <div className="px-4 pb-4">
+                {Form ? (
+                  <Form value={value} onChange={(patch) => setParams(id, patch)} />
+                ) : (
+                  <p className="py-6 text-center text-xs text-muted-foreground">该工具尚未实现，敬请期待。</p>
+                )}
+              </div>
+            </ScrollArea>
+          </section>
 
-        <section className="flex min-w-0 flex-1 flex-col">
-          <div className="space-y-3 border-b px-4 py-3">
-            <Inputs def={def} dropBox={dropBox} dropHover={dropHover} />
-            <div>
-              <SectionTitle>输出位置</SectionTitle>
-              <OutputPicker boxRef={dropBox(OUTPUT_DROP)} dropTarget={dropHover === OUTPUT_DROP} />
-              <p className="mt-1 text-xs text-muted-foreground">
-                与批量处理共用输出位置；视频码率沿用批量处理的“码率”设置（当前：{bitrateNote}）。
-              </p>
+          <section className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div className="space-y-3 border-b px-4 py-3">
+              <Inputs def={def} dropBox={dropBox} dropHover={dropHover} />
+              <div>
+                <SectionTitle>输出位置</SectionTitle>
+                <OutputPicker boxRef={dropBox(OUTPUT_DROP)} dropTarget={dropHover === OUTPUT_DROP} />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  与批量处理共用输出位置；视频码率沿用批量处理的“码率”设置（当前：{bitrateNote}）。
+                </p>
+              </div>
             </div>
-          </div>
-          <ScrollArea className="min-h-0 flex-1">
-            {thisRun && thisRun.items.length > 0 ? (
-              <ul className="divide-y">
-                {thisRun.items.map((item) => (
-                  <ItemRow key={item.id} item={item} active={thisRun.running} />
-                ))}
-              </ul>
-            ) : (
-              <p className="py-10 text-center text-xs text-muted-foreground">
-                {thisRun?.running ? "正在准备…" : "点击“开始”后在这里显示每一项的进度与结果"}
-              </p>
-            )}
-          </ScrollArea>
-          <LogPanel filter={logFilter} className="mx-4 mt-2 mb-3" bodyClassName="h-28" />
-        </section>
+            <ScrollArea className="min-h-0 flex-1">
+              {thisRun && thisRun.items.length > 0 ? (
+                <ul className="divide-y">
+                  {thisRun.items.map((item) => (
+                    <ItemRow key={item.id} item={item} active={thisRun.running} />
+                  ))}
+                </ul>
+              ) : (
+                <p className="py-10 text-center text-xs text-muted-foreground">
+                  {thisRun?.running ? "正在准备…" : "点击“开始”后在这里显示每一项的进度与结果"}
+                </p>
+              )}
+            </ScrollArea>
+            <LogPanel filter={logFilter} className="mx-4 mt-2 mb-3" bodyClassName="h-28" />
+          </section>
+        </div>
       </div>
 
-      <DialogFooter className="items-center sm:justify-between">
+      <footer className="flex shrink-0 items-center justify-between gap-2 border-t px-4 py-2">
         <span className="text-xs text-muted-foreground tabular-nums">
           {otherRunning
             ? `“${otherName ?? ""}”正在运行，结束后才能开始新的工具`
@@ -267,7 +272,7 @@ function LoadedToolBody({ def }: { def: ToolDef }) {
             disabledReason={!isTauri ? "需要在桌面应用中使用" : !ready ? "该工具尚未实现" : undefined}
           />
         </div>
-      </DialogFooter>
+      </footer>
     </>
   );
 }
@@ -299,11 +304,11 @@ function RunButton({
 }
 
 /** 按需加载工具定义；加载中显示转圈，失败时可重试。 */
-function ToolDialogBody({ id }: { id: string }) {
+function WorkspaceBody({ id }: { id: string }) {
   const { def, error, retry } = useToolDef(id);
   if (def) return <LoadedToolBody def={def} />;
   return (
-    <div className="grid flex-1 place-items-center text-xs text-muted-foreground">
+    <div className="grid min-h-0 flex-1 place-items-center text-xs text-muted-foreground">
       {error ? (
         <div className="space-y-2 text-center">
           <p className="text-destructive">无法加载该工具：{error}</p>
@@ -322,35 +327,31 @@ function ToolDialogBody({ id }: { id: string }) {
 
 function ToolHeader({ feature }: { feature: Feature }) {
   return (
-    <DialogHeader>
-      <DialogTitle className="flex items-center gap-2">
+    <header className="shrink-0 space-y-1 border-b px-4 py-3">
+      <h2 className="flex items-center gap-2 text-sm font-semibold">
         {feature.name}
-        <Badge variant="secondary">
-          {feature.group}
-        </Badge>
-        {!isToolReady(feature.id) && (
-          <Badge variant="outline">
-            规划中
-          </Badge>
-        )}
-      </DialogTitle>
-      <DialogDescription>{feature.summary}</DialogDescription>
-    </DialogHeader>
+        <Badge variant="secondary">{feature.group}</Badge>
+        {feature.status !== "done" && <Badge variant="outline">{STATUS_LABEL[feature.status]}</Badge>}
+      </h2>
+      <p className="text-xs text-muted-foreground">{feature.summary}</p>
+    </header>
   );
 }
 
-export default function ToolDialog() {
-  const openId = useTools((s) => s.openId);
-  const close = useTools((s) => s.close);
-  const feature = TOOLS.find((t) => t.id === openId);
-  if (!openId || !feature) return null;
+export default function ToolWorkspace({ id }: { id: string }) {
+  const feature = TOOLS.find((t) => t.id === id);
+  if (!feature) return null;
 
   return (
-    <Dialog open onOpenChange={(open) => !open && close()}>
-      <DialogContent className="flex h-[min(88vh,760px)] flex-col overflow-hidden sm:max-w-4xl">
-        <ToolHeader feature={feature} />
-        <ToolDialogBody key={openId} id={openId} />
-      </DialogContent>
-    </Dialog>
+    <div
+      data-tool-workspace={id}
+      role="tabpanel"
+      id={TOOL_PANEL_ID}
+      aria-labelledby={toolTabId(id)}
+      className="flex h-full min-w-0 flex-col"
+    >
+      <ToolHeader feature={feature} />
+      <WorkspaceBody key={id} id={id} />
+    </div>
   );
 }

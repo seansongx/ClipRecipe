@@ -7,6 +7,7 @@ import NumberInput from "@/components/NumberInput";
 import RangeInput from "@/components/RangeInput";
 import { Switch } from "@/components/ui/switch";
 import type { AssetSource, Range } from "@/lib/backend";
+import { asset, join, range } from "./summary";
 import { defineModule, type ModuleFormProps } from "./types";
 
 export interface BgmParams {
@@ -117,4 +118,11 @@ export default defineModule<BgmParams>({
     fadeOut: 1,
   },
   Form: BgmForm,
+  summary: (p) => {
+    const original = p.originalVolume;
+    // 原声保持 100% 时不写；设为 0 即去掉原声
+    const originalText =
+      original.max === 0 ? "去原声" : original.min === 100 && original.max === 100 ? null : `原声 ${range(original, "%")}`;
+    return join(asset(p.source, "未选音乐"), `音量 ${range(p.musicVolume, "%")}`, originalText);
+  },
 });

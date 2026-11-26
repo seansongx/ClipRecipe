@@ -6,6 +6,7 @@ import ChoiceGroup from "@/components/ChoiceGroup";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import type { Range } from "@/lib/backend";
+import { join, range } from "./summary";
 import { defineModule, type ModuleFormProps } from "./types";
 
 /** 顺时针固定角度 */
@@ -93,6 +94,8 @@ function RotateFlipForm({ value, onChange }: ModuleFormProps<RotateFlipParams>) 
   );
 }
 
+const ROTATION_DEGREES: Record<Rotation, number> = { none: 0, cw90: 90, cw180: 180, cw270: 270 };
+
 export default defineModule<RotateFlipParams>({
   id: "pipe.rotate-flip",
   defaults: {
@@ -105,4 +108,11 @@ export default defineModule<RotateFlipParams>({
     fit: "removeBlack",
   },
   Form: RotateFlipForm,
+  summary: (p) =>
+    join(
+      p.rotation !== "none" && `顺时针 ${ROTATION_DEGREES[p.rotation]}°`,
+      p.hflip && "水平翻转",
+      p.vflip && "垂直翻转",
+      p.randomAngle && `随机 ${range(p.angle, "°")}`,
+    ) || "不旋转不翻转",
 });

@@ -5,6 +5,7 @@ import NumberInput from "@/components/NumberInput";
 import RangeInput from "@/components/RangeInput";
 import ChoiceGroup from "@/components/ChoiceGroup";
 import type { Range } from "@/lib/backend";
+import { join, range } from "./summary";
 import { defineModule, type ModuleFormProps } from "./types";
 
 export type TrimMode = "headTail" | "segment";
@@ -118,4 +119,10 @@ export default defineModule<TrimParams>({
     minDuration: 0,
   },
   Form: TrimForm,
+  summary: (p) => {
+    if (p.mode === "segment") return `从 ${range(p.start, " 秒")}起截取 ${range(p.length, " 秒")}`;
+    const head = p.head.max > 0 && `开头 ${range(p.head, " 秒")}`;
+    const tail = p.tail.max > 0 && `结尾 ${range(p.tail, " 秒")}`;
+    return join(head, tail) || "不去除";
+  },
 });

@@ -4,6 +4,7 @@ import ParamField from "@/components/ParamField";
 import RangeInput from "@/components/RangeInput";
 import { Switch } from "@/components/ui/switch";
 import type { Range } from "@/lib/backend";
+import { join, range } from "./summary";
 import { defineModule, type ModuleFormProps } from "./types";
 
 export interface DropFramesParams {
@@ -53,4 +54,5 @@ export default defineModule<DropFramesParams>({
     syncAudio: true,
   },
   Form: DropFramesForm,
+  summary: (p) => join(`每 ${range(p.interval, " 帧")}丢 1 帧`, p.syncAudio ? "音频同步加速" : "时长不变"),
 });

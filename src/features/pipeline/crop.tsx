@@ -10,6 +10,7 @@ import RegionPicker, { type Rect } from "@/components/RegionPicker";
 import { Label } from "@/components/ui/label";
 import type { Range, VideoStream } from "@/lib/backend";
 import { useSelectedVideo } from "@/state/selection";
+import { num, range } from "./summary";
 import { defineModule, type ModuleFormProps } from "./types";
 
 interface Size {
@@ -257,6 +258,29 @@ function CropForm({ value, onChange }: ModuleFormProps<CropParams>) {
 
 const sides = <T,>(v: T): Sides<T> => ({ left: v, top: v, right: v, bottom: v });
 
+/** 四边的摘要：四边相同时写“四边 x”，否则按左 / 上 / 右 / 下列出。 */
+function sidesSummary<T>(value: Sides<T>, format: (v: T) => string, same: (a: T, b: T) => boolean): string {
+  const { left, top, right, bottom } = value;
+  if (same(left, top) && same(left, right) && same(left, bottom)) return `四边 ${format(left)}`;
+  return SIDE_LABELS.map(([side, label]) => `${label} ${format(value[side])}`).join(" ");
+}
+
+function cropSummary(p: CropParams): string {
+  switch (p.mode) {
+    case "margins": {
+      const m = p.margins;
+      if (m.left === 0 && m.top === 0 && m.right === 0 && m.bottom === 0) return "四边都不裁";
+      return `裁掉${sidesSummary(m, (v) => `${num(v)}`, (a, b) => a === b)} px`;
+    }
+    case "percent":
+      return `裁掉${sidesSummary(p.percent, (v) => `${num(v)}%`, (a, b) => a === b)}`;
+    case "random":
+      return `随机裁${sidesSummary(p.randomPercent, (r) => range(r, "%"), (a, b) => a.min === b.min && a.max === b.max)}`;
+    case "aspect":
+      return `居中 ${p.aspectWidth}:${p.aspectHeight}`;
+  }
+}
+
 export default defineModule<CropParams>({
   id: "pipe.crop",
   defaults: {
@@ -269,4 +293,5 @@ export default defineModule<CropParams>({
     aspectHeight: 3,
   },
   Form: CropForm,
+  summary: cropSummary,
 });

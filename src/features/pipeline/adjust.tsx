@@ -8,6 +8,7 @@ import RangeInput from "@/components/RangeInput";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import type { AssetSource, Range } from "@/lib/backend";
+import { asset, join, range } from "./summary";
 import { defineModule, type ModuleFormProps } from "./types";
 
 /** 可单独开关的范围值参数 */
@@ -209,6 +210,36 @@ function AdjustForm({ value, onChange }: ModuleFormProps<AdjustParams>) {
 
 const off = (min: number, max: number): Tweak => ({ enabled: false, value: { min, max } });
 
+/** 摘要里各项的名称与单位，顺序与表单一致。 */
+const TWEAK_SUMMARY: [TweakKey, string, string][] = [
+  ["brightness", "亮度", ""],
+  ["contrast", "对比度", ""],
+  ["saturation", "饱和度", ""],
+  ["sharpen", "锐化", ""],
+  ["denoise", "降噪", ""],
+  ["fadeIn", "入场", " 秒"],
+  ["fadeOut", "渐出", " 秒"],
+  ["opening", "开幕", " 秒"],
+  ["vignette", "光晕", "°"],
+  ["mosaic", "马赛克", " px"],
+  ["maskInvert", "蒙板倒置", ""],
+];
+
+function adjustSummary(p: AdjustParams): string {
+  // 每项：[名称, 带取值的写法]
+  const on: [string, string][] = [];
+  for (const [key, name, unit] of TWEAK_SUMMARY) {
+    if (p[key].enabled) on.push([name, `${name} ${range(p[key].value, unit)}`]);
+    if (key === "denoise" && p.lut.enabled) on.push(["LUT", `LUT ${asset(p.lut.source, "未选文件")}`]);
+  }
+  if (p.blackWhite) on.push(["黑白", "黑白"]);
+  if (p.border.enabled) on.push(["边框", `边框 ${range(p.border.width, " px")}`]);
+  if (on.length === 0) return "未开启任何调整";
+  if (on.length <= 2) return join(...on.map(([, detail]) => detail));
+  if (on.length <= 4) return on.map(([name]) => name).join("、");
+  return `${on.slice(0, 3).map(([name]) => name).join("、")}等 ${on.length} 项`;
+}
+
 export default defineModule<AdjustParams>({
   id: "pipe.adjust",
   defaults: {
@@ -229,4 +260,5 @@ export default defineModule<AdjustParams>({
     maskInvert: off(0.3, 0.3),
   },
   Form: AdjustForm,
+  summary: adjustSummary,
 });

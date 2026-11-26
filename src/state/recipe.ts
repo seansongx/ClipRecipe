@@ -36,6 +36,9 @@ function persist(recipe: Recipe) {
 
 interface RecipeState {
   recipe: Recipe;
+  /** 整份替换配方（replace / reset / 导入，含拖放导入）的次数；启动时从本机恢复不计。
+   * 只在内存里，不写进保存的配方与导出的文件。配方面板据此重算列出的步骤 */
+  revision: number;
   /** 局部更新某个模块的参数 */
   updateModule: (id: string, patch: Partial<ModuleParams>) => void;
   setEnabled: (id: string, enabled: boolean) => void;
@@ -55,8 +58,14 @@ export const useRecipe = create<RecipeState>((set, get) => {
     persist(recipe);
     set({ recipe });
   };
+  /** 整份替换：保存并让 revision 加一 */
+  const replaceAll = (recipe: Recipe) => {
+    persist(recipe);
+    set({ recipe, revision: get().revision + 1 });
+  };
   return {
     recipe: loadSaved(),
+    revision: 0,
     updateModule: (id, patch) => {
       const { recipe } = get();
       const current = recipe.modules[id];
@@ -64,11 +73,11 @@ export const useRecipe = create<RecipeState>((set, get) => {
       commit({ ...recipe, modules: { ...recipe.modules, [id]: { ...current, ...patch } } });
     },
     setEnabled: (id, enabled) => get().updateModule(id, { enabled }),
-    replace: (input) => commit(normalizeRecipe(input)),
+    replace: (input) => replaceAll(normalizeRecipe(input)),
     setFission: (n) => commit({ ...get().recipe, fission: clampFission(n) }),
 
     reset: () => {
-      commit(defaultRecipe());
+      replaceAll(defaultRecipe());
       useLog.getState().add("info", "已恢复默认参数");
     },
 
@@ -78,7 +87,7 @@ export const useRecipe = create<RecipeState>((set, get) => {
       if (!file) return false;
       try {
         const loaded = await loadRecipeFile(file);
-        commit(normalizeRecipe(loaded.recipe));
+        replaceAll(normalizeRecipe(loaded.recipe));
         log.add("info", `已导入配方：${fileName(file)}`);
         for (const warning of loaded.warnings) log.add("warn", `配方：${warning}`);
         return true;

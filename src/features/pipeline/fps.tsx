@@ -4,6 +4,7 @@
 import ParamField from "@/components/ParamField";
 import RangeInput from "@/components/RangeInput";
 import type { Range } from "@/lib/backend";
+import { range } from "./summary";
 import { defineModule, type ModuleFormProps } from "./types";
 
 export interface FpsParams {
@@ -24,4 +25,5 @@ export default defineModule<FpsParams>({
   id: "pipe.fps",
   defaults: { enabled: true, fps: { min: 30, max: 30 } },
   Form: FpsForm,
+  summary: (p) => range(p.fps, " fps"),
 });

@@ -70,6 +70,18 @@ export function defaultRecipe(): Recipe {
   };
 }
 
+/** 模块当前取值的一句话摘要；模块没有 `summary`（或参数异常）时用 registry.ts 里的静态说明。 */
+export function moduleSummary(id: string, params: ModuleParams | undefined): string {
+  const fallback = PIPELINE_MODULES.find((m) => m.id === id)?.summary ?? "";
+  const summarize = PIPELINE_DEFS[id]?.summary;
+  if (!summarize || !params) return fallback;
+  try {
+    return summarize(params) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 /** 生成预览时不参与的模块（与后端 `pipeline::PREVIEW_EXCLUDED` 一致）。 */
 export const PREVIEW_EXCLUDED: readonly string[] = [
   "pipe.speed",

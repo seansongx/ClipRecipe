@@ -8,6 +8,7 @@ import ParamField from "@/components/ParamField";
 import RegionPicker, { type Rect } from "@/components/RegionPicker";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { join, num } from "./summary";
 import { defineModule, type ModuleFormProps } from "./types";
 
 export type RegionMode = "preset" | "custom";
@@ -162,4 +163,14 @@ export default defineModule<RemoveWatermarkParams>({
     end: 5,
   },
   Form: RemoveWatermarkForm,
+  summary: (p) => {
+    let where: string;
+    if (p.mode === "preset") {
+      const labels = PRESETS.filter((preset) => p.presets.includes(preset.value)).map((preset) => preset.label);
+      where = labels.length === 0 ? "未选位置" : labels.length <= 2 ? labels.join("、") : `${labels.length} 处预设位置`;
+    } else {
+      where = p.regions.length === 0 ? "未框选区域" : `框选 ${p.regions.length} 处`;
+    }
+    return join(where, `强度 ${p.strength}`, p.limitTime && `${num(p.start)} – ${num(p.end)} 秒`);
+  },
 });

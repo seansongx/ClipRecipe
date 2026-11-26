@@ -25,6 +25,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { AssetSource, Range } from "@/lib/backend";
+import { join, range } from "./summary";
 import { defineModule, type ModuleFormProps } from "./types";
 
 export type Anchor =
@@ -382,4 +383,17 @@ export default defineModule<AddWatermarkParams>({
     },
   },
   Form: AddWatermarkForm,
+  summary: (p) => {
+    if (!p.source.path.trim()) return "未选水印素材";
+    const anchor = ANCHORS.find((a) => a.value === p.anchor)?.label ?? p.anchor;
+    // 与表单一致：居中且拉伸时没有边距与大小
+    const placement = p.anchor === "center" && p.stretch ? "铺满画面" : `${anchor} ${range(p.size, "%")}`;
+    return join(
+      p.source.mode === "directory" && (p.turns ? "目录轮换" : "目录"),
+      placement,
+      `不透明 ${range(p.opacity, "%")}`,
+      p.scroll !== "none" && "滚动",
+      p.sub.enabled && "子水印",
+    );
+  },
 });

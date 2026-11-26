@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { AssetSource } from "@/lib/backend";
+import { join } from "./summary";
 import { defineModule, type ModuleFormProps } from "./types";
 
 export type TextSource = "fileName" | "textFiles" | "custom";
@@ -435,6 +436,25 @@ const ITEM_DEFAULTS: TextItem = {
   duration: 0,
 };
 
+const SOURCE_LABELS: Record<TextSource, string> = { fileName: "文件名", textFiles: "文本文件", custom: "自定义" };
+
+/** 一处文本的内容：自定义文本取第一行，其余为来源名称。 */
+function itemContent(item: TextItem): string {
+  if (item.source !== "custom") return SOURCE_LABELS[item.source];
+  const line = item.customText.trim().split(/\r?\n/)[0]?.trim();
+  return line ? `“${line}”` : "自定义（空）";
+}
+
+function textSummary(p: TextParams): string {
+  const on = p.items.filter((item) => item.enabled);
+  if (on.length === 0) return "没有开启任何一处";
+  if (on.length === 1) {
+    const [item] = on;
+    return join(itemContent(item), POSITIONS.find((pos) => pos.value === item.position)?.label);
+  }
+  return `${on.length} 处：${on.map((item) => SOURCE_LABELS[item.source]).join("、")}`;
+}
+
 export default defineModule<TextParams>({
   id: "pipe.text",
   defaults: {
@@ -446,4 +466,5 @@ export default defineModule<TextParams>({
     ],
   },
   Form: TextForm,
+  summary: textSummary,
 });

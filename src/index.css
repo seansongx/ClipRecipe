@@ -18,6 +18,8 @@
  *    （行尾注明默认值），仍是中性灰。调整时同时满足：--input 与 background / card 对比 ≥ 3（深色按开关的 bg-input/80 算），
  *    --muted 与 background / card ≥ 1.2，--ring 与 --muted（标签栏底色）≥ 3，占位符 --muted-foreground 与输入框的
  *    bg-input/20（深色 /30）底色 ≥ 4.5。--background 不要动（见下方“窗口颜色”）。
+ *    另一处例外：--primary 是本应用的主色（蓝），用在主按钮、开关、进度条、选中行与画面上的框线；不用琥珀色是因为它和
+ *    --warning 分不开。取值要同时满足：作底色时 --primary-foreground 在上面 ≥ 4.5，作文字时在 background / card / muted 上 ≥ 4.5。
  * 2. 本应用自有 token（shadcn 没有的语义）：写法与 shadcn 变量相同（:root 与 [data-theme="dark"] 各一组 oklch 值），
  *    在 @theme inline 里暴露成 Tailwind 颜色（bg-success、text-warning、bg-media…）。新颜色先找已有 token，确实没有再加在这里。
  *
@@ -34,7 +36,7 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
+  --primary: oklch(0.5 0.17 255); /* 主色：蓝。CLI 默认 0.205 0 0（中性黑），见上方说明 */
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
@@ -70,7 +72,7 @@
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
+  --primary: oklch(0.72 0.14 250); /* 主色：蓝。CLI 默认 0.922 0 0 */
   --primary-foreground: oklch(0.205 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);

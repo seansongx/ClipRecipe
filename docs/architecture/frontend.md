@@ -18,7 +18,9 @@
   - **组件与配色都用默认值**：`index.css` 的 shadcn 主题变量是 CLI 为 Mira + neutral 写出的默认值（oklch），只有为通过界面审计
     （见下方“选中态与对比度”）做的最小调整：浅色 `--muted` 0.97→0.925、`--muted-foreground` 0.556→0.51、`--input` 0.922→0.64、
     `--ring` 0.708→0.6，深色 `--muted` 0.269→0.29、`--input` 白 15%→45%、`--ring` 0.556→0.6（仍是中性灰，`index.css` 行尾注明默认值）。
-    其它变量不改，`--background` 尤其不能动（`desktop.rs` 的启动底色按它核对）。也**不要**用全局 CSS（按 `data-slot` 等）覆盖组件外观。使用处只写排版类（flex / grid、宽度、外边距、元素之间的 gap、截断、滚动），
+    另一处例外是主色 `--primary`：改成蓝色（浅色 `oklch(0.5 0.17 255)`，深色 `oklch(0.72 0.14 250)`），用在主按钮、开关、进度条、选中行与画面上的框线；
+    不用琥珀色是因为它和 `--warning` 分不开；取值须满足 `--primary-foreground` 压在它上面 ≥ 4.5、它作文字压在 background / card / muted 上 ≥ 4.5
+    （原因与约束写在 `index.css` 头部注释）。其它变量不改，`--background` 尤其不能动（`desktop.rs` 的启动底色按它核对）。也**不要**用全局 CSS（按 `data-slot` 等）覆盖组件外观。使用处只写排版类（flex / grid、宽度、外边距、元素之间的 gap、截断、滚动），
     **不要**给 shadcn 组件写改外观的类（颜色、底色、边框、圆角、字号字重、内边距、高度、阴影、选中 / 悬停样式）；尺寸用组件自带的
     `size` 变体（Mira：按钮 `default` h-7、`sm` h-6、`xs` h-5 且 10 px 字，图标按钮 `icon` / `icon-sm` / `icon-xs`；输入框与 Select 默认 h-7），
     选中态用组件自带的（Tabs 的 `default` 变体、Toggle 的 muted 底）。唯一的例外是字体：Mira 预设的 Inter 是远程 / 打包字体，
@@ -29,7 +31,7 @@
     Select 要传 `items`（`{ value, label }[]`），否则 SelectValue 显示原始值，`onValueChange` 可能给 `null`；
     菜单项用 `onClick`（没有 `onSelect`，写了不会报错也不会触发）；菜单的 Label 必须放在 `DropdownMenuGroup` / `ContextMenuGroup` 里；
     `AlertDialogAction` 只是按钮，不会关闭对话框（用受控的 `open`，在 onClick 里关闭）；Slider 的值传数组（`[value]`）。
-  - **竖向 Tabs 的标签栏用 `components/VerticalTabsList.tsx`**（代替 `TabsList`，外层仍是 `<Tabs orientation="vertical">`）。
+  - **竖向 Tabs（设置分组、工具箱的分类与工具列表）的标签栏用 `components/VerticalTabsList.tsx`**（代替 `TabsList`，外层仍是 `<Tabs orientation="vertical">`）。
     原因：shadcn（base-mira）的 `Tabs` 把 `orientation` 解构出来，只写成 `data-orientation`（决定竖向样式），没有传给 Base UI 的
     `Tabs.Root`，Base UI 因此按横向处理：方向键是 ← / →，没有 `aria-orientation`（2026-11 时注册表里最新的 base-mira `tabs` 仍如此，
     `npx shadcn@latest add tabs --diff` 无差异）。`VerticalTabsList` 在 TabsList 上补 `aria-orientation="vertical"`（Base UI 把使用处的属性
@@ -72,7 +74,7 @@
   不会像 Radix 的 `asChild` 那样把选中态改掉；但 shadcn 的 TooltipTrigger 传进来的 `data-slot="tooltip-trigger"` 会覆盖被包控件自己的
   `data-slot`（Mira 的样式与 ButtonGroup、InputGroup 等按 data-slot 选择元素），`Hint` 合并属性时去掉了它。自己用 `render` 把一个
   shadcn 触发器套在另一个 shadcn 控件上时也要注意这一点（e2e 的界面状态审计会检查带状态的控件的 data-slot 没有变成 tooltip-trigger）。
-- **选中态与对比度**：用 Mira 组件自带的选中样式：导航（侧栏、设置分组）是竖向 Tabs 的 `default` 变体（muted 列表底上的选中项
+- **选中态与对比度**：用 Mira 组件自带的选中样式：导航（顶栏的主导航是横向 Tabs，设置分组与工具箱的分类 / 工具列表是竖向 Tabs）用 Tabs 的 `default` 变体（muted 列表底上的选中项
   有底色，深色主题另有 input 色边框；键盘焦点是 ring 色的描边 + 光晕），分段选择 / 按钮组是 ToggleGroup 的 `outline` 变体（选中项 muted 底）。
   规则：选中项与未选中项的底色亮度对比 ≥ 1.2（只改文字颜色不算选中态），文字对比满足 WCAG AA（正文 4.5:1、大字 3:1），
   控件边界（输入框、复选框、开关）与背景 3:1，键盘焦点环描边与背景 3:1，禁用的控件按 WCAG 豁免；e2e 的界面状态审计
@@ -162,9 +164,9 @@
   `com.xiaofany.cliprecipe.e2e`，不会激活用户正在运行的程序），把窗口最小化后带一个视频路径再启动一次，第二个进程退出、
   原窗口恢复、视频进入队列。报告目录里另有含系统标题栏的真实窗口截图（`*-window-*.png`）。
 - **界面状态审计**（`scripts/e2e-audit-page.js` 注入页面，`window.__e2e.audit({ root })`；场景“界面状态审计”）：深色、浅色各一遍，
-  覆盖三个页面、设置的六个分组、18 个模块的表单（逐个展开）、34 个工具对话框，另在 FFmpeg 下载提示与设置页各审计一次。检查：
+  覆盖三个页面、设置的六个分组、18 个模块的表单（先经“添加步骤”加入配方再逐个展开）、34 个工具的工作区，另在 FFmpeg 下载提示与设置页各审计一次。检查：
   ① 同组选项（标签页、分段选择、按钮组、列表）里选中项与未选中项明显不同——底色对比 ≥ 1.2，或有只属于选中项的指示条 / 边框 / 阴影，
   只差文字颜色不算；② `aria-selected` / `aria-checked` / `aria-pressed` 与 Base UI 的状态属性（`data-active`、`data-checked` / `data-unchecked`、`data-pressed`）一致，带状态的控件的 `data-slot` 没有被提示改写成 `tooltip-trigger`；③ 开关、复选框选中与未选中不同，
   它们和输入框的边界对比 ≥ 3；④ 每处文字（含占位符）与逐层叠加后的实际背景对比 ≥ 4.5（大字 3），禁用的豁免。
-  另外显式断言侧栏与设置分组的选中项（aria / data-active / 可见底色）以及侧栏的键盘焦点环（对比 ≥ 3）。颜色一律经 canvas 换算
+  另外显式断言顶栏导航与设置分组的选中项（aria / data-active / 可见底色）以及顶栏导航的键盘焦点环（对比 ≥ 3）。颜色一律经 canvas 换算
   （oklab、color-mix 也能比较），读取前先把鼠标移开、取消焦点并等过渡结束。

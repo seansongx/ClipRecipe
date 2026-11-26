@@ -3,9 +3,12 @@
 import ParamField from "@/components/ParamField";
 import NumberInput from "@/components/NumberInput";
 import ChoiceGroup from "@/components/ChoiceGroup";
+import { join } from "./summary";
 import { defineModule, type ModuleFormProps } from "./types";
 
 export type DedupeSensitivity = "low" | "normal" | "high";
+
+const SENSITIVITY_LABELS: Record<DedupeSensitivity, string> = { low: "低", normal: "标准", high: "高" };
 
 export interface DedupeFramesParams {
   enabled: boolean;
@@ -57,4 +60,6 @@ export default defineModule<DedupeFramesParams>({
     maxDrop: 0,
   },
   Form: DedupeFramesForm,
+  summary: (p) =>
+    join(`灵敏度${SENSITIVITY_LABELS[p.sensitivity] ?? p.sensitivity}`, p.maxDrop > 0 && `最多连去 ${p.maxDrop} 帧`),
 });

@@ -5,6 +5,7 @@ import ParamField from "@/components/ParamField";
 import RangeInput from "@/components/RangeInput";
 import { Switch } from "@/components/ui/switch";
 import { VIDEO_EXTENSIONS, type AssetSource, type Range } from "@/lib/backend";
+import { join } from "./summary";
 import { defineModule, type ModuleFormProps } from "./types";
 
 export interface IntroOutroParams {
@@ -107,4 +108,15 @@ export default defineModule<IntroOutroParams>({
     frameMargin: { min: 5, max: 5 },
   },
   Form: IntroOutroForm,
+  summary: (p) => {
+    const part = (on: boolean, label: string, source: AssetSource) =>
+      on && (source.path.trim() ? label : `${label}（未选）`);
+    return (
+      join(
+        part(p.introEnabled, "片头", p.intro),
+        part(p.outroEnabled, "片尾", p.outro),
+        part(p.frameEnabled, "相框", p.frame),
+      ) || "片头、片尾、相框都未开启"
+    );
+  },
 });

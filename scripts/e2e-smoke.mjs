@@ -9,6 +9,8 @@
 //   npm run e2e:debug-panel         # 开发形态下只跑调试面板的场景（--mode dev --debug-panel；面板只在开发环境存在）
 //   npm run e2e -- --no-build       # 生产形态不重新构建，直接用 src-tauri/target/debug/cliprecipe.exe
 //   npm run e2e -- --keep           # 保留临时目录（素材、输出、隔离的配置）便于排查
+//   npm run e2e -- --skip "审计|ffmpeg"  # 调试用：名称匹配该正则的场景记为跳过（"ffmpeg" 跳过整组 [ffmpeg] 场景）；
+//                                   #   后面的场景依赖前面留下的队列与配方，跳过的场景只应是不改变这些状态的（如界面审计）
 //
 // 需要：Windows + WebView2；FFmpeg：`npm install` 装好的 node_modules/@seankit 包（调试构建的程序自己找到它），
 // 或环境变量 CLIPRECIPE_FFMPEG 指向 ffmpeg.exe（设置了就优先使用）。
@@ -66,6 +68,7 @@ if (MODES.some((m) => m !== "prod" && m !== "dev")) {
   console.error("--mode 只能是 prod、dev 或 both");
   process.exit(2);
 }
+const SKIP = argv.includes("--skip") ? new RegExp(argv[argv.indexOf("--skip") + 1]) : null;
 if (process.platform !== "win32") {
   console.error("e2e 冒烟测试目前只支持 Windows（WebView2 远程调试）");
   process.exit(2);
@@ -137,7 +140,11 @@ async function problemsSince(session, mark, allow) {
     mark,
   );
   const csp = state.csp.filter((v) => !allow.csp?.some((re) => re.test(v.blocked ?? "")));
-  const ipcFailed = state.ipcFailed.filter((r) => !allow.ipc?.includes(r.cmd));
+  // 后端只有一个预览槽：预览舞台的取帧与预览窗口的片段互相取消是设计行为（src/state/stage.ts），
+  // 被取消的那次 render_preview 以“预览已取消”失败，不算问题；其它 render_preview 失败照常报告
+  const ipcFailed = state.ipcFailed
+    .filter((r) => !allow.ipc?.includes(r.cmd))
+    .filter((r) => !(r.cmd === "render_preview" && /预览已取消/.test(r.error ?? "")));
   const errors = state.errors.filter((e) => !allow.console?.some((re) => re.test(e.message)));
   return { consoleErrors, csp, ipcFailed, errors, dialogs: state.dialogs };
 }
@@ -157,6 +164,11 @@ async function markOf(session) {
  * allow：{ console: RegExp[], csp: RegExp[], ipc: 命令名[] } —— 场景里故意制造的错误。
  */
 async function scenario(session, name, fn, allow = {}) {
+  if (SKIP?.test(name)) {
+    results.push({ mode: session.label, name, status: "skip", details: `--skip ${SKIP.source}`, artifacts: [], secs: "-" });
+    log(`– [${session.label}] ${name}（--skip）`);
+    return true;
+  }
   log(`▶ [${session.label}] ${name}`);
   const started = Date.now();
   let status = "pass";
@@ -204,7 +216,7 @@ async function recover(session) {
   try {
     await page.evaluate(() => (window.__e2e.dialogQueue.length = 0));
     for (let i = 0; i < 4; i++) {
-      const open = await page.evaluate(() => document.querySelectorAll("[role=dialog],[role=alertdialog]").length);
+      const open = await page.evaluate(() => document.querySelectorAll("[role=dialog],[role=alertdialog],[role=menu]").length);
       if (!open) break;
       await page.escape();
       await sleep(400);
@@ -345,10 +357,96 @@ class Session {
 
 // ------------------------------------------------------------------ 界面操作
 
+/** 批量处理页左栏（视频队列）、中栏预览舞台、顶栏主导航。 */
+const QUEUE = "main section:has(> header > h1)";
+const STAGE = "section[aria-label=效果预览]";
+const TOPNAV = "header:has(#nav-batch) nav";
+const WORKSPACE = "[data-tool-workspace]";
+/** 每个页面加载完成的标志（工具箱没有 h1：以工具分类标签为准）。 */
+const PAGE_READY = {
+  batch: "main h1",
+  toolbox: "main [role=tablist][aria-label=工具分类]",
+  settings: "main h1",
+};
+
 const ui = {
-  async nav(page, id, heading) {
+  /** 点顶栏导航切换页面；heading 只用于提示文字。 */
+  async nav(page, id, heading = id) {
     await page.click({ selector: `#nav-${id}` });
-    await page.waitFor(`页面 ${heading}`, (h) => [...document.querySelectorAll("main h1")].some((e) => e.textContent.trim() === h), [heading]);
+    await ui.waitView(page, id, heading);
+  },
+
+  /** 等到顶栏选中 id 且页面内容已挂载。 */
+  waitView(page, id, heading = id) {
+    return page.waitFor(
+      `页面 ${heading}`,
+      (i, sel) => document.querySelector(`#nav-${i}`)?.getAttribute("aria-selected") === "true" && document.querySelector("main")?.id === `view-${i}` && !!document.querySelector(sel),
+      [id, PAGE_READY[id]],
+    );
+  },
+
+  /** 打开菜单（点触发按钮）并点其中的菜单项；item 是菜单项文字的开头，submenu 是途经的子菜单项文字的开头。 */
+  async menu(page, trigger, item, submenu = null) {
+    await page.click(trigger);
+    await page.waitFor("菜单打开", () => !!document.querySelector("[role=menu]"));
+    if (submenu) {
+      await page.click({ selector: "[role=menu] [role=menuitem]", textStarts: submenu });
+      await page.waitFor(`子菜单 ${submenu}`, (t) => [...document.querySelectorAll("[role=menu] [role=menuitem]")].some((m) => window.__e2e.visible(m) && window.__e2e.text(m).startsWith(t)), [item]);
+    }
+    // 菜单项文字后面可能带快捷键（如“全选Ctrl+A”），按开头匹配
+    await page.click({ selector: "[role=menu] [role=menuitem]", textStarts: item });
+    await page.waitFor("菜单关闭", () => !document.querySelector("[role=menu]"), [], { timeout: 5000 }).catch(() => {});
+  },
+
+  /** 队列标题行的“更多”菜单（全选、反选、排序、清空）。 */
+  queueMore(page, item, submenu = null) {
+    return ui.menu(page, { selector: `${QUEUE} header button`, label: "更多" }, item, submenu);
+  },
+
+  /** 队列标题行的“添加”菜单（添加视频 / 添加文件夹）。 */
+  queueAdd(page, item) {
+    return ui.menu(page, { selector: `${QUEUE} header button`, text: "添加" }, item);
+  },
+
+  /** 配方标题区的“更多”菜单（查看命令、重置…）。 */
+  recipeMore(page, item) {
+    return ui.menu(page, { selector: "aside header button", label: "更多" }, item);
+  },
+
+  /** 重置配方（“更多 → 重置…”，确认）。 */
+  async resetRecipe(page) {
+    await ui.recipeMore(page, "重置…");
+    await page.click({ selector: "[role=alertdialog] button", text: "确定" });
+    await page.waitFor("重置确认框关闭", () => !document.querySelector("[role=alertdialog]"));
+  },
+
+  /** 配方面板里列出的步骤开关（名称）。 */
+  listedSteps(page) {
+    return page.evaluate(() => [...document.querySelectorAll("aside [role=switch]")].filter(window.__e2e.visible).map((s) => s.getAttribute("aria-label")));
+  },
+
+  /** “添加步骤”菜单里的模块名（菜单项的第一行）；打开后用 Esc 关上。 */
+  async addableSteps(page) {
+    await page.click({ selector: "aside button", text: "添加步骤" });
+    const names = await page.waitFor("添加步骤菜单", () => {
+      const items = [...document.querySelectorAll("[role=menu] [role=menuitem]")];
+      return items.length ? items.map((m) => m.querySelector("span > span")?.textContent.trim()) : null;
+    });
+    return names;
+  },
+
+  /** 模块不在列表里时经“添加步骤”加进来（直接启用并展开）；已列出时什么也不做。返回是否经菜单添加。 */
+  async ensureStep(page, name) {
+    if ((await ui.listedSteps(page)).includes(name)) return false;
+    await page.click({ selector: "aside button", text: "添加步骤" });
+    const nth = await page.waitFor(`添加步骤菜单里的 ${name}`, (n) => {
+      const items = [...document.querySelectorAll("[role=menu] [role=menuitem]")].filter(window.__e2e.visible);
+      const i = items.findIndex((m) => m.querySelector("span > span")?.textContent.trim() === n);
+      return i >= 0 ? i + 1 : null;
+    }, [name]);
+    await page.click({ selector: "[role=menu] [role=menuitem]", nth: nth - 1 });
+    await page.waitFor(`步骤 ${name} 已添加`, (n) => window.__e2e.state(window.__e2e.find({ selector: "[role=switch]", label: n, within: "aside" })) === "checked", [name]);
+    return true;
   },
 
   rows(page) {
@@ -356,17 +454,50 @@ const ui = {
       [...document.querySelectorAll("li[data-row-index]")].map((li) => {
         const title = li.querySelector("p[data-path]");
         const body = title?.closest("div.min-w-0");
-        const state = [...li.children].find((c) => c.tagName === "SPAN" && c.classList.contains("tabular-nums") && !c.classList.contains("w-6"));
+        // 短状态（未处理 / 处理中 45% / 完成…）在文件名同一行右侧；细节（“3 个输出”等）在媒体信息下一行
+        const state = body?.querySelector(":scope > div:first-child > span.tabular-nums");
+        const lines = body ? [...body.querySelectorAll(":scope > p")] : [];
         return {
           name: title?.textContent.trim(),
           path: title?.getAttribute("data-path"),
-          summary: body?.querySelector(":scope > p")?.textContent.trim() ?? "",
+          summary: lines[0]?.textContent.trim() ?? "",
           state: state?.textContent.trim() ?? "",
+          detail: lines[1]?.textContent.trim() ?? "",
           badges: [...li.querySelectorAll("[data-slot=badge]")].map((b) => ({ text: b.textContent.trim(), title: b.getAttribute("aria-label") })),
           text: li.innerText,
         };
       }),
     );
+  },
+
+  /** 把鼠标移到第 nth 行上（行内按钮只在悬停时可点）。 */
+  async hoverRow(page, nth) {
+    const pos = await page.waitLocate({ selector: "li[data-row-index]", nth }, 10000, { enabled: false });
+    await page.cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: pos.x, y: pos.y, button: "none", pointerType: "mouse" });
+    await sleep(200);
+  },
+
+  /** 预览舞台当前显示的图片（kind：effect 效果 / source 原片）；没有或没加载完时为 null。 */
+  stageImage(page, kind = "effect") {
+    return page.evaluate((sel, k) => {
+      const suffix = k === "effect" ? "套用配方后的画面" : "原片画面";
+      const img = [...document.querySelectorAll(`${sel} img`)].find((i) => i.alt.endsWith(suffix) && i.alt.startsWith("「"));
+      if (!img) return null;
+      return { src: img.src, alt: img.alt, complete: img.complete, width: img.naturalWidth, height: img.naturalHeight };
+    }, STAGE, kind);
+  },
+
+  /** 等预览舞台显示（与 notSrc 不同的）已加载的图片。舞台在预览窗口打开、批量处理中不自动刷新。 */
+  async waitStageImage(page, what, { kind = "effect", notSrc = null, timeout = 60000 } = {}) {
+    const deadline = Date.now() + timeout;
+    let last = null;
+    while (Date.now() < deadline) {
+      last = await ui.stageImage(page, kind);
+      if (last && last.complete && last.width > 0 && last.src !== notSrc) return last;
+      await sleep(250);
+    }
+    const message = await page.evaluate((sel) => document.querySelector(`${sel} [role=alert]`)?.textContent ?? document.querySelector(sel)?.innerText.slice(0, 300), STAGE);
+    throw new Error(`等待超时：${what}；舞台图片 ${JSON.stringify(last)}；舞台内容：${message}`);
   },
 
   async waitRows(page, what, pred, timeout = 30000) {
@@ -386,7 +517,7 @@ const ui = {
 
   async clearQueue(page) {
     if ((await ui.rows(page)).length === 0) return;
-    await page.click({ selector: "button", textIncludes: "清空", within: "main" });
+    await ui.queueMore(page, "清空");
     await page.click({ selector: "button", text: "删除", within: "[role=alertdialog]" });
     await ui.waitRows(page, "队列清空", (r) => r.length === 0, 10000);
   },
@@ -437,7 +568,8 @@ const ui = {
 
   logText(page) {
     return page.evaluate(() => {
-      const section = [...document.querySelectorAll("main section")].find((s) => s.textContent.includes("处理记录"));
+      // 处理记录面板是中栏 section 里最内层的那个（中栏外层 section 也包含它）
+      const section = [...document.querySelectorAll("main section")].filter((s) => s.textContent.includes("处理记录")).pop();
       return section?.innerText ?? "";
     });
   },
@@ -484,30 +616,47 @@ const ui = {
     await page.waitFor("对话框关闭", (n) => document.querySelectorAll("[role=dialog],[role=alertdialog]").length < n, [before], { timeout: 5000 });
   },
 
+  /** 工作区标题里的工具名（h2 的第一个文本节点，不含分组徽标）。 */
+  workspaceTool(page) {
+    return page.evaluate((sel) => {
+      const ws = document.querySelector(sel);
+      return ws ? { id: ws.getAttribute("data-tool-workspace"), name: ws.querySelector("h2")?.firstChild?.textContent.trim() ?? "" } : null;
+    }, WORKSPACE);
+  },
+
+  /** 等工作区显示工具 name（定义已加载：有“开始”或“停止”按钮）。 */
+  waitWorkspace(page, name) {
+    return page.waitFor(`工具工作区 ${name}`, (sel, n) => {
+      const ws = document.querySelector(sel);
+      if (!ws || ws.querySelector("h2")?.firstChild?.textContent.trim() !== n) return null;
+      return [...ws.querySelectorAll("button")].some((b) => ["开始", "停止"].includes(b.textContent.trim())) ? ws.getAttribute("data-tool-workspace") : null;
+    }, [WORKSPACE, name]);
+  },
+
+  /** 在工具箱里（“全部”分类下）选中工具 name。 */
   async openTool(page, name) {
-    await ui.nav(page, "toolbox", "工具箱");
-    await page.click({ selector: "[role=button]", label: `打开 ${name}` });
-    await page.waitFor(`工具对话框 ${name}`, (n) => {
-      const d = document.querySelector("[role=dialog]");
-      return d && d.querySelector("h2")?.textContent.includes(n) && [...d.querySelectorAll("button")].some((b) => b.textContent.trim() === "开始");
-    }, [name]);
+    if ((await page.evaluate(() => document.querySelector("main")?.id)) !== "view-toolbox") await ui.nav(page, "toolbox", "工具箱");
+    const all = { selector: "[role=tablist][aria-label=工具分类] [role=tab]", textStarts: "全部" };
+    if ((await page.evaluate((s) => window.__e2e.find(s)?.getAttribute("aria-selected"), all)) !== "true") await page.click(all);
+    await page.click({ selector: "[role=tablist][aria-label=工具] [role=tab]", label: `打开 ${name}` });
+    return ui.waitWorkspace(page, name);
   },
 
   async runTool(page, timeout = 180000) {
-    await page.click({ selector: "[role=dialog] button", text: "开始" });
+    await page.click({ selector: `${WORKSPACE} button`, text: "开始" });
     const summary = await page.waitFor(
       "工具运行结束",
-      () => {
-        const d = document.querySelector("[role=dialog]");
+      (sel) => {
+        const d = document.querySelector(sel);
         const s = [...d.querySelectorAll("span")].map((x) => x.textContent.trim()).find((t) => t.startsWith("上次："));
         const running = [...d.querySelectorAll("button")].some((b) => b.textContent.trim() === "停止");
         return s && !running ? s : null;
       },
-      [],
+      [WORKSPACE],
       { timeout, interval: 500 },
     );
     const m = /完成 (\d+) · 失败 (\d+) · 取消 (\d+)/.exec(summary);
-    const items = await page.evaluate(() => [...document.querySelectorAll("[role=dialog] ul li")].map((li) => li.innerText.replace(/\s+/g, " ")));
+    const items = await page.evaluate((sel) => [...document.querySelectorAll(`${sel} ul li`)].map((li) => li.innerText.replace(/\s+/g, " ")), WORKSPACE);
     return { done: Number(m?.[1]), failed: Number(m?.[2]), cancelled: Number(m?.[3]), summary, items };
   },
 
@@ -720,20 +869,30 @@ async function bootScenarios(s, media) {
         cspNote = `开发形态 devCsp 为 null，不检查 CSP（探测请求${probe.violations.length ? "被拦截" : "未被 CSP 拦截"}）`;
       }
       await ui.nav(page, "toolbox", "工具箱");
-      const cards = await page.evaluate(() => document.querySelectorAll("[role=button][aria-label^='打开 ']").length);
-      assert(cards >= 30, `工具箱卡片只有 ${cards} 个`);
+      // “全部”分类下列出全部工具；未选中工具时工作区显示第一个
+      const cards = await page.waitFor("工具列表", () => {
+        const n = document.querySelectorAll("[role=tablist][aria-label=工具] [role=tab][aria-label^='打开 ']").length;
+        return n > 0 ? n : null;
+      });
+      assert(cards === 34, `工具箱“全部”分类应列出 34 个工具，实际 ${cards}`);
+      const firstTool = await ui.waitWorkspace(page, "视频合并");
       await ui.nav(page, "settings", "设置");
-      await page.waitFor("设置分组", () => document.querySelectorAll("[role=tab]").length >= 6);
+      await page.waitFor("设置分组", () => document.querySelectorAll("main [aria-label=设置分组] [role=tab]").length >= 6);
       await ui.nav(page, "batch", "视频队列");
-      const modules = await page.evaluate(() => document.querySelectorAll("aside [role=switch]").length);
-      assert(modules === 18, `配方面板应有 18 个模块开关，实际 ${modules}`);
+      // 配方面板只列出启用的步骤（默认只有帧率），其余 17 个在“添加步骤”菜单里
+      const listed = await ui.listedSteps(page);
+      assert(JSON.stringify(listed) === JSON.stringify(["帧率"]), `默认配方应只列出“帧率”：${listed}`);
+      const addable = await ui.addableSteps(page);
+      await page.escape();
+      await page.waitFor("添加步骤菜单关闭", () => !document.querySelector("[role=menu]"));
+      assert(addable.length === 17 && !addable.includes("帧率"), `“添加步骤”菜单应有其余 17 个模块：${addable}`);
       const theme0 = await page.evaluate(() => document.documentElement.dataset.theme);
-      await page.click({ selector: "nav button", label: theme0 === "dark" ? "切换到浅色" : "切换到深色" });
+      await page.click({ selector: "button", label: theme0 === "dark" ? "切换到浅色" : "切换到深色" });
       const theme1 = await page.evaluate(() => document.documentElement.dataset.theme);
       assert(theme1 && theme1 !== theme0, `主题未切换：${theme0} → ${theme1}`);
       const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
       s.theme = theme1;
-      return `${info.origin}，${info.ua ?? "WebView2"}；${cspNote}；工具卡片 ${cards} 个；主题 ${theme0} → ${theme1}（背景 ${bg}）`;
+      return `${info.origin}，${info.ua ?? "WebView2"}；${cspNote}；工具 ${cards} 个（默认选中 ${firstTool}）；配方列出 ${listed.join("、")}，可添加 ${addable.length} 个；主题 ${theme0} → ${theme1}（背景 ${bg}）`;
     },
     { csp: [/e2e-csp-probe/], console: [/e2e-csp-probe/, /Content Security Policy/] },
   );
@@ -763,13 +922,17 @@ async function bootScenarios(s, media) {
     return `v${app.value.version}，${app.value.cpuCores} 核；${ff.value.version}（来源 ${ff.value.source}，whisper 滤镜 ${ff.value.whisper ? "有" : "无"}）；硬件：${enc.value.hardware.join("、") || "无"}，H.264 → ${enc.value.h264}`;
   });
 
-  await scenario(s, "导入：拖放 + 添加视频按钮 → 行显示媒体信息；拖到输出位置设为输出目录", async () => {
+  await scenario(s, "导入：拖放 + 添加视频菜单 → 行显示媒体信息、预览舞台显示效果帧；拖到输出位置设为输出目录", async () => {
     await ui.clearQueue(page);
     await ui.dropOnQueue(page, [media.a, media.b]);
     await ui.waitRows(page, "两个视频导入", (r) => r.length === 2 && r.every((x) => x.summary.includes("640×360")));
-    // “添加视频”按钮：系统对话框由探针返回预先排队的路径
+    // 预览舞台：当前视频（没有选中时为第一个）套用配方后的一帧，自动渲染，图片能加载（asset 协议、CSP）
+    const first = (await ui.rows(page))[0].name;
+    const frame = await ui.waitStageImage(page, "预览舞台的效果帧");
+    assert(frame.alt === `「${first}」套用配方后的画面` && frame.src.startsWith("http://asset.localhost/"), `舞台图片：${JSON.stringify(frame)}`);
+    // “添加 → 添加视频”：系统对话框由探针返回预先排队的路径
     await page.queueDialog([media.portrait]);
-    await page.click({ selector: "main header button", textIncludes: "添加视频" });
+    await ui.queueAdd(page, "添加视频");
     const rows = await ui.waitRows(page, "竖屏视频导入", (r) => r.length === 3 && r.some((x) => x.name === "portrait.mp4" && x.summary.includes("360×640")));
     // 拖一个文件到“输出到”输入框：设为该文件所在的文件夹
     await page.dropFiles([media.extra], { selector: "input[aria-label=输出文件夹]", within: "main" });
@@ -778,7 +941,7 @@ async function bootScenarios(s, media) {
     assert((await ui.rows(page)).length === 3, "拖到输出位置的文件不应导入队列");
     const ipc = await page.evaluate(() => window.__e2e.ipc.filter((r) => r.cmd === "import_paths").map((r) => r.args));
     assert(ipc.length === 2 && ipc.every((a) => Array.isArray(a.paths) && typeof a.recursive === "boolean"), `import_paths 参数：${JSON.stringify(ipc)}`);
-    return rows.map((r) => `${r.name}: ${r.summary}`).join("；");
+    return `${rows.map((r) => `${r.name}: ${r.summary}`).join("；")}；舞台效果帧 ${frame.width}×${frame.height}`;
   });
 
   await shortcutScenario(s, media);
@@ -804,7 +967,7 @@ async function auditUi(page, label, root, found = null) {
   return r;
 }
 
-/** 导航项（侧栏 / 设置分组）的选中态：选中项 aria 与 Base UI 的 data-active 一致，底色与未选中项明显不同，键盘焦点环与选中底色同时可见。 */
+/** 导航项（顶栏主导航 / 设置分组）的选中态：选中项 aria 与 Base UI 的 data-active 一致，底色与未选中项明显不同，键盘焦点环与选中底色同时可见。 */
 async function assertNavSelected(page, listSelector, expectText) {
   const r = await page.evaluate((sel) => {
     const tabs = [...document.querySelectorAll(`${sel} [role=tab]`)];
@@ -842,10 +1005,10 @@ async function assertNavSelected(page, listSelector, expectText) {
   return `${expectText}（底色 rgba(${selected[0].bg.join(",")})）`;
 }
 
-/** 全部页面、18 个模块、34 个工具对话框，在深色与浅色下各审计一遍。 */
+/** 全部页面、18 个模块、34 个工具工作区，在深色与浅色下各审计一遍。 */
 async function auditScenario(s) {
   const { page } = s;
-  await scenario(s, "界面状态审计：三个页面、设置各分组、18 个模块、34 个工具对话框（深色 + 浅色）", async () => {
+  await scenario(s, "界面状态审计：三个页面、设置各分组、18 个模块、34 个工具工作区（深色 + 浅色）", async () => {
     const original = await page.evaluate(() => document.documentElement.dataset.theme);
     const themes = original === "dark" ? ["dark", "light"] : ["light", "dark"];
     const counts = { audits: 0, groups: 0, texts: 0, boundaries: 0 };
@@ -859,26 +1022,27 @@ async function auditScenario(s) {
     const found = [];
     for (const theme of themes) {
       if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== theme) {
-        await page.click({ selector: "nav button", label: theme === "dark" ? "切换到深色" : "切换到浅色" });
+        await page.click({ selector: "button", label: theme === "dark" ? "切换到深色" : "切换到浅色" });
         await page.waitFor(`主题 ${theme}`, (t) => document.documentElement.dataset.theme === t, [theme]);
       }
-      // 三个页面：侧栏选中项明确
+      // 三个页面：顶栏导航的选中项明确
       for (const [id, heading, label] of [["batch", "视频队列", "批量处理"], ["toolbox", "工具箱", "工具箱"], ["settings", "设置", "设置"]]) {
         await ui.nav(page, id, heading);
+        if (id === "batch") await ui.waitStageImage(page, "审计前舞台出图");
         add(await auditUi(page, `${theme} ${heading}`, undefined, found));
-        notes.push(`${theme} 侧栏 ${await assertNavSelected(page, "nav", label)}`);
+        notes.push(`${theme} 顶栏导航 ${await assertNavSelected(page, TOPNAV, label)}`);
       }
-      // 侧栏的键盘焦点环与选中底色同时可见、互相区分
+      // 顶栏导航的键盘焦点环与选中底色同时可见、互相区分
       const ring = await page.evaluate(() => window.__e2e.focusRing("#nav-settings"));
-      assert(ring.ok, `侧栏焦点环：${JSON.stringify(ring)}`);
+      assert(ring.ok, `顶栏导航焦点环：${JSON.stringify(ring)}`);
       if (ring.contrast < 3) {
         const soft = await page.evaluate(() => window.__e2e.softRules?.["focus-ring-contrast"]);
-        const message = `侧栏焦点环描边对比 ${ring.contrast} < 3（${JSON.stringify(ring)}）`;
+        const message = `顶栏导航焦点环描边对比 ${ring.contrast} < 3（${JSON.stringify(ring)}）`;
         if (!soft) found.push(`（${theme}）${message}`);
         else {
           const text = `[focus-ring-contrast] ${message}【降级为警告：${soft}】`;
-          log(`  ⚠ 审计警告（${theme} 侧栏焦点环）：${text}`);
-          auditWarnings.push({ label: `${theme} 侧栏焦点环`, text });
+          log(`  ⚠ 审计警告（${theme} 顶栏导航焦点环）：${text}`);
+          auditWarnings.push({ label: `${theme} 顶栏导航焦点环`, text });
         }
       }
       // 设置的每个分组
@@ -888,29 +1052,47 @@ async function auditScenario(s) {
         add(await auditUi(page, `${theme} 设置 · ${tab}`, "main", found));
         await assertNavSelected(page, "main [aria-label=设置分组]", tab);
       }
-      // 18 个模块的参数表单（逐个展开，不改动开关）
+      // 18 个模块的参数表单：没列出的经“添加步骤”加进来（会启用），马上关掉开关（行仍在，显示“已停用”），逐个展开审计
       await ui.nav(page, "batch", "视频队列");
-      const modules = await page.evaluate(() => [...document.querySelectorAll("aside [data-slot=collapsible] button[aria-expanded]")].map((b) => b.querySelector("span span")?.firstChild?.textContent.trim() ?? b.textContent.trim()));
-      assert(modules.length === 18, `模块数 ${modules.length}`);
+      const addable = await ui.addableSteps(page);
+      await page.escape();
+      await page.waitFor("添加步骤菜单关闭", () => !document.querySelector("[role=menu]"));
+      if (addable.length > 0) {
+        await page.click({ selector: "aside button", text: "添加步骤" });
+        add(await auditUi(page, `${theme} 添加步骤菜单`, "[role=menu]", found));
+        await page.escape();
+        await page.waitFor("添加步骤菜单关闭", () => !document.querySelector("[role=menu]"));
+      }
+      for (const name of addable) {
+        await ui.ensureStep(page, name);
+        if (name !== "帧率") await ui.setSwitch(page, name, false);
+      }
+      const modules = await ui.listedSteps(page);
+      assert(modules.length === 18, `配方面板列出的模块数 ${modules.length}：${modules}`);
+      const disabledSummary = await page.evaluate(() => [...document.querySelectorAll("aside button[aria-expanded]")].filter((b) => b.textContent.includes("已停用")).length);
+      assert(disabledSummary === 17, `关掉开关后应有 17 行显示“已停用”，实际 ${disabledSummary}`);
       for (const name of modules) {
         await ui.expandModule(page, name);
         add(await auditUi(page, `${theme} 模块 ${name}`, "aside", found));
       }
       await ui.expandModule(page, "帧率");
-      // 34 个工具对话框
+      // 34 个工具：依次选中，审计工作区
       await ui.nav(page, "toolbox", "工具箱");
-      const tools = await page.evaluate(() => [...document.querySelectorAll("[role=button][aria-label^='打开 ']")].map((b) => b.getAttribute("aria-label").slice(3)));
+      await ui.openTool(page, "视频合并");
+      const tools = await page.evaluate(() => [...document.querySelectorAll("[role=tablist][aria-label=工具] [role=tab][aria-label^='打开 ']")].map((b) => b.getAttribute("aria-label").slice(3)));
       for (const name of tools) {
         await ui.openTool(page, name);
-        add(await auditUi(page, `${theme} 工具 ${name}`, "[role=dialog]", found));
-        await ui.closeDialog(page);
+        add(await auditUi(page, `${theme} 工具 ${name}`, WORKSPACE, found));
       }
       notes.push(`${theme}：${modules.length} 个模块、${tools.length} 个工具`);
     }
     if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== original) {
-      await page.click({ selector: "nav button", label: original === "dark" ? "切换到深色" : "切换到浅色" });
+      await page.click({ selector: "button", label: original === "dark" ? "切换到深色" : "切换到浅色" });
     }
     await ui.nav(page, "batch", "视频队列");
+    // 恢复默认配方（只有帧率；没启用的模块从列表消失），后面的场景从默认配方开始
+    await ui.resetRecipe(page);
+    await page.waitFor("重置后只列出帧率", () => [...document.querySelectorAll("aside [role=switch]")].map((x) => x.getAttribute("aria-label")).join() === "帧率");
     if (found.length) throw new Error(`界面审计发现 ${found.length} 个问题（${counts.audits} 次审计）：\n${[...new Set(found)].join("\n")}`);
     return `${counts.audits} 次审计无问题（${counts.groups} 组选项、${counts.texts} 处文字、${counts.boundaries} 个控件边界）；${notes.join("；")}`;
   });
@@ -921,15 +1103,15 @@ async function shortcutScenario(s, media) {
   const { page } = s;
   await scenario(s, "键盘：Ctrl+1/2/3 与 Ctrl+, 切换页面、Ctrl+O 添加视频、队列 Ctrl+A / 方向键 / Shift / Delete", async () => {
     const heading = () => page.evaluate(() => document.querySelector("main h1")?.textContent.trim());
-    const press = async (key, code, keyCode, modifiers, expect) => {
+    const press = async (key, code, keyCode, modifiers, view) => {
       await page.key(key, code, keyCode, modifiers);
-      await page.waitFor(`页面 ${expect}`, (h) => document.querySelector("main h1")?.textContent.trim() === h, [expect]);
+      await ui.waitView(page, view);
     };
-    await press("2", "Digit2", 50, 2, "工具箱");
-    await press("3", "Digit3", 51, 2, "设置");
-    await press("1", "Digit1", 49, 2, "视频队列");
-    await press(",", "Comma", 188, 2, "设置");
-    await press("1", "Digit1", 49, 2, "视频队列");
+    await press("2", "Digit2", 50, 2, "toolbox");
+    await press("3", "Digit3", 51, 2, "settings");
+    await press("1", "Digit1", 49, 2, "batch");
+    await press(",", "Comma", 188, 2, "settings");
+    await press("1", "Digit1", 49, 2, "batch");
     const pages = await heading();
 
     // Ctrl+O：系统对话框（探针代答）选中的视频加入队列
@@ -978,13 +1160,23 @@ async function batchScenarios(s, media) {
     const out = w("out", s.mode, "batch");
     await ui.setOutputDir(page, out);
     assert((await ui.switchState(page, "帧率")) === "checked", "默认配方应启用帧率");
+    let stageNote = "";
     if (full) {
-      await ui.setSwitch(page, "裁剪", true);
+      // 改参与预览的参数（裁剪）后，舞台自动刷新成新的图片
+      const before = await ui.waitStageImage(page, "改参数前的舞台效果帧");
+      await ui.ensureStep(page, "裁剪");
       await ui.expandModule(page, "裁剪");
       await ui.choose(page, "百分比");
-      await ui.setSwitch(page, "文本", true);
-      await ui.setSwitch(page, "码率", true);
-      await page.waitFor("已启用 4 个步骤", () => document.querySelector("aside header").innerText.includes("已启用 4 /"));
+      await ui.ensureStep(page, "文本");
+      await ui.ensureStep(page, "码率");
+      await page.waitFor("已启用 4 个步骤", () => document.querySelector("aside header").innerText.includes("已启用 4 个步骤"));
+      await ui.waitStageImage(page, "改参数后舞台刷新", { notSrc: before.src });
+      const result = await page.waitFor("舞台的参与预览步骤包含裁剪与文本", (sel) => {
+        const t = [...document.querySelectorAll(`${sel} p`)].map((p) => p.textContent).find((x) => x.startsWith("参与预览："));
+        return t?.includes("裁剪") && t.includes("文本") ? t : null;
+      }, [STAGE], { timeout: 60000 });
+      const after = await ui.waitStageImage(page, "舞台最新的效果帧", { notSrc: before.src });
+      stageNote = `舞台 ${before.width}×${before.height} → ${after.width}×${after.height}（${result.split("。")[0]}）；`;
     }
     const logBefore = (await ui.logText(page)).length;
     await ui.startBatch(page);
@@ -1015,12 +1207,17 @@ async function batchScenarios(s, media) {
     assert(normal.length > 0 && normal.every((t) => t.ok && t.progress >= 0 && t.progress <= 100), `任务栏进度：${JSON.stringify(taskbar)}`);
     assert(taskbar.at(-1)?.state === "none" && taskbar.at(-1)?.ok, `结束后任务栏进度应清除：${JSON.stringify(taskbar.slice(-3))}`);
     const recordCount = /处理记录\s*(\d+) 条/.exec(logText)?.[1];
-    return `任务栏进度 ${normal.length} 次（${normal.map((t) => t.progress).join("→")}）后清除；${summary}；${Object.entries(probes).map(([f, p]) => `${f} ${p.width}×${p.height}@${p.fps.toFixed(0)} ${p.vcodec}/${p.acodec} ${p.duration.toFixed(2)}s`).join("；")}；处理记录 ${recordCount} 条`;
+    return `${stageNote}任务栏进度 ${normal.length} 次（${normal.map((t) => t.progress).join("→")}）后清除；${summary}；${Object.entries(probes).map(([f, p]) => `${f} ${p.width}×${p.height}@${p.fps.toFixed(0)} ${p.vcodec}/${p.acodec} ${p.duration.toFixed(2)}s`).join("；")}；处理记录 ${recordCount} 条`;
   });
   await saveShot(s, "batch-done");
 
-  await scenario(s, "预览：生成预览（整条流水线）在 <video> 中播放", async () => {
-    await page.click({ selector: "aside footer button", textIncludes: "生成预览" });
+  await scenario(s, "预览：舞台切到原片出图；生成预览（整条流水线）在 <video> 中播放，关闭后舞台补渲染", async () => {
+    // 舞台“原片”：同一时刻的源画面
+    await ui.choose(page, "原片", STAGE);
+    const source = await ui.waitStageImage(page, "舞台原片画面", { kind: "source", timeout: 30000 });
+    await ui.choose(page, "效果", STAGE);
+    const effect = await ui.waitStageImage(page, "切回效果画面");
+    await page.click({ selector: `${STAGE} button`, textIncludes: "生成预览" });
     const r = await ui.checkVideo(page, "流水线预览");
     const info = await page.evaluate(() => [...document.querySelectorAll("[role=dialog] p")].map((p) => p.textContent).join(" ").slice(0, 160));
     await saveShot(s, "preview-pipeline");
@@ -1035,7 +1232,11 @@ async function batchScenarios(s, media) {
     }, [firstSrc], { timeout: 60000 });
     const r2 = await ui.checkVideo(page, "调整范围后的预览");
     await ui.closeDialog(page);
-    return `${r}；${info}；调整范围后 ${r2}`;
+    // 窗口关闭后舞台仍显示效果帧（被窗口打断的那一轮会补渲染）
+    const after = await ui.waitStageImage(page, "关闭预览窗口后舞台的效果帧");
+    const stageError = await page.evaluate((sel) => document.querySelector(`${sel} [role=alert]`)?.textContent ?? null, STAGE);
+    assert(!stageError, `关闭预览窗口后舞台显示错误：${stageError}`);
+    return `舞台原片 ${source.width}×${source.height}、效果 ${effect.width}×${effect.height}，关闭窗口后 ${after.width}×${after.height}；${r}；${info}；调整范围后 ${r2}`;
   });
 
   await scenario(s, "预览：双击队列行播放源视频（allow_media_file + asset 协议）", async () => {
@@ -1060,7 +1261,7 @@ async function batchScenarios(s, media) {
   });
 
   await scenario(s, "模块表单：加水印选图片（素材文件对话框）+ 单步预览；文本字体列表（list_system_fonts）", async () => {
-    await ui.setSwitch(page, "加水印", true);
+    if (!(await ui.ensureStep(page, "加水印"))) await ui.setSwitch(page, "加水印", true);
     await ui.expandModule(page, "加水印");
     await page.queueDialog(media.watermark);
     await page.click({ selector: "aside [data-slot=input-group]:has(input[aria-label=水印文件路径]) button", label: "浏览" });
@@ -1087,6 +1288,8 @@ async function batchScenarios(s, media) {
     assert(diff > 30, `水印预览与源画面几乎相同（块平均差最大 ${diff}）`);
     await ui.closeDialog(page);
     await ui.setSwitch(page, "加水印", false);
+    // 关掉开关后这一行仍在，摘要显示“已停用”
+    await page.waitFor("加水印显示已停用", () => window.__e2e.find({ selector: "aside button[aria-expanded]", textStarts: "加水印" })?.textContent.includes("已停用"));
     await ui.expandModule(page, "文本");
     await page.click({ selector: "aside button", label: "字体" });
     const fonts = await page.waitFor("字体列表", () => {
@@ -1120,46 +1323,52 @@ async function batchScenarios(s, media) {
     return `图片 ${img.w}×${img.h}（${img.src.slice(0, 50)}…）；${size}`;
   });
 
-  await scenario(s, "队列交互：媒体信息、查看命令、右键菜单打开工具（范围为选中）、工具栏工具菜单", async () => {
-    // 媒体信息对话框
+  await scenario(s, "队列交互：媒体信息、查看命令、右键菜单与操作条的工具菜单切到工具箱（范围为选中）、拖动与排序", async () => {
+    // 媒体信息对话框（行内按钮只在悬停该行时可点）
+    await ui.hoverRow(page, 0);
     await page.click({ selector: "li[data-row-index] button", label: "媒体信息", nth: 0 });
     const infoText = await page.waitFor("媒体信息对话框", () => {
       const d = document.querySelector("[role=dialog]");
       return d && /h264/.test(d.innerText) && /aac/.test(d.innerText) ? d.innerText.replace(/\s+/g, " ").slice(0, 120) : null;
     });
     await ui.closeDialog(page);
-    // 查看命令：preview_command → 处理记录里出现 FFmpeg 命令行
-    await page.click({ selector: "aside header button", textIncludes: "查看命令" });
+    // 查看命令（配方“更多”菜单）：preview_command → 处理记录里出现 FFmpeg 命令行
+    await ui.recipeMore(page, "查看命令");
     await page.waitFor("处理记录中的命令", () => [...document.querySelectorAll("main section")].some((sec) => sec.innerText.includes("的处理命令")));
-    // 右键第二行 → 独立工具 → 视频倒放：对话框打开，范围为选中的 1 个
+    // 右键第二行 → 独立工具 → 视频倒放：切到工具箱并选中它，范围为选中的 1 个
     await page.rightClick({ selector: "li[data-row-index] p[data-path]", nth: 1 });
     await page.click({ selector: "[role=menuitem]", textIncludes: "独立工具" });
     await page.click({ selector: "[role=menu] [role=menuitem]", text: "视频倒放" });
-    await page.waitFor("视频倒放对话框", () => document.querySelector("[role=dialog] h2")?.textContent.includes("视频倒放"));
-    const scope = await page.evaluate(() => window.__e2e.state(window.__e2e.find({ selector: "[data-slot=toggle-group-item]", textStarts: "队列中选中的", within: "[role=dialog]" })) + " " + window.__e2e.find({ selector: "[data-slot=toggle-group-item]", textStarts: "队列中选中的", within: "[role=dialog]" })?.textContent);
+    await ui.waitView(page, "toolbox", "工具箱");
+    const reverse = await ui.waitWorkspace(page, "视频倒放");
+    assert(reverse === "tool.reverse", `工作区：${reverse}`);
+    const selectedTab = await page.evaluate(() => document.querySelector("[role=tablist][aria-label=工具] [role=tab][aria-selected=true]")?.getAttribute("aria-label"));
+    assert(selectedTab === "打开 视频倒放", `工具列表的选中项：${selectedTab}`);
+    const scopeSpec = { selector: "[data-slot=toggle-group-item]", textStarts: "队列中选中的", within: WORKSPACE };
+    const scope = await page.evaluate((sp) => `${window.__e2e.state(window.__e2e.find(sp))} ${window.__e2e.find(sp)?.textContent}`, scopeSpec);
     assert(scope.startsWith("on 队列中选中的 1 个"), `处理范围：${scope}`);
-    await ui.closeDialog(page);
-    // 工具栏“工具”菜单：选中全部 → 生成 GIF，范围为选中的 3 个
-    await page.click({ selector: "main button", text: "全选" });
-    await page.click({ selector: "main button", text: "工具" });
-    await page.click({ selector: "[role=menuitem]", text: "生成 GIF" });
-    await page.waitFor("生成 GIF 对话框", () => document.querySelector("[role=dialog] h2")?.textContent.includes("生成 GIF"));
-    const scope2 = await page.evaluate(() => window.__e2e.find({ selector: "[data-slot=toggle-group-item][data-pressed]", within: "[role=dialog]" })?.textContent);
+    await ui.nav(page, "batch", "视频队列");
+    // 队列“更多 → 全选”，选中后出现的操作条里“工具 → 生成 GIF”：范围为选中的 3 个
+    await ui.queueMore(page, "全选");
+    await page.waitFor("操作条显示已选 3 个", (sel) => document.querySelector(sel)?.innerText.includes("已选 3 个"), [QUEUE]);
+    await ui.menu(page, { selector: `${QUEUE} button`, text: "工具" }, "生成 GIF");
+    await ui.waitView(page, "toolbox", "工具箱");
+    await ui.waitWorkspace(page, "生成 GIF");
+    const scope2 = await page.evaluate((sel) => window.__e2e.find({ selector: "[data-slot=toggle-group-item][data-pressed]", within: sel })?.textContent, WORKSPACE);
     assert(scope2 === "队列中选中的 3 个", `处理范围：${scope2}`);
-    await ui.closeDialog(page);
+    await ui.nav(page, "batch", "视频队列");
     // 拖动把手排序（指针事件，系统拖放开启时 HTML5 拖放不可用）：第 1 行拖到第 3 行下方
     const names = async () => (await ui.rows(page)).map((r) => r.name);
     const before = await names();
     await page.drag({ selector: "li[data-row-index] span[aria-label=拖动调整顺序]", nth: 0 }, { selector: "li[data-row-index]", nth: 2 }, 12);
     const after = await names();
     assert(JSON.stringify(after) === JSON.stringify([before[1], before[2], before[0]]), `拖动排序：${before} → ${after}`);
-    // 排序菜单：名称 Z→A
-    await page.click({ selector: "main button", text: "排序" });
-    await page.click({ selector: "[role=menuitem]", text: "名称 Z→A" });
+    // “更多 → 排序 → 名称 Z→A”
+    await ui.queueMore(page, "名称 Z→A", "排序");
     const sorted = await names();
     const expected = [...before].sort((a, b) => new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" }).compare(b, a));
     assert(JSON.stringify(sorted) === JSON.stringify(expected), `排序：${sorted}，应为 ${expected}`);
-    return `媒体信息：${infoText}…；命令已写入处理记录；右键菜单与工具栏菜单都打开了工具对话框；拖动排序 ${before.join(",")} → ${after.join(",")}；名称 Z→A：${sorted.join(",")}`;
+    return `媒体信息：${infoText}…；命令已写入处理记录；右键菜单与操作条菜单都切到工具箱并选中了工具；拖动排序 ${before.join(",")} → ${after.join(",")}；名称 Z→A：${sorted.join(",")}`;
   });
 
   await scenario(s, "提示音：自定义 wav（allow_sound_file + asset 协议播放）", async () => {
@@ -1201,7 +1410,7 @@ async function batchScenarios(s, media) {
     const rows = await ui.rows(page);
     const files = videoOutputs(out);
     assert(files.length === 2, `输出 ${files.length} 个：${files}`);
-    assert(rows[0].state.includes("2 个"), `行状态：${rows[0].state}`);
+    assert(rows[0].state === "完成" && rows[0].detail.includes("2 个输出"), `行状态：${rows[0].state}，细节：${rows[0].detail}`);
     for (const f of files) {
       const p = await probe(path.join(out, f));
       assert(p.width === 576 && p.height === 324, `${f} ${p.width}×${p.height}`);
@@ -1213,7 +1422,7 @@ async function batchScenarios(s, media) {
   await scenario(s, "配方：导出 → 重置 → 导入（按钮与拖放）", async () => {
     const file = w("recipe-export.json");
     await page.queueDialog(file);
-    await page.click({ selector: "aside header button", textIncludes: "导出" });
+    await page.click({ selector: "aside header button", label: "导出配方" });
     await page.waitFor("配方文件写出", () => true, [], { timeout: 1000 });
     const deadline = Date.now() + 10000;
     while (!fs.existsSync(file) && Date.now() < deadline) await sleep(200);
@@ -1222,22 +1431,26 @@ async function batchScenarios(s, media) {
     assert(json.modules?.["pipe.crop"]?.enabled && json.modules["pipe.crop"].mode === "percent", `导出内容：${JSON.stringify(json.modules?.["pipe.crop"])}`);
     assert(json.modules?.["pipe.text"]?.enabled && json.modules?.["pipe.bitrate"]?.enabled, "导出的配方缺少启用的文本 / 码率");
 
+    // 重置 / 导入整份替换配方后，配方面板只列出启用的步骤（停用的“加水印”等从列表消失）
     const reset = async () => {
-      await page.click({ selector: "aside header button", textIncludes: "重置" });
-      await page.click({ selector: "[role=alertdialog] button", text: "确定" });
-      await page.waitFor("重置后裁剪关闭", () => window.__e2e.state(window.__e2e.find({ selector: "[role=switch]", label: "裁剪", within: "aside" })) === "unchecked");
-      assert((await ui.switchState(page, "文本")) === "unchecked" && (await ui.switchState(page, "帧率")) === "checked", "重置后应只启用帧率");
+      await ui.resetRecipe(page);
+      await page.waitFor("重置后只列出帧率", () => [...document.querySelectorAll("aside [role=switch]")].map((x) => x.getAttribute("aria-label")).join() === "帧率");
+      assert((await ui.switchState(page, "帧率")) === "checked", "重置后应只启用帧率");
     };
     const restored = async (how) => {
       await page.waitFor(`${how}后裁剪开启`, () => window.__e2e.state(window.__e2e.find({ selector: "[role=switch]", label: "裁剪", within: "aside" })) === "checked");
       assert((await ui.switchState(page, "文本")) === "checked" && (await ui.switchState(page, "码率")) === "checked", `${how}后文本 / 码率未恢复`);
+      const listed = await ui.listedSteps(page);
+      const enabled = Object.entries(json.modules).filter(([, m]) => m.enabled).length;
+      assert(listed.length === enabled, `${how}后应只列出启用的 ${enabled} 个步骤：${listed}`);
+      for (const name of listed) assert((await ui.switchState(page, name)) === "checked", `${how}后列出了未启用的步骤 ${name}`);
       await ui.expandModule(page, "裁剪");
       const mode = await page.evaluate(() => window.__e2e.state(window.__e2e.find({ selector: "[data-slot=toggle-group-item]", text: "百分比", within: "aside" })));
       assert(mode === "on", `${how}后裁剪方式不是百分比`);
     };
     await reset();
     await page.queueDialog(file);
-    await page.click({ selector: "aside header button", textIncludes: "导入" });
+    await page.click({ selector: "aside header button", label: "导入配方" });
     await restored("按钮导入");
     await reset();
     await ui.dropOnQueue(page, [file]);
@@ -1252,9 +1465,9 @@ async function batchScenarios(s, media) {
     await ui.dropOnQueue(page, [media.b]);
     await ui.waitRows(page, "两个视频", (r) => r.length === 2);
     await ui.openTool(page, "无损转换");
-    await ui.choose(page, "队列中全部 2 个", "[role=dialog]");
+    await ui.choose(page, "队列中全部 2 个", WORKSPACE);
     const out = w("out", s.mode, "tool-remux");
-    await ui.setOutputDir(page, out, "[role=dialog]");
+    await ui.setOutputDir(page, out, WORKSPACE);
     const r = await ui.runTool(page);
     assert(r.done === 2 && r.failed === 0, `${r.summary}：${r.items.join(" | ")}`);
     const files = videoOutputs(out);
@@ -1263,15 +1476,14 @@ async function batchScenarios(s, media) {
       const p = await probe(path.join(out, f));
       assert(p.width === 640 && p.vcodec === "h264" && p.acodec, `${f}：${JSON.stringify(p)}`);
     }
-    await ui.closeDialog(page);
     return `${r.summary}；${files.join("、")}`;
   });
 
   await scenario(s, "工具：进度条（重编码）运行 + 工具预览", async () => {
     await ui.openTool(page, "进度条");
-    await ui.choose(page, "队列中全部 2 个", "[role=dialog]");
+    await ui.choose(page, "队列中全部 2 个", WORKSPACE);
     const out = w("out", s.mode, "tool-progress");
-    await ui.setOutputDir(page, out, "[role=dialog]");
+    await ui.setOutputDir(page, out, WORKSPACE);
     const r = await ui.runTool(page);
     assert(r.done === 2 && r.failed === 0, `${r.summary}：${r.items.join(" | ")}`);
     const files = videoOutputs(out);
@@ -1279,28 +1491,27 @@ async function batchScenarios(s, media) {
     const p = await probe(path.join(out, files[0]));
     assert(p.width === 640 && p.height === 360 && Math.abs(p.duration - 4) < 0.3, `${files[0]}：${JSON.stringify(p)}`);
     // 工具预览（preview: true）：在预览窗口播放
-    await page.click({ selector: "[role=dialog] button", text: "预览" });
+    await page.click({ selector: `${WORKSPACE} button`, text: "预览" });
     const v = await ui.checkVideo(page, "工具预览");
     await saveShot(s, "tool-preview");
     await ui.closeDialog(page); // 预览窗口
-    await ui.closeDialog(page); // 工具对话框
     return `${r.summary}；${files.join("、")}；预览 ${v}`;
   });
 
   await scenario(s, "工具：图转视频（文件夹输入）", async () => {
-    await ui.openTool(page, "图转视频");
-    // 拖一个图片文件到文件夹输入框：取其所在文件夹（对话框打开时不导入队列）
+    await ui.nav(page, "batch", "视频队列");
     const rowsBefore = (await ui.rows(page)).length;
-    await page.dropFiles([path.join(media.imageDir, "one.png")], { selector: "[role=dialog] input[aria-label=图片文件夹]" });
-    await page.waitFor("拖放设置图片文件夹", (d) => document.querySelector("[role=dialog] input[aria-label=图片文件夹]")?.value === d, [media.imageDir]);
-    assert((await ui.rows(page)).length === rowsBefore, "工具对话框打开时拖入的文件不应导入队列");
-    await page.click({ selector: "[role=dialog] button", label: "清除图片文件夹" });
-    await page.waitFor("清除图片文件夹", () => document.querySelector("[role=dialog] input[aria-label=图片文件夹]")?.value === "");
+    await ui.openTool(page, "图转视频");
+    // 拖一个图片文件到文件夹输入框：取其所在文件夹（工具箱页没有窗口级导入，不会进队列）
+    await page.dropFiles([path.join(media.imageDir, "one.png")], { selector: `${WORKSPACE} input[aria-label=图片文件夹]` });
+    await page.waitFor("拖放设置图片文件夹", (d) => document.querySelector("[data-tool-workspace] input[aria-label=图片文件夹]")?.value === d, [media.imageDir]);
+    await page.click({ selector: `${WORKSPACE} button`, label: "清除图片文件夹" });
+    await page.waitFor("清除图片文件夹", () => document.querySelector("[data-tool-workspace] input[aria-label=图片文件夹]")?.value === "");
     await page.queueDialog(media.imageDir);
-    await page.click({ selector: "[role=dialog] button", textIncludes: "图片文件夹" });
-    await page.waitFor("图片文件夹已设置", (d) => document.querySelector("[role=dialog] input[aria-label=图片文件夹]")?.value === d, [media.imageDir]);
+    await page.click({ selector: `${WORKSPACE} button`, textIncludes: "图片文件夹" });
+    await page.waitFor("图片文件夹已设置", (d) => document.querySelector("[data-tool-workspace] input[aria-label=图片文件夹]")?.value === d, [media.imageDir]);
     const out = w("out", s.mode, "tool-images");
-    await ui.setOutputDir(page, out, "[role=dialog]");
+    await ui.setOutputDir(page, out, WORKSPACE);
     const r = await ui.runTool(page);
     assert(r.done >= 1 && r.failed === 0, `${r.summary}：${r.items.join(" | ")}`);
     const files = videoOutputs(out);
@@ -1309,8 +1520,8 @@ async function batchScenarios(s, media) {
     assert(p.width > 0 && p.duration > 0.5, `${files[0]}：${JSON.stringify(p)}`);
     const start = await page.evaluate(() => window.__e2e.ipc.filter((x) => x.cmd === "start_tool").pop()?.args?.request);
     assert(start?.folders?.images === media.imageDir && start.videos.length === 0, `start_tool 参数：${JSON.stringify(start).slice(0, 300)}`);
-    await ui.closeDialog(page);
     await ui.nav(page, "batch", "视频队列");
+    assert((await ui.rows(page)).length === rowsBefore, "拖到工具文件夹输入框的文件不应导入队列");
     return `${r.summary}；${files.join("、")}（${p.width}×${p.height}，${p.duration.toFixed(1)}s）`;
   });
 
@@ -1320,8 +1531,7 @@ async function batchScenarios(s, media) {
     await ui.settingsSwitch(page, "静音预览", true);
     await ui.nav(page, "batch", "视频队列");
     // 只留帧率，避免文本模块也画在底部
-    await page.click({ selector: "aside header button", textIncludes: "重置" });
-    await page.click({ selector: "[role=alertdialog] button", text: "确定" });
+    await ui.resetRecipe(page);
     await ui.clearQueue(page);
     await ui.dropOnQueue(page, [media.subbed]);
     const rows = await ui.waitRows(page, "带字幕的视频导入", (r) => r.length === 1 && r[0].badges.some((b) => b.text === "CC" && b.title?.startsWith("烧录字幕")));
@@ -1359,7 +1569,7 @@ async function batchScenarios(s, media) {
       await window.__TAURI_INTERNALS__.invoke("plugin:event|listen", { event: "import-progress", target: { kind: "Any" }, handler });
     });
     await page.queueDialog(dir);
-    await page.click({ selector: "main header button", textIncludes: "添加文件夹" });
+    await ui.queueAdd(page, "添加文件夹");
     const rows = await ui.waitRows(page, "12 个视频导入", (r) => r.length === 12 && r.every((x) => x.summary.includes("320×240")));
     const progress = await page.evaluate(() => window.__e2e.importProgress);
     assert(progress.length > 0 && progress.at(-1).done === 12 && progress.at(-1).total === 12, `import-progress：${JSON.stringify(progress)}`);
@@ -1393,27 +1603,30 @@ async function batchScenarios(s, media) {
   });
 
   await scenario(s, "取消：工具运行中停止；预览生成中关闭（cancel_preview）", async () => {
-    // 从队列工具栏的“工具”菜单打开（批量页面保持显示，可以看到行上的工具进度）
-    await page.click({ selector: "main button", text: "工具" });
-    await page.click({ selector: "[role=menuitem]", text: "进度条" });
-    await page.waitFor("进度条对话框", () => document.querySelector("[role=dialog] h2")?.textContent.includes("进度条"));
-    await ui.choose(page, "队列中全部 1 个", "[role=dialog]");
+    // 选中队列行，从操作条的“工具”菜单打开：切到工具箱并选中“进度条”
+    await page.click({ selector: "li[data-row-index] p[data-path]", nth: 0 });
+    await ui.menu(page, { selector: `${QUEUE} button`, text: "工具" }, "进度条");
+    await ui.waitView(page, "toolbox", "工具箱");
+    await ui.waitWorkspace(page, "进度条");
+    await ui.choose(page, "队列中全部 1 个", WORKSPACE);
     const out = w("out", s.mode, "tool-cancel");
-    await ui.setOutputDir(page, out, "[role=dialog]");
-    await page.click({ selector: "[role=dialog] button", text: "开始" });
-    await page.waitFor("工具开始处理", () => /处理中|\d+%/.test(document.querySelector("[role=dialog] ul li")?.innerText ?? ""), [], { timeout: 60000 });
-    const mid = await page.evaluate(() => document.querySelector("[role=dialog] ul li")?.innerText.replace(/\s+/g, " "));
-    // 队列行上同时显示工具进度
-    const rowTool = await page.waitFor("队列行显示工具进度", () => document.querySelector("li[data-row-index]")?.innerText.match(/进度条\s*\S*/)?.[0]);
-    await page.click({ selector: "[role=dialog] button", text: "停止" });
-    const summary = await page.waitFor("工具停止", () => [...document.querySelectorAll("[role=dialog] span")].map((x) => x.textContent.trim()).find((t) => t.startsWith("上次：")), [], { timeout: 30000 });
+    await ui.setOutputDir(page, out, WORKSPACE);
+    await page.click({ selector: `${WORKSPACE} button`, text: "开始" });
+    await page.waitFor("工具开始处理", () => /处理中|d+%/.test(document.querySelector("[data-tool-workspace] ul li")?.innerText ?? ""), [], { timeout: 60000 });
+    const mid = await page.evaluate(() => document.querySelector("[data-tool-workspace] ul li")?.innerText.replace(/s+/g, " "));
+    // 切到批量处理页：工具不中断，队列行上同时显示工具进度；再回到工具箱（仍选中进度条）停止
+    await ui.nav(page, "batch", "视频队列");
+    const rowTool = await page.waitFor("队列行显示工具进度", () => document.querySelector("li[data-row-index]")?.innerText.match(/进度条s*S*/)?.[0]);
+    await ui.nav(page, "toolbox", "工具箱");
+    await ui.waitWorkspace(page, "进度条");
+    await page.click({ selector: `${WORKSPACE} button`, text: "停止" });
+    const summary = await page.waitFor("工具停止", () => [...document.querySelectorAll("[data-tool-workspace] span")].map((x) => x.textContent.trim()).find((t) => t.startsWith("上次：")), [], { timeout: 30000 });
     assert(/取消 1/.test(summary), `工具汇总：${summary}`);
     await sleep(1000);
     assert(listFiles(out).length === 0, `工具取消后输出目录残留：${listFiles(out)}`);
-    await ui.closeDialog(page);
     // 预览：开始生成后马上关闭窗口
     await ui.nav(page, "batch", "视频队列");
-    await page.click({ selector: "aside footer button", textIncludes: "生成预览" });
+    await page.click({ selector: `${STAGE} button`, textIncludes: "生成预览" });
     await page.waitFor("预览窗口", () => !!document.querySelector("[role=dialog]"));
     await ui.closeDialog(page);
     await sleep(500);
@@ -1445,7 +1658,7 @@ async function persistenceScenarios(s, media) {
     await ui.waitRows(page, "extra 导入", (r) => r.some((x) => x.name === "extra.mp4"));
     // 深色主题（重启后检查首帧就是深色，没有白屏、先浅后深）
     if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== "dark") {
-      await page.click({ selector: "nav button", label: "切换到深色" });
+      await page.click({ selector: "button", label: "切换到深色" });
     }
     s.theme = "dark";
     // 像用户拖动一样移动、缩放窗口（物理像素），重启后应恢复
@@ -1961,7 +2174,7 @@ async function runMode(mode, media) {
   if (mode === "prod") await persistenceScenarios(s, media);
   await saveShot(s, "final");
   await s.stop({ graceful: true });
-  if (mode === "prod") await ffmpegDownloadScenarios(exe, media);
+  if (mode === "prod" && !SKIP?.test("ffmpeg")) await ffmpegDownloadScenarios(exe, media);
 }
 
 function printReport() {

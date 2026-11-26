@@ -17,6 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { AssetSource, Range } from "@/lib/backend";
 import { useSelectedVideo } from "@/state/selection";
+import { asset, join, range } from "./summary";
 import { defineModule, type ModuleFormProps } from "./types";
 
 export type PipBackground = "video" | "asset";
@@ -335,4 +336,11 @@ export default defineModule<PipParams>({
     keyBlend: 0.05,
   },
   Form: PipForm,
+  summary: (p) =>
+    join(
+      p.canvasEnabled && `${p.canvasWidth}×${p.canvasHeight}`,
+      p.background === "video" ? "自身作背景" : `背景 ${asset(p.asset)}`,
+      p.layout === "centered" ? `前景 ${range(p.size, "%")}` : "自定义区域",
+      p.keyEnabled && "抠像",
+    ),
 });

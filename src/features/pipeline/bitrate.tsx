@@ -4,6 +4,7 @@ import ParamField from "@/components/ParamField";
 import RangeInput from "@/components/RangeInput";
 import ChoiceGroup from "@/components/ChoiceGroup";
 import type { Range } from "@/lib/backend";
+import { range } from "./summary";
 import { defineModule, type ModuleFormProps } from "./types";
 
 export type BitrateMode = "multiplier" | "fixed";
@@ -68,4 +69,5 @@ export default defineModule<BitrateParams>({
     kbps: { min: 3000, max: 3000 },
   },
   Form: BitrateForm,
+  summary: (p) => (p.mode === "multiplier" ? `源码率的 ${range(p.multiplier, " 倍")}` : range(p.kbps, " kbps")),
 });

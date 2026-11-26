@@ -131,21 +131,22 @@ let outputs = done_outputs(&c, "t1");                            // 最终输出
 同时断言失败 / 取消后输出目录与临时目录里没有残留（`all_files`）。文件夹输入用 `start_tool(.., &folders, &c)` 传入。
 
 **前端表单**：规则与流水线模块相同（只用 shadcn/ui 与通用控件，见 [batch.md](batch.md) 的控件表；表单通过 `onChange(局部参数)` 提交）。
-表单区宽约 300px。文件夹输入、处理范围（队列中选中 / 全部）、输出位置、开始 / 停止、逐项进度与处理记录都由工具对话框
-（`views/tools/ToolDialog.tsx`）统一提供，工具只写参数表单。参数自动记在本机（localStorage），对话框里可“恢复默认”。
+表单区宽约 300px。文件夹输入、处理范围（队列中选中 / 全部）、输出位置、开始 / 停止、逐项进度与处理记录都由工具工作区
+（`views/tools/ToolWorkspace.tsx`，工具箱页右栏）统一提供，工具只写参数表单。参数自动记在本机（localStorage），工作区里可“恢复默认”。
 文件夹输入框与输出位置可以拖入文件夹（拖入文件取其所在文件夹）；运行中每个视频的状态与进度也显示在批量队列对应的行上。
 每个 `<工具>.tsx` 是单独按需加载的代码块（`features/tools/index.ts` 用 `import.meta.glob`）：组件里用 `useToolDef(id)`，
 别处用 `loadToolDef(id)`；工具文件的写法不变（`defineTool({ id, defaults, inputs, Form, preview? })`）。
 
 **工具预览**：一进一出、处理队列视频、几秒片段就能看出效果的工具，后端实现 `fn supports_preview(&self) -> bool { true }`，
-前端 `defineTool` 加 `preview: true`（`cargo test` 的 `recipe_defaults` 检查两边一致）。对话框底栏出现“预览”按钮：
+前端 `defineTool` 加 `preview: true`（`cargo test` 的 `recipe_defaults` 检查两边一致）。工作区底栏出现“预览”按钮：
 框架把当前视频的一段（默认 5 秒、可在预览窗口调整起点 / 时长）截成低清片段（高度 ≤ 480），作为唯一输入用工具自己的 `run`
 处理（同一个调度器、同样的取消与临时目录清理），取第一个视频输出在预览窗口播放（`tools::preview::render_tool_preview`，
 命令 `render_tool_preview`，与流水线预览共用取消、进度事件与预览目录）。按时间点写的参数以片段的时间为准。
 已开启：运镜、进度条、定格播放、定帧动画、插帧、去黑边、镜像重组、转场重组。
 
-**工具自动获得的入口**：工具箱卡片；处理队列视频的工具（`inputs.videos`）在 registry 标记为 `done` 后，还会出现在队列工具栏的
-“工具”菜单和队列行右键菜单的“独立工具”子菜单里（打开时处理范围为选中的视频）。
+**工具自动获得的入口**：工具箱页（左栏分类、中栏带搜索的工具列表、右栏工作区；正在运行的工具在列表项上显示转圈，切换工具不会中断运行）；
+处理队列视频的工具（`inputs.videos`）在 registry 标记为 `done` 后，还会出现在批量处理页队列选中操作条的
+“工具”菜单和队列行右键菜单的“独立工具”子菜单里（点击后跳到工具箱页并选中该工具，处理范围默认为选中的视频，没有选中时为全部）。
 
 ## 独立工具框架的实现说明
 
@@ -155,7 +156,7 @@ let outputs = done_outputs(&c, "t1");                            // 最终输出
   `run` / `run_with_stall_timeout` 的行为不变。
 - **修订**：默认码率改为“每像素码率 + 质量下限”（见 [batch.md](batch.md) 的“基础架构的实现说明”）并用于工具与批量处理；`EncodeBasis` / `run_encode_from`；
   `PlanRequest::seed`（规划阶段随机）；`tools/common/` 与 `features/tools/shared/`；工具预览；黑边精确检测；SAR 统一；
-  队列行显示工具进度、对话框拖入文件夹；工具表单按需加载。
+  队列行显示工具进度、工作区拖入文件夹；工具表单按需加载。
 - **共享改动**：`jobs::output::folder_relative` 改为公开；`fsutil::move_file`（跨分区时复制后删除）；`components/OutputPicker.tsx`
-  从 BatchView 中提取出来供工具对话框复用；`LogPanel` 可传 `filter` / `className` / `bodyClassName`；
+  从 BatchView 中提取出来供工具工作区复用；`LogPanel` 可传 `filter` / `className` / `bodyClassName`；
   `scripts/dump-recipe-defaults.mjs tools` 输出工具声明。

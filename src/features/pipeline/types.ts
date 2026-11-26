@@ -17,6 +17,9 @@ export interface PipelineModuleDef<P extends ModuleParams = ModuleParams> {
   defaults: P;
   /** 参数表单；占位模块为 null */
   Form: ComponentType<ModuleFormProps<P>> | null;
+  /** 当前参数的一句话摘要（配方面板的模块行显示，尽量不超过 24 个汉字宽）；
+   * 没有时显示 registry.ts 里的静态说明。共用的格式化函数见 summary.ts */
+  summary?: (params: P) => string;
 }
 
 /** 定义模块；把具体参数类型擦除成通用类型，便于放进统一的注册表。 */

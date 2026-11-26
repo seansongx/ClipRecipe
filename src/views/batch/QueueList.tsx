@@ -56,10 +56,48 @@ const STATE_TONE: Record<QueueItem["state"], string> = {
   cancelled: "text-muted-foreground",
 };
 
-// 行内按钮只在悬停该行（或键盘聚焦）时出现
-const rowButton = "opacity-0 focus-visible:opacity-100 group-hover:opacity-100";
+// 行内按钮浮在行右侧，只在悬停该行（或列表有键盘焦点且该行是当前行）时出现
+const rowButtons =
+  "pointer-events-none absolute top-1 right-1 flex rounded-md bg-muted opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-data-active:group-focus-visible/list:pointer-events-auto group-data-active:group-focus-visible/list:opacity-100";
 
 const rowDomId = (id: string) => `queue-row-${id}`;
+
+export type StatusFilter = "all" | "pending" | "done" | "failed";
+
+/** 状态筛选：完成 = done；失败 = failed + cancelled；待处理 = 其余。 */
+export function matchesFilter(item: QueueItem, filter: StatusFilter): boolean {
+  switch (filter) {
+    case "all":
+      return true;
+    case "done":
+      return item.state === "done";
+    case "failed":
+      return item.state === "failed" || item.state === "cancelled";
+    case "pending":
+      return item.state !== "done" && item.state !== "failed" && item.state !== "cancelled";
+  }
+}
+
+const EMPTY_FILTER_TEXT: Record<StatusFilter, string> = {
+  all: "",
+  pending: "没有待处理的视频",
+  done: "没有已完成的视频",
+  failed: "没有失败的视频",
+};
+
+/** 连续选择（Shift）：筛选时只在可见行里选，不把被隐藏的行选进去。 */
+function selectRange(visible: QueueItem[], id: string, filtered: boolean) {
+  const queue = useQueue.getState();
+  if (!filtered) {
+    queue.select(id, "range");
+    return;
+  }
+  const to = visible.findIndex((i) => i.id === id);
+  if (to < 0) return;
+  const from = visible.findIndex((i) => i.id === (queue.anchor ?? id));
+  const [a, b] = from < 0 ? [to, to] : [Math.min(from, to), Math.max(from, to)];
+  useQueue.setState({ selected: new Set(visible.slice(a, b + 1).map((i) => i.id)) });
+}
 
 function mediaSummary(item: QueueItem): string {
   const info = item.info;
@@ -158,18 +196,20 @@ function OutputLine({ item }: { item: QueueItem }) {
   );
 }
 
-function stateText(item: QueueItem): string {
-  let text = STATE_LABEL[item.state];
+/** 状态文字：label 显示在文件名同一行右侧，detail（轮次、速度、输出数）放在媒体信息下一行。 */
+function stateText(item: QueueItem): { label: string; detail: string } {
+  let label = STATE_LABEL[item.state];
+  const detail: string[] = [];
   if (item.state === "running") {
-    text += ` ${item.percent.toFixed(0)}%`;
-    if (item.rounds > 1 && item.round > 0) text += ` · 第 ${item.round}/${item.rounds} 次`;
-    if (item.speed > 0) text += ` · ${item.speed.toFixed(1)}x`;
+    label += ` ${item.percent.toFixed(0)}%`;
+    if (item.rounds > 1 && item.round > 0) detail.push(`第 ${item.round}/${item.rounds} 次`);
+    if (item.speed > 0) detail.push(`${item.speed.toFixed(1)}x`);
   }
-  if (item.state === "done" && item.outputs.length > 1) text += ` · ${item.outputs.length} 个`;
+  if (item.state === "done" && item.outputs.length > 1) detail.push(`${item.outputs.length} 个输出`);
   if ((item.state === "failed" || item.state === "cancelled") && item.outputs.length > 0) {
-    text += `（已输出 ${item.outputs.length} 个）`;
+    detail.push(`已输出 ${item.outputs.length} 个`);
   }
-  return text;
+  return { label, detail: detail.join(" · ") };
 }
 
 function Row({
@@ -181,6 +221,7 @@ function Row({
   onRowClick,
   onGripDown,
   onShowInfo,
+  draggable,
 }: {
   item: QueueItem;
   index: number;
@@ -191,10 +232,13 @@ function Row({
   onRowClick: (e: ReactMouseEvent, item: QueueItem) => void;
   onGripDown: (e: ReactPointerEvent, id: string) => void;
   onShowInfo: (item: QueueItem) => void;
+  /** 拖动排序只在未筛选时可用 */
+  draggable: boolean;
 }) {
   const { select, cancel } = useQueue.getState();
   const keys = useShortcutLabels();
   const isActive = item.state === "running" || item.state === "waiting";
+  const status = stateText(item);
   return (
     <ContextMenu>
       <ContextMenuTrigger
@@ -212,7 +256,7 @@ function Row({
             }}
             onDoubleClick={() => usePreview.getState().playSource(item)}
             className={cn(
-              "group relative flex items-start gap-2 py-1.5 pr-2 pl-1",
+              "group relative flex items-start gap-1.5 py-1.5 pr-2 pl-1",
               selected
                 ? "bg-primary/15 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-primary"
                 : "hover:bg-muted/60",
@@ -226,16 +270,18 @@ function Row({
             className={cn("pointer-events-none absolute inset-x-0 h-0.5 bg-primary", dropMark === "before" ? "-top-px" : "-bottom-px")}
           />
         )}
-        <Hint label="拖动调整顺序">
-          <span
-            aria-label="拖动调整顺序"
-            onPointerDown={(e) => onGripDown(e, item.id)}
-            onClick={(e) => e.stopPropagation()}
-            className="mt-0.5 cursor-grab touch-none text-muted-foreground opacity-40 hover:opacity-100 active:cursor-grabbing"
-          >
-            <GripVertical className="size-4" />
-          </span>
-        </Hint>
+        {draggable && (
+          <Hint label="拖动调整顺序">
+            <span
+              aria-label="拖动调整顺序"
+              onPointerDown={(e) => onGripDown(e, item.id)}
+              onClick={(e) => e.stopPropagation()}
+              className="mt-0.5 cursor-grab touch-none text-muted-foreground opacity-40 hover:opacity-100 active:cursor-grabbing"
+            >
+              <GripVertical className="size-4" />
+            </span>
+          </Hint>
+        )}
         <Checkbox
           checked={selected}
           tabIndex={-1}
@@ -245,11 +291,11 @@ function Row({
           aria-label={`选择 ${item.name}`}
           className="mt-0.5"
         />
-        <span className="mt-px w-6 text-right text-xs text-muted-foreground tabular-nums">{index + 1}</span>
+        <span className="mt-px w-5 shrink-0 text-right text-xs text-muted-foreground tabular-nums">{index + 1}</span>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <Hint label={item.path} side="bottom" align="start">
-              <p className="truncate" data-path={item.path}>
+              <p className="min-w-0 flex-1 truncate" data-path={item.path}>
                 {item.name}
               </p>
             </Hint>
@@ -259,10 +305,12 @@ function Row({
               <StreamBadge title="文件内带字幕轨">CC</StreamBadge>
             )}
             {!item.cover && item.info?.hasCover && <StreamBadge title="文件内带封面">FC</StreamBadge>}
+            <span className={cn("shrink-0 text-xs tabular-nums", STATE_TONE[item.state])}>{status.label}</span>
           </div>
           <p className={cn("truncate text-xs", item.probeError ? "text-destructive select-text" : "text-muted-foreground")}>
             {mediaSummary(item)}
           </p>
+          {status.detail && <p className="truncate text-xs text-muted-foreground">{status.detail}</p>}
           {(item.state === "running" || item.state === "done") && (
             <Progress value={Math.max(0, Math.min(100, item.percent))} className="mt-1" />
           )}
@@ -272,8 +320,7 @@ function Row({
           <OutputLine item={item} />
           <ToolRowProgress queueId={item.id} path={item.path} />
         </div>
-        <span className={cn("mt-px shrink-0 text-xs tabular-nums", STATE_TONE[item.state])}>{stateText(item)}</span>
-        <div className="-my-0.5 flex shrink-0" onDoubleClick={(e) => e.stopPropagation()}>
+        <div className={rowButtons} onDoubleClick={(e) => e.stopPropagation()}>
           <Hint label="播放">
             <Button
               variant="ghost"
@@ -284,7 +331,6 @@ function Row({
                 e.stopPropagation();
                 usePreview.getState().playSource(item);
               }}
-              className={rowButton}
             >
               <Play />
             </Button>
@@ -299,7 +345,6 @@ function Row({
                 e.stopPropagation();
                 onShowInfo(item);
               }}
-              className={rowButton}
             >
               <Info />
             </Button>
@@ -315,7 +360,6 @@ function Row({
                 if (isActive) void cancel(item.id);
                 else requestRemove({ kind: "ids", ids: [item.id] });
               }}
-              className={rowButton}
             >
               <X />
             </Button>
@@ -402,10 +446,9 @@ function useDragReorder(container: RefObject<HTMLDivElement | null>) {
  * 空格切换选中，播放、全选、移除所选按 lib/shortcuts.ts。点击：单选；主修饰键加选；Shift 连续选择。
  * 主修饰键：macOS 是 ⌘，其余是 Ctrl（lib/platform.ts）。
  */
-function useListKeyboard(list: RefObject<HTMLUListElement | null>) {
-  const items = useQueue((s) => s.items);
+function useListKeyboard(list: RefObject<HTMLUListElement | null>, visible: QueueItem[], filtered: boolean) {
   const [activeId, setActiveId] = useState<string | null>(null);
-  const active = items.some((i) => i.id === activeId) ? activeId : null;
+  const active = visible.some((i) => i.id === activeId) ? activeId : null;
 
   useEffect(() => {
     if (active) document.getElementById(rowDomId(active))?.scrollIntoView({ block: "nearest" });
@@ -413,7 +456,7 @@ function useListKeyboard(list: RefObject<HTMLUListElement | null>) {
 
   const onRowClick = (e: ReactMouseEvent, item: QueueItem) => {
     const { select } = useQueue.getState();
-    if (e.shiftKey) select(item.id, "range");
+    if (e.shiftKey) selectRange(visible, item.id, filtered);
     else select(item.id, isModKey(e) ? "toggle" : "single");
     setActiveId(item.id);
     list.current?.focus({ preventScroll: true });
@@ -422,7 +465,7 @@ function useListKeyboard(list: RefObject<HTMLUListElement | null>) {
   const onKeyDown = (e: ReactKeyboardEvent<HTMLUListElement>) => {
     if (e.target !== e.currentTarget) return;
     const queue = useQueue.getState();
-    const all = queue.items;
+    const all = visible;
     if (all.length === 0) return;
     const mod = isModKey(e);
     const index = Math.max(0, all.findIndex((i) => i.id === active));
@@ -430,7 +473,7 @@ function useListKeyboard(list: RefObject<HTMLUListElement | null>) {
       const target = all[Math.max(0, Math.min(all.length - 1, next))];
       if (!target) return;
       setActiveId(target.id);
-      if (e.shiftKey) queue.select(target.id, "range");
+      if (e.shiftKey) selectRange(all, target.id, filtered);
       else if (!mod) queue.select(target.id, "single");
     };
     const current = all[index];
@@ -448,7 +491,8 @@ function useListKeyboard(list: RefObject<HTMLUListElement | null>) {
       return;
     }
     if (matchShortcut(native, "selectAll")) {
-      queue.selectAll();
+      if (filtered) useQueue.setState({ selected: new Set(all.map((i) => i.id)) });
+      else queue.selectAll();
       e.preventDefault();
       return;
     }
@@ -485,22 +529,24 @@ function useListKeyboard(list: RefObject<HTMLUListElement | null>) {
 
   const onFocus = () => {
     if (active) return;
-    const { items: all, selected } = useQueue.getState();
-    const first = all.find((i) => selected.has(i.id)) ?? all[0];
+    const { selected } = useQueue.getState();
+    const first = visible.find((i) => selected.has(i.id)) ?? visible[0];
     if (first) setActiveId(first.id);
   };
 
   return { active, onRowClick, onKeyDown, onFocus };
 }
 
-export default function QueueList({ hovering }: { hovering: boolean }) {
+export default function QueueList({ hovering, filter = "all" }: { hovering: boolean; filter?: StatusFilter }) {
   const items = useQueue((s) => s.items);
   const selected = useQueue((s) => s.selected);
   const importing = useQueue((s) => s.importing);
   const container = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLUListElement>(null);
+  const filtered = filter !== "all";
+  const visible = filtered ? items.filter((i) => matchesFilter(i, filter)) : items;
   const { dragId, drop, onGripDown } = useDragReorder(container);
-  const { active, onRowClick, onKeyDown, onFocus } = useListKeyboard(list);
+  const { active, onRowClick, onKeyDown, onFocus } = useListKeyboard(list, visible, filtered);
   const [infoItem, setInfoItem] = useState<QueueItem | null>(null);
   const keys = useShortcutLabels();
 
@@ -535,6 +581,8 @@ export default function QueueList({ hovering }: { hovering: boolean }) {
             </div>
           </div>
         </div>
+      ) : visible.length === 0 ? (
+        <p className="px-3 py-4 text-xs text-muted-foreground">{EMPTY_FILTER_TEXT[filter]}</p>
       ) : (
         <ScrollArea ref={container} className="min-h-0 flex-1">
           <ul
@@ -548,11 +596,13 @@ export default function QueueList({ hovering }: { hovering: boolean }) {
             onFocus={onFocus}
             className="group/list divide-y outline-none"
           >
-            {items.map((item, index) => (
+            {items.map((item, index) =>
+              matchesFilter(item, filter) ? (
               <Row
                 key={item.id}
                 item={item}
                 index={index}
+                draggable={!filtered}
                 selected={selected.has(item.id)}
                 active={item.id === active}
                 dropMark={dragId && drop?.index === index && dragId !== item.id ? drop.mark : null}
@@ -560,7 +610,8 @@ export default function QueueList({ hovering }: { hovering: boolean }) {
                 onGripDown={onGripDown}
                 onShowInfo={setInfoItem}
               />
-            ))}
+              ) : null,
+            )}
           </ul>
         </ScrollArea>
       )}

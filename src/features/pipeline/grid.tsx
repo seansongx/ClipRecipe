@@ -5,6 +5,7 @@ import RangeInput from "@/components/RangeInput";
 import ChoiceGroup from "@/components/ChoiceGroup";
 import { Switch } from "@/components/ui/switch";
 import type { Range } from "@/lib/backend";
+import { join, range } from "./summary";
 import { defineModule, type ModuleFormProps } from "./types";
 
 export type GridDirection = "auto" | "horizontal" | "vertical";
@@ -78,4 +79,14 @@ export default defineModule<GridParams>({
     blur: { min: 20, max: 20 },
   },
   Form: GridForm,
+  summary: (p) => {
+    // 与表单一致：4 宫格没有方向，只有 3 / 6 / 9 宫格能两端虚化
+    const hasDirection = p.count === 2 || p.count === 3 || p.count === 6 || p.count === 9;
+    const canBlurEnds = p.count === 3 || p.count === 6 || p.count === 9;
+    return join(
+      `${p.count} 宫格`,
+      hasDirection && p.direction !== "auto" && (p.direction === "vertical" ? "竖排" : "横排"),
+      canBlurEnds && p.blurEnds && `两端虚化 ${range(p.blur)}`,
+    );
+  },
 });

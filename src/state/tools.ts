@@ -17,6 +17,7 @@ import { cancelToolItem, startTool, stopTool, type ToolParams } from "../lib/too
 import { requireFfmpeg } from "./ffmpeg";
 import { useLog } from "./log";
 import { useQueue, type QueueItem } from "./queue";
+import { useView } from "./view";
 import { useRecipe } from "./recipe";
 import { useSettings } from "./settings";
 
@@ -51,12 +52,14 @@ interface ToolsState {
   params: Record<string, ToolParams>;
   folders: Record<string, Record<string, string>>;
   scope: VideoScope;
-  /** 当前打开的工具（对话框） */
+  /** 工具箱里当前选中的工具（工作区显示它） */
   openId: string | null;
   run: ToolRun | null;
 
+  /** 选中这个工具并切到工具箱页（批量处理页的工具菜单用）；不给 scope 时按队列有无选中项决定处理范围 */
   open: (id: string, scope?: VideoScope) => void;
-  close: () => void;
+  /** 只在工具箱里选中工具（不改页面、不改处理范围） */
+  select: (id: string) => void;
   setParams: (id: string, patch: Partial<ToolParams>) => void;
   resetParams: (id: string) => void;
   setFolder: (id: string, key: string, path: string) => void;
@@ -143,10 +146,14 @@ export const useTools = create<ToolsState>((set, get) => ({
   open: (id, scope) => {
     const fallback = useQueue.getState().selected.size > 0 ? "selected" : "all";
     set({ openId: id, scope: scope ?? fallback });
-    // 对话框代码块加载的同时加载工具定义（失败时对话框会显示错误并可重试）
+    useView.getState().setView("toolbox");
+    // 工作区挂载前就开始加载工具定义（失败时工作区会显示错误并可重试）
     loadToolDef(id).catch(() => {});
   },
-  close: () => set({ openId: null }),
+  select: (id) => {
+    set({ openId: id });
+    loadToolDef(id).catch(() => {});
+  },
 
   setParams: (id, patch) => {
     const params = { ...get().params, [id]: { ...(get().params[id] ?? toolDefaults(id)), ...patch } };
@@ -172,7 +179,7 @@ export const useTools = create<ToolsState>((set, get) => ({
     const name = toolName(openId);
     let def = getToolDef(openId);
     if (!def) {
-      // 对话框在定义加载完成前不会启用“开始”；这里只是兜底
+      // 工作区在定义加载完成前不会启用“开始”；这里只是兜底
       try {
         def = await loadToolDef(openId);
       } catch (e) {

@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { Range } from "@/lib/backend";
+import { join, range } from "./summary";
 import { defineModule, type ModuleFormProps } from "./types";
 
 export type ResolutionMode = "standard" | "custom";
@@ -220,4 +221,11 @@ export default defineModule<ResolutionParams>({
     reflection: false,
   },
   Form: ResolutionForm,
+  summary: (p) => {
+    if (p.mode === "standard") return join(`${p.standardHeight}p`, "宽按比例");
+    const size = `${p.width}×${p.height}`;
+    if (p.scaleMode === "stretch") return join(size, "拉伸");
+    if (p.fill === "black") return join(size, "黑边", p.reflection && "倒影");
+    return join(size, p.blurStrength.max === 0 ? "画面背景" : `背景虚化 ${range(p.blurStrength)}`);
+  },
 });

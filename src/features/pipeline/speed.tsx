@@ -6,6 +6,7 @@ import RangeInput from "@/components/RangeInput";
 import ChoiceGroup from "@/components/ChoiceGroup";
 import { Switch } from "@/components/ui/switch";
 import type { Range } from "@/lib/backend";
+import { join, range } from "./summary";
 import { defineModule, type ModuleFormProps } from "./types";
 
 export type SpeedMode = "fixed" | "segmented";
@@ -130,4 +131,11 @@ export default defineModule<SpeedParams>({
     changePitch: false,
   },
   Form: SpeedForm,
+  summary: (p) =>
+    join(
+      p.mode === "fixed"
+        ? range(p.rate, " 倍")
+        : `${range(p.segmentCount, " 段")} ${range(p.segmentRate, " 倍")}${p.shuffle ? "" : " 渐快"}`,
+      p.changePitch && "变调",
+    ),
 });

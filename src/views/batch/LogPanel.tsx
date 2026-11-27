@@ -1,13 +1,15 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import Hint from "@/components/Hint";
+import { useCopied } from "@/lib/clipboard";
 import { formatTime } from "@/lib/format";
 import { cn, scrollViewport } from "@/lib/utils";
+import { copyLog } from "@/state/feedback";
 import { useLog, type LogEntry } from "@/state/log";
 
 const LEVEL_TONE = {
@@ -40,6 +42,7 @@ export default function LogPanel({
   const [showDebug, setShowDebug] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const debugId = useId();
+  const [copied, markCopied] = useCopied();
 
   const visible = useMemo(
     () => (showDebug ? entries : entries.filter((e) => e.level !== "debug")),
@@ -73,6 +76,18 @@ export default function LogPanel({
             显示命令行
           </Label>
         </div>
+        {/* 反馈问题时用：总是带上环境信息与命令行（不管“显示命令行”有没有勾） */}
+        <Hint label={copied ? "已复制" : "复制记录（含环境信息与命令行）"}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="复制记录"
+            onClick={() => void copyLog(entries).then((ok) => ok && markCopied())}
+            disabled={entries.length === 0}
+          >
+            {copied ? <Check /> : <Copy />}
+          </Button>
+        </Hint>
         <Hint label="清空记录">
           <Button
             variant="ghost"

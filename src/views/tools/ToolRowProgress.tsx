@@ -4,6 +4,7 @@
 
 import { Wrench } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import FailureNote from "@/components/FailureNote";
 import Hint from "@/components/Hint";
 import { cn } from "@/lib/utils";
 import { toolName, useTools, type ToolRunItem } from "@/state/tools";
@@ -40,7 +41,7 @@ export default function ToolRowProgress({ queueId, path }: { queueId: string; pa
         <Progress value={toolItemPercent(item)} className="mt-1" />
       )}
       {item.state === "failed" && item.error && (
-        <p className="mt-1 line-clamp-2 text-xs text-destructive select-text">{item.error}</p>
+        <FailureNote name={`${toolName(toolId)}：${item.label}`} error={item.error} taskId={item.id} tabIndex={-1} />
       )}
     </div>
   );

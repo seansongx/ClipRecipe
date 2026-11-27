@@ -1,0 +1,45 @@
+# 字段的 id（environment、error）被程序里的“反馈问题”用来预填内容，见 src/state/feedback.ts；改名要两边一起改。
+name: 问题反馈
+description: 程序出错、结果不对或用起来不正常
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        这里的内容是公开的。提交前请看一眼下面的文字，删掉不想公开的内容（例如文件路径里的名字）。
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 你做了什么操作，看到了什么，本来期望看到什么。
+      placeholder: |
+        1. 导入了一个 4K 的 mov 视频
+        2. 启用“分辨率”模块，选 1080p
+        3. 开始处理后任务失败 / 输出的视频没有声音
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境信息
+      description: 从程序里点“反馈问题”会自动填好；手动填写时请写上程序版本、操作系统和 FFmpeg 版本（设置 → 关于）。
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: 错误信息
+      description: 失败任务下面显示的红色文字。
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: 处理记录
+      description: 在“处理记录”面板点“复制记录”，或在失败的任务下点“复制错误信息”，然后粘贴到这里。
+      render: text
+  - type: textarea
+    id: source
+    attributes:
+      label: 源视频的情况
+      description: 格式、分辨率、帧率、时长、编码等（队列里右键 → 媒体信息）。只在某些视频上出现时尤其有用。

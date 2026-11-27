@@ -72,6 +72,12 @@ impl PipelineModule for DropFramesParams {
         }
         Ok(())
     }
+
+    /// 同步加速音频时时间轴被压缩，定位起点要按抽帧间隔换算，暂不支持；
+    /// 保持原时间轴时可以定位（丢掉的是哪几帧与正式输出可能错开，单看一帧没有区别）。
+    fn preview_seekable(&self) -> bool {
+        !self.sync_audio
+    }
 }
 
 #[cfg(test)]

@@ -52,6 +52,12 @@
 - **卡死保护**：`ffmpeg::run` 在 180 秒（`DEFAULT_STALL_TIMEOUT`）内输出没有任何进展时结束 ffmpeg，任务失败并提示“卡死”。
 - `ctx.is_preview()`：是否在构建预览（`pipe.preview` / 单模块预览）。只在预览里显示的辅助标记据此添加，正式输出里绝不能出现
   （例：去水印在预览里用 `drawbox` 标出区域，见 `remove_watermark.rs`；单元测试可用 `pipeline::testing::build_preview_with`）。
+- **预览定位**：预览要看的时间点不在开头时，主输入用输入端 `-ss` 直接定位过去（不从头解码），主视频 / 音频流开头把时间戳
+  加回定位起点，所以按时间 `t` 写的表达式（`enable=between(t,…)`、滚动位置等）不用管它；`ctx.add_input` 的素材自动加
+  `-itsoffset` 对齐到起点（循环素材从第一帧开始，相位与正式输出可能不同）。只有两类模块要处理：
+  - 把素材时间戳重排为从 0 开始的，用 `ctx.restart_pts_filter()` 代替手写 `setpts=PTS-STARTPTS`（例：`pip.rs`）；
+  - 按帧序号计算、或滤镜输出的时间戳从 0 开始的，用 `ctx.preview_seek()`（定位时返回起点秒数的占位写法，可直接写进表达式）
+    修正（例：`zoom.rs`）；修正不了的实现 `preview_seekable()` 返回 false，预览退回从头解码（例：抽帧同步加速音频时）。
 - **临时文件**：`ctx.temp_file("名字")` 返回本次构建临时目录（`<系统临时目录>/cliprecipe-build/<进程号>-<序号>/`，
   第一次调用时创建）下的一个路径，模块自己写入；`ctx.register_temp(路径)` 登记模块在别处创建的文件或目录。
   登记的一切由 `BuiltCommand::temp_files` 持有，在任务的这一轮（或这次预览、“查看命令”）结束时删除——成功、构建失败、
@@ -186,7 +192,8 @@ import RegionPicker, { PointPicker, type Rect, type Point } from "@/components/R
   `<输出目录>/<视频名>/第 r 次裂变/<文件名>.mp4`（视频名是去除后的源文件名，文件名是套用输出文件名格式后的结果，见下文“输出命名”）。进度事件带 `round` / `rounds`，`percent` 是全部轮次的总进度；
   完成事件的 `outputs` 列出全部输出。某一轮失败或取消时，已完成的轮次保留。
 - **预览**：`pipeline::build_preview` 与正式构建共用模块应用逻辑，只是输出改为 libx264 ultrafast 的低清片段
-  （默认高 480，`-ss`/`-t` 放在输出端，因此时间是输出时间轴）或单帧 jpg，不用硬件编码。文件写在
+  （默认高 480）或单帧 jpg，不用硬件编码；起点 / 取帧时间是输出时间轴上的秒数，不在开头时用输入端定位
+  （见上文“预览定位”，耗时与时间点无关），否则 `-ss` 放在输出端。文件写在
   `<系统临时目录>/cliprecipe-preview/<进程号>/`：换片段 / 关窗口时前端通知删除，目录最多保留 40 个文件，
   退出时整体删除，启动时清理其它进程超过一天的残留。新的预览会取消未完成的旧预览。
 - **本地媒体加载**：WebView 用 Tauri asset 协议（`convertFileSrc`）读取本地文件。配置中的静态范围为空，

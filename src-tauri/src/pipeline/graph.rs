@@ -148,6 +148,16 @@ impl FilterGraph {
         self.audio = None;
     }
 
+    /// 输出不带音频（之后不再设置新的音频时使用）：音频经过滤镜时同 [`Self::discard_audio`]；
+    /// 还是原样的输入流时直接不映射，不为它多加一条链。
+    pub fn drop_audio(&mut self) {
+        if self.audio.as_ref().is_some_and(|pad| pad.filtered) {
+            self.discard_audio();
+        } else {
+            self.audio = None;
+        }
+    }
+
     /// 追加一条完整的链：`[in1][in2]filters[out1][out2]`。标签不带方括号。
     pub fn chain(&mut self, inputs: &[&str], filters: &str, outputs: &[&str]) {
         let ins: String = inputs.iter().map(|l| format!("[{l}]")).collect();

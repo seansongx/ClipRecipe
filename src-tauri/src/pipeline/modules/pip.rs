@@ -302,7 +302,8 @@ impl PipelineModule for PipParams {
         };
         bg.push_str(",setsar=1");
         if asset.is_some() {
-            bg.push_str(",setpts=PTS-STARTPTS");
+            bg.push(',');
+            bg.push_str(&ctx.restart_pts_filter());
             if let Some(rate) = ctx.rate_text() {
                 bg.push_str(&format!(",fps={rate}"));
                 ctx.stream.vfr = false;

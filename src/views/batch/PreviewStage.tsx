@@ -17,8 +17,8 @@ import { useSelectedVideo } from "@/state/selection";
 import { useSettings } from "@/state/settings";
 import { stageKey, useStage, variantCount, type StageView } from "@/state/stage";
 
-/** 自动刷新的防抖（毫秒）。 */
-const DEBOUNCE_MS = 400;
+/** 自动刷新的防抖（毫秒）：渲染一帧只要一两百毫秒，这里只需挡住拖动滑块、连续输入时的中间值。 */
+const DEBOUNCE_MS = 150;
 
 const VIEWS: { value: StageView; label: string }[] = [
   { value: "source", label: "原片" },

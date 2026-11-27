@@ -39,7 +39,18 @@ pub trait PipelineModule {
     /// 把自己的效果加到构建上下文：追加滤镜、额外输入、编码参数，并更新 `ctx.stream`。
     /// 参数无效时返回中文错误信息（会显示给用户）。
     fn apply(&self, ctx: &mut BuildContext) -> Result<(), String>;
+
+    /// 预览时能否直接定位到要看的时间点（见 [`BuildContext::preview_seek`]）。
+    /// 效果取决于“从视频开头数起的帧序号”、又没有按定位起点修正的模块返回 false，
+    /// 此时预览退回到从头解码（结果仍然正确，只是时间点越靠后越慢）。
+    fn preview_seekable(&self) -> bool {
+        true
+    }
 }
+
+/// 预览定位起点（秒）在构建过程中的占位标记：起点要等模块都应用完才能确定（受去头尾影响），
+/// 构建结束时统一替换为数字（见 [`BuildContext::preview_seek`]）。
+const SEEK_MARKER: &str = "@@cliprecipe-seek@@";
 
 /// 全部模块 ID（顺序同 registry.ts）。
 pub const MODULE_IDS: [&str; 18] = [
@@ -152,6 +163,8 @@ pub struct BuildContext<'a> {
     /// 模块登记的临时文件（见 [`temp`]）
     temp: TempFiles,
     preview: bool,
+    /// 预览是否直接定位到要看的时间点（见 [`Self::preview_seek`]）
+    seek: bool,
     /// 烧录字幕的滤镜（见 [`steps::begin_subtitle`]）
     subtitle_filter: Option<String>,
     /// 源画面按方形像素显示的宽高（区域框选等“源视频像素”坐标以此为准）
@@ -187,6 +200,7 @@ impl<'a> BuildContext<'a> {
             probe_fn: None,
             temp: TempFiles::default(),
             preview: false,
+            seek: false,
             subtitle_filter: None,
             source_size: (width, height),
         }
@@ -202,6 +216,25 @@ impl<'a> BuildContext<'a> {
     /// 正式输出里绝不能出现。
     pub fn is_preview(&self) -> bool {
         self.preview
+    }
+
+    /// 预览直接定位到要看的时间点时，返回定位起点（输出时间轴上的秒数）在滤镜文本里的占位写法，
+    /// 可以直接写进表达式（如 `setpts=PTS+{起点}/TB`），构建结束时会换成数字；正式输出与从头解码的预览返回 None。
+    ///
+    /// 定位时主输入只从起点开始解码，但主视频流的时间戳已经加回起点，所以按时间 `t` 写的表达式不用管它；
+    /// 只有**按帧序号**计算、或会把时间戳重排为从 0 开始的模块需要据此修正（例：`zoom.rs`），
+    /// 修正不了的在 [`PipelineModule::preview_seekable`] 里返回 false。
+    pub fn preview_seek(&self) -> Option<&'static str> {
+        self.seek.then_some(SEEK_MARKER)
+    }
+
+    /// 把一条素材流的时间戳重排为“从视频开头开始”的滤镜：通常是 `setpts=PTS-STARTPTS`；
+    /// 预览定位时主视频流从定位起点开始，素材也要从那里开始，否则 FFmpeg 会先把素材从 0 处理到起点。
+    pub fn restart_pts_filter(&self) -> String {
+        match self.preview_seek() {
+            Some(seek) => format!("setpts=PTS-STARTPTS+{seek}/TB"),
+            None => "setpts=PTS-STARTPTS".to_owned(),
+        }
     }
 
     /// 本次构建临时目录下的一个文件路径（目录第一次调用时创建；不创建文件本身）。
@@ -280,7 +313,13 @@ impl<'a> BuildContext<'a> {
     }
 
     /// 添加一个额外输入，返回它的 FFmpeg 输入序号（主输入为 0）。
-    pub fn add_input(&mut self, args: Vec<String>, path: &Path) -> Result<usize, String> {
+    ///
+    /// 预览定位时（[`Self::preview_seek`]）素材的时间戳自动平移到定位起点（`-itsoffset`），与主视频流对齐；
+    /// 循环素材因此从第一帧开始播放，相位与正式输出可能不同。
+    pub fn add_input(&mut self, mut args: Vec<String>, path: &Path) -> Result<usize, String> {
+        if let Some(seek) = self.preview_seek() {
+            args.splice(0..0, ["-itsoffset".to_owned(), seek.to_owned()]);
+        }
         self.extra_inputs.push(InputSpec {
             args,
             path: path_arg(path)?,
@@ -510,11 +549,11 @@ fn apply_modules<'a>(ctx: &mut BuildContext<'a>, req: &BuildRequest<'a>) -> Resu
     Ok(())
 }
 
-/// 预览：缩小画面并生成输出参数。
+/// 预览：缩小画面并生成输出参数。返回（输出参数，预计时长，片段起点 / 取帧时间）。
 fn preview_args(
     ctx: &mut BuildContext,
     options: &PreviewOptions,
-) -> Result<(Vec<String>, f64), String> {
+) -> Result<(Vec<String>, f64, f64), String> {
     let max_height = options.max_height.max(16);
     if ctx.stream.height > max_height {
         ctx.graph.video(format!("scale=-2:{max_height}"));
@@ -560,7 +599,7 @@ fn preview_args(
                 fmt_num(length),
             ])
             .collect();
-            Ok((args, length))
+            Ok((args, length, start))
         }
         PreviewOutput::Frame { time } => {
             let time = if total > 0.0 {
@@ -568,15 +607,13 @@ fn preview_args(
             } else {
                 time.max(0.0)
             };
-            let args = vec![
-                "-ss".to_owned(),
-                fmt_num(time),
-                "-frames:v".to_owned(),
-                "1".to_owned(),
-                "-q:v".to_owned(),
-                "3".to_owned(),
-            ];
-            Ok((args, 0.0))
+            let mut args = Vec::new();
+            // 已定位到这一刻时，第一帧就是要的画面
+            if !ctx.seek {
+                args.extend(["-ss".to_owned(), fmt_num(time)]);
+            }
+            args.extend(["-frames:v", "1", "-q:v", "3"].map(str::to_owned));
+            Ok((args, 0.0, time))
         }
     }
 }
@@ -590,6 +627,9 @@ fn build_inner(
     }
     let mut ctx = BuildContext::new(req.info, req.settings, req.task_index);
     ctx.preview = preview.is_some();
+    if let Some(options) = preview {
+        begin_preview_seek(&mut ctx, req, options);
+    }
     // 出错时 ctx 随之丢弃，已登记的临时文件也一并删除
     steps::normalize_pixels(&mut ctx);
     let keep_hdr = steps::apply_hdr(&mut ctx);
@@ -799,13 +839,70 @@ fn head_args() -> Vec<String> {
     .collect()
 }
 
+/// 预览要看的时间点不在开头时，直接定位过去而不是从头解码（否则时间点越靠后越慢，几分钟处要等十几秒）：
+/// 主输入用输入端 `-ss` 定位（起点在 [`finish_preview_seek`] 里确定），主视频 / 音频流开头把时间戳加回起点，
+/// 之后的滤镜看到的时间与从头解码时一样。有模块不支持（[`PipelineModule::preview_seekable`]）时不定位。
+fn begin_preview_seek(ctx: &mut BuildContext, req: &BuildRequest, options: &PreviewOptions) {
+    let (wanted, frame) = match options.output {
+        PreviewOutput::Clip { start, .. } => (start, false),
+        PreviewOutput::Frame { time } => (time, true),
+    };
+    let seekable = ordered_modules(&req.recipe.modules)
+        .iter()
+        .filter(|m| m.enabled() && m.implemented())
+        .all(|m| m.preview_seekable());
+    // 写成 partial_cmp：NaN 也不定位
+    if wanted.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater) || !seekable {
+        return;
+    }
+    ctx.seek = true;
+    ctx.graph.video(format!("setpts=PTS+{SEEK_MARKER}/TB"));
+    // 单帧不带音频，不必为它加滤镜
+    if !frame {
+        ctx.graph.audio(format!("asetpts=PTS+{SEEK_MARKER}/TB"));
+    }
+}
+
+/// 定位起点确定后：替换占位标记，并把主输入的 `-ss` / `-t`（去头尾可能已经写了）推后 / 缩短 `start` 秒。
+fn finish_preview_seek(ctx: &mut BuildContext, start: f64) {
+    let text = fmt_num(start);
+    ctx.graph.replace_marker(SEEK_MARKER, &text);
+    for arg in ctx.extra_inputs.iter_mut().flat_map(|i| i.args.iter_mut()) {
+        if arg == SEEK_MARKER {
+            arg.clone_from(&text);
+        }
+    }
+    fn shift(args: &mut [String], flag: &str, by: f64, min: f64) -> bool {
+        let Some(i) = args.iter().rposition(|a| a == flag) else {
+            return false;
+        };
+        let Some(value) = args.get(i + 1).and_then(|v| v.parse::<f64>().ok()) else {
+            return false;
+        };
+        args[i + 1] = fmt_num((value + by).max(min));
+        true
+    }
+    let args = &mut ctx.main_input_args;
+    if !shift(args, "-ss", start, 0.0) {
+        args.splice(0..0, ["-ss".to_owned(), text]);
+    }
+    shift(args, "-t", -start, 0.01);
+}
+
 fn finish_preview(
     mut ctx: BuildContext,
     req: &BuildRequest,
     options: &PreviewOptions,
 ) -> Result<BuiltCommand, String> {
-    let (output_args, expected_duration) = preview_args(&mut ctx, options)?;
+    let (output_args, expected_duration, start) = preview_args(&mut ctx, options)?;
+    if ctx.seek {
+        finish_preview_seek(&mut ctx, start);
+    }
     let frame = matches!(options.output, PreviewOutput::Frame { .. });
+    if frame {
+        // 单帧不带音频：模块加过音频滤镜时（如抽帧的 atempo）要把那条链接走，否则 FFmpeg 报“滤镜输出未连接”
+        ctx.graph.drop_audio();
+    }
     let audio_kbps = aac_kbps(ctx.stream.audio_channels).min(128);
     let BuildContext {
         graph,
@@ -1118,21 +1215,40 @@ mod tests {
             &sample_info(),
             &Recipe::disabled(),
             PreviewOutput::Clip {
-                start: 2.0,
+                start: 0.0,
                 duration: 5.0,
             },
         );
         let args = built.args.join(" ");
         assert!(
             args.ends_with(
-                "-filter_complex [0:v:0]scale=-2:360[v0] -map [v0] -map 0:a:0 -c:a aac -b:a 128k \
-                 -c:v libx264 -preset ultrafast -crf 26 -pix_fmt yuv420p -ss 2 -t 5 \
+                "-nostats -i in.mp4 -filter_complex [0:v:0]scale=-2:360[v0] -map [v0] -map 0:a:0 \
+                 -c:a aac -b:a 128k -c:v libx264 -preset ultrafast -crf 26 -pix_fmt yuv420p -ss 0 -t 5 \
                  -movflags +faststart preview.mp4"
             ),
             "{args}"
         );
         assert_eq!(built.encoder, VideoEncoder::software(VideoCodec::H264));
         assert_eq!(built.expected_duration, 5.0);
+        // 起点不在开头：输入端定位，音视频时间戳加回起点（输出端的 -ss 把起点之前的丢掉，并让输出从 0 开始）
+        let seeked = preview_with(
+            &sample_info(),
+            &Recipe::disabled(),
+            PreviewOutput::Clip {
+                start: 2.0,
+                duration: 5.0,
+            },
+        );
+        let args = seeked.args.join(" ");
+        assert!(
+            args.ends_with(
+                "-nostats -ss 2 -i in.mp4 \
+                 -filter_complex [0:v:0]setpts=PTS+2/TB,scale=-2:360[v0];[0:a:0]asetpts=PTS+2/TB[a1] \
+                 -map [v0] -map [a1] -c:a aac -b:a 128k -c:v libx264 -preset ultrafast -crf 26 \
+                 -pix_fmt yuv420p -ss 2 -t 5 -movflags +faststart preview.mp4"
+            ),
+            "{args}"
+        );
         // 片段超出结尾时截短；起点超出时退回最后一段
         let tail = preview_with(
             &sample_info(),
@@ -1167,10 +1283,85 @@ mod tests {
         let args = built.args.join(" ");
         assert!(
             args.ends_with(
-                "-filter_complex [0:v:0]fps=30[v0] -map [v0] -an -ss 9.95 -frames:v 1 -q:v 3 preview.mp4"
+                "-nostats -ss 9.95 -i in.mp4 -filter_complex [0:v:0]setpts=PTS+9.95/TB,fps=30[v0] \
+                 -map [v0] -an -frames:v 1 -q:v 3 preview.mp4"
             ),
-            "不需要缩小，单帧不带音频：{args}"
+            "不需要缩小，单帧不带音频，直接定位到取帧时间：{args}"
         );
+        // 开头的一帧不需要定位
+        let first = preview_with(
+            &info,
+            &Recipe::default(),
+            PreviewOutput::Frame { time: 0.0 },
+        );
+        let args = first.args.join(" ");
+        assert!(
+            args.ends_with(
+                "-nostats -i in.mp4 -filter_complex [0:v:0]fps=30[v0] -map [v0] -an -ss 0 -frames:v 1 -q:v 3 preview.mp4"
+            ),
+            "{args}"
+        );
+    }
+
+    #[test]
+    fn preview_seek_follows_trim_and_modules() {
+        use crate::pipeline::modules::trim::TrimMode;
+        // 去头 1.5 秒、去尾 1 秒后的第 4 秒 = 源视频的 5.5 秒；剩下的 7.5 秒里还要读 3.5 秒
+        let mut recipe = Recipe::disabled();
+        recipe.modules.trim.enabled = true;
+        recipe.modules.trim.mode = TrimMode::HeadTail;
+        recipe.modules.trim.head = crate::model::Range::fixed(1.5);
+        recipe.modules.trim.tail = crate::model::Range::fixed(1.0);
+        // 动态缩放按帧序号计算，zoompan 的时间戳又从 0 开始：两处都按定位起点修正
+        recipe.modules.zoom.enabled = true;
+        let built = preview_with(&sample_info(), &recipe, PreviewOutput::Frame { time: 4.0 });
+        let args = built.args.join(" ");
+        assert!(args.contains("-ss 5.5 -t 3.5 -i in.mp4"), "{args}");
+        let fc = built.arg_after("-filter_complex").unwrap();
+        assert!(fc.starts_with("[0:v:0]setpts=PTS+4/TB,zoompan="), "{fc}");
+        assert!(fc.contains("cos(2*PI*(in+4*25)/100)"), "{fc}");
+        assert!(fc.contains(":fps=25,setpts=PTS+4/TB,"), "{fc}");
+        assert!(!args.contains(SEEK_MARKER), "{args}");
+        assert!(
+            args.ends_with("-an -frames:v 1 -q:v 3 preview.mp4"),
+            "{args}"
+        );
+
+        // 抽帧并同步加速音频时时间轴被压缩：不定位，从头解码
+        recipe.modules.drop_frames.enabled = true;
+        recipe.modules.drop_frames.sync_audio = true;
+        let slow = preview_with(&sample_info(), &recipe, PreviewOutput::Frame { time: 4.0 });
+        let args = slow.args.join(" ");
+        assert!(args.contains("-ss 1.5 -t 7.5 -i in.mp4"), "{args}");
+        assert!(!args.contains("setpts=PTS+4/TB"), "{args}");
+        // 单帧不带音频：抽帧加的 atempo 链接到 anullsink，不留未连接的输出
+        let fc = slow.arg_after("-filter_complex").unwrap();
+        assert!(fc.contains("atempo=") && fc.contains("]anullsink;"), "{fc}");
+        assert!(
+            args.ends_with("-an -ss 4 -frames:v 1 -q:v 3 preview.mp4"),
+            "{args}"
+        );
+    }
+
+    #[test]
+    fn preview_seek_aligns_extra_inputs() {
+        let info = sample_info();
+        let settings = Settings::default();
+        let mut ctx = BuildContext::new(&info, &settings, 0);
+        ctx.seek = true;
+        let input = ctx
+            .add_input(vec!["-loop".into(), "1".into()], Path::new("bg.png"))
+            .unwrap();
+        assert_eq!(input, 1);
+        ctx.graph.video(ctx.restart_pts_filter());
+        finish_preview_seek(&mut ctx, 12.5);
+        assert_eq!(ctx.main_input_args, ["-ss", "12.5"]);
+        assert_eq!(
+            ctx.extra_inputs[0].args,
+            ["-itsoffset", "12.5", "-loop", "1"]
+        );
+        let fc = ctx.graph.render().unwrap().filter_complex.unwrap();
+        assert_eq!(fc, "[0:v:0]setpts=PTS-STARTPTS+12.5/TB[v0]");
     }
 
     #[test]

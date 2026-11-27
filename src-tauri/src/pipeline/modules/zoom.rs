@@ -95,8 +95,13 @@ impl PipelineModule for ZoomParams {
             fmt_num(mid)
         } else {
             let frames = ctx.stream.fps * period;
+            // 预览定位时帧序号从定位起点数起：补上起点之前的帧数，缩放相位与从头解码一致
+            let index = match ctx.preview_seek() {
+                Some(seek) => format!("(in+{seek}*{})", fmt_num(ctx.stream.fps)),
+                None => "in".to_owned(),
+            };
             format!(
-                "{}-{}*cos(2*PI*in/{})",
+                "{}-{}*cos(2*PI*{index}/{})",
                 fmt_num(mid),
                 fmt_num(amp),
                 fmt_num(frames)
@@ -108,6 +113,10 @@ impl PipelineModule for ZoomParams {
             "zoompan=z={zoom}:x=iw/2-iw/zoom/2:y=ih/2-ih/zoom/2:d=1:s={ow}x{oh}:fps={}",
             ctx.rate_text().unwrap_or_else(|| "25".into())
         ));
+        // zoompan 输出的时间戳从 0 开始：预览定位时加回起点
+        if let Some(seek) = ctx.preview_seek() {
+            ctx.graph.video(format!("setpts=PTS+{seek}/TB"));
+        }
         ctx.stream.width = ow;
         ctx.stream.height = oh;
         Ok(())

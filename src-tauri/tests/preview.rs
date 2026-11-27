@@ -101,6 +101,36 @@ fn preview_clip_frame_and_source_frame() {
     assert!(frame.path.ends_with(".jpg"));
     assert_eq!((frame.width, frame.height), (640, 360));
 
+    // 取帧时间不在开头时直接定位过去：去头尾、动态缩放（按帧序号计算）一起开也能出图，结尾附近同样
+    let mut seeked = Recipe::disabled();
+    seeked.modules.trim.enabled = true;
+    seeked.modules.zoom.enabled = true;
+    for time in [1.5, 99.0] {
+        let late = render_preview(
+            &paths,
+            &spec(&input, seeked.clone(), PreviewOutput::Frame { time }),
+            &dir,
+            &CancelToken::new(),
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!((late.width, late.height), (640, 360));
+        assert_eq!(late.modules, ["pipe.trim", "pipe.zoom"]);
+        dir.release(Path::new(&late.path)).unwrap();
+    }
+    // 抽帧并同步加速音频：不能定位（从头解码），加了音频滤镜也照样能出单帧
+    seeked.modules.drop_frames.enabled = true;
+    let dropped = render_preview(
+        &paths,
+        &spec(&input, seeked, PreviewOutput::Frame { time: 1.0 }),
+        &dir,
+        &CancelToken::new(),
+        |_| {},
+    )
+    .unwrap();
+    assert!(dropped.modules.contains(&"pipe.drop-frames".to_owned()));
+    dir.release(Path::new(&dropped.path)).unwrap();
+
     // 源视频取帧：返回源尺寸
     let source = extract_frame(&paths, &input, None, 2.5, &dir, &CancelToken::new()).unwrap();
     assert_eq!((source.width, source.height), (1280, 720));

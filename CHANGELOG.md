@@ -4,7 +4,9 @@
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。发布流程见 [docs/RELEASING.md](docs/RELEASING.md)：
 发布时把版本标题里的“未发布”改为发布日期（`YYYY-MM-DD`），该小节的内容会成为 GitHub Release 的说明和程序内更新对话框里的更新说明。
 
-## [0.1.1] - 2026-11-26
+## [0.1.2] - 2026-11-26
+
+0.1.1 没有对外发布，它的改动都在这一版里。
 
 ### 新增
 
@@ -94,5 +96,5 @@
 - 正在处理视频或运行工具时关闭窗口或从托盘退出，会先询问是否停止并退出；正常退出时会结束仍在运行的 FFmpeg。
 - 安装包：Windows NSIS 安装包（简体中文 / 英文，安装到当前用户），Linux AppImage 与 deb。暂不提供 macOS 版本。
 
-[0.1.1]: https://github.com/seansongx/ClipRecipe/releases/tag/v0.1.1
+[0.1.2]: https://github.com/seansongx/ClipRecipe/releases/tag/v0.1.2
 [0.1.0]: https://github.com/seansongx/ClipRecipe/releases/tag/v0.1.0

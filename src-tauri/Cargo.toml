@@ -1,6 +1,6 @@
 [package]
 name = "cliprecipe"
-version = "0.1.1"
+version = "0.1.2"
 description = "开源的视频批量处理桌面工具"
 license = "MIT"
 edition = "2021"

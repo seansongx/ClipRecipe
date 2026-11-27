@@ -8,6 +8,8 @@
 //   npm run release:check -- v0.2.0        # 另外检查：tag 与版本一致、CHANGELOG 有该版本的小节且已写日期、
 //                                          # tauri.conf.json 里填了真正的 updater 公钥（发布流水线 release.yml 运行）
 //   node scripts/release.mjs notes 0.2.0   # 输出该版本的发布说明（CHANGELOG 小节 + 下载说明），供草稿 Release 使用
+//   node scripts/release.mjs update-notes 0.2.0
+//                                          # 只输出 CHANGELOG 小节（不带下载说明），作为 xiaofany.com 上的更新说明
 //
 // 只用 Node 自带模块，不联网。
 
@@ -26,6 +28,7 @@ const FILES = {
 /** 与 src-tauri/src/system.rs 的 UPDATER_PUBKEY_PLACEHOLDER 相同 */
 const PUBKEY_PLACEHOLDER = "REPLACE_WITH_UPDATER_PUBLIC_KEY (see docs/RELEASING.md)";
 const REPO_URL = "https://github.com/seansongx/ClipRecipe";
+const XIAOFANY_DL = "https://xiaofany.com/dl/cliprecipe";
 const SEMVER =/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 const read = (file) => fs.readFileSync(path.join(REPO, file), "utf8");
@@ -104,19 +107,25 @@ export function changelogSection(changelog, version) {
   return { heading: lines[start], body: lines.slice(start + 1, end).join("\n").trim() };
 }
 
-/** 草稿 Release 的说明：CHANGELOG 小节 + 固定的下载说明。 */
-export function releaseNotes(changelog, version) {
+/** CHANGELOG 小节的正文，相对链接改为指向该 tag 下的文件（Release 页面和程序的更新对话框里相对链接都无效）。 */
+export function updateNotes(changelog, version) {
   const section = changelogSection(changelog, version);
-  // Release 页面上相对链接无效：改为指向该 tag 下的文件
-  const body = (section?.body || `请查看 CHANGELOG.md 中 ${version} 的说明。`).replace(
+  return (section?.body || `请查看 CHANGELOG.md 中 ${version} 的说明。`).replace(
     /\]\((?!https?:|#|mailto:)([^)\s]+)\)/g,
     `](${REPO_URL}/blob/v${version}/$1)`,
   );
+}
+
+/** 草稿 Release 的说明：CHANGELOG 小节 + 固定的下载说明。 */
+export function releaseNotes(changelog, version) {
+  const body = updateNotes(changelog, version);
   return `${body}
 
 ---
 
 ### 下载
+
+国内访问 GitHub 较慢时，可以从 xiaofany.com 下载同样的文件：[Windows](${XIAOFANY_DL}/win)、[Linux AppImage](${XIAOFANY_DL}/linux)、[Linux deb](${XIAOFANY_DL}/linux?format=deb)（总是最新版本）。
 
 - **Windows 10 / 11（x64）**：\`ClipRecipe_${version}_x64-setup.exe\`。安装包没有代码签名，首次运行时 Windows SmartScreen 可能提示“已保护你的电脑”，点“更多信息”→“仍要运行”即可。
 - **Linux（x64）**：\`ClipRecipe_${version}_amd64.AppImage\`（加上可执行权限后直接运行，支持程序内自动更新），或 \`ClipRecipe_${version}_amd64.deb\`（Debian / Ubuntu，更新时请重新下载安装）。
@@ -165,7 +174,9 @@ if (isMain) {
     checkRelease(arg);
   } else if (command === "notes") {
     process.stdout.write(releaseNotes(read(FILES.changelog), (arg ?? checkVersions()).replace(/^v/, "")));
+  } else if (command === "update-notes") {
+    process.stdout.write(updateNotes(read(FILES.changelog), (arg ?? checkVersions()).replace(/^v/, "")));
   } else {
-    fail("用法：node scripts/release.mjs version <版本号> | check [tag] | notes [版本号]");
+    fail("用法：node scripts/release.mjs version <版本号> | check [tag] | notes [版本号] | update-notes [版本号]");
   }
 }

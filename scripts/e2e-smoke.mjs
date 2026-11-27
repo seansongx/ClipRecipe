@@ -733,9 +733,9 @@ async function desktopScenarios(s) {
     const notes = [];
     // 标题：页面标题与原生窗口标题都只是程序名
     const docTitle = await page.evaluate(() => document.title);
-    assert(docTitle === "ClipRecipe", `页面标题：${docTitle}`);
+    assert(docTitle === "剪方 ClipRecipe", `页面标题：${docTitle}`);
     const win = nativeWindow(s.appPid());
-    assert(win && win.title === "ClipRecipe" && win.visible, `原生窗口：${JSON.stringify(win)}`);
+    assert(win && win.title === "剪方 ClipRecipe" && win.visible, `原生窗口：${JSON.stringify(win)}`);
     notes.push(`窗口“${win.title}” ${win.width}×${win.height}`);
     notes.push(await checkFirstFrame(page));
     // 窗口配色（标题栏、底色）：启动时设置，颜色都是 #rrggbb，底色是深色

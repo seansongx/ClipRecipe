@@ -161,7 +161,8 @@ fn before_update_exit(app: &AppHandle) {
     super::preview::cleanup(app);
 }
 
-/// 用更新插件检查 `latest.json`（见 `tauri.conf.json` 的 `plugins.updater.endpoints`）。
+/// 用更新插件检查更新（`tauri.conf.json` 的 `plugins.updater.endpoints`：先 xiaofany.com 的升级接口，再 GitHub 的
+/// `latest.json`）。插件按顺序查：连不上或返回非 2xx 时查下一个，返回 204（没有更新）时就此为止。
 async fn check_with_updater(app: &AppHandle) -> Result<Option<Update>, String> {
     let exit_app = app.clone();
     app.updater_builder()
@@ -438,7 +439,7 @@ pub fn sync_tray(app: &AppHandle, enabled: bool) -> Result<(), String> {
         let quit = MenuItem::with_id(app, "tray-quit", "退出", true, None::<&str>)?;
         let menu = Menu::with_items(app, &[&show, &quit])?;
         let mut builder = TrayIconBuilder::with_id(TRAY_ID)
-            .tooltip("ClipRecipe")
+            .tooltip("剪方 ClipRecipe")
             .menu(&menu)
             .show_menu_on_left_click(false)
             .on_menu_event(|app, event| match event.id.as_ref() {

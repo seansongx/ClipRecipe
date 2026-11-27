@@ -314,6 +314,9 @@ export interface AppInfo {
   cpuCores: number;
   /** 编译目标的操作系统（Rust 的 std::env::consts::OS）；前端只经 lib/platform.ts 读取平台 */
   platform: string;
+  /** 操作系统名称与版本，如 `Windows 11 (10.0.26100)`；arch 是 CPU 架构，如 `x86_64` */
+  os: string;
+  arch: string;
 }
 
 /** 实际使用的 FFmpeg 从哪里找到（顺序见 src-tauri/src/ffmpeg/mod.rs 的 locate_detailed）。 */

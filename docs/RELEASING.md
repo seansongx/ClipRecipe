@@ -3,7 +3,9 @@
 ClipRecipe 通过 GitHub Actions 打包并发布到 [GitHub Releases](https://github.com/seansongx/ClipRecipe/releases)：
 推送 `v*` tag 后，[`.github/workflows/release.yml`](../.github/workflows/release.yml) 在 Windows 与 Linux 上打包，
 把安装包、更新包签名和 `latest.json` 上传到一个**草稿** Release，由项目所有者检查后手动发布。
-程序内的自动更新读取的就是最新正式 Release 里的 `latest.json`。
+发布之后，[`.github/workflows/publish-xiaofany.yml`](../.github/workflows/publish-xiaofany.yml) 自动把同一批文件发布到
+xiaofany.com（slug `cliprecipe`）：官网下载地址 `https://xiaofany.com/dl/cliprecipe/...` 和程序内自动更新的主线路都在那里，
+GitHub Release 是备用线路（程序在 xiaofany.com 连不上时读 Release 里的 `latest.json`）。
 
 ## 发布哪些文件
 
@@ -57,6 +59,17 @@ ClipRecipe 通过 GitHub Actions 打包并发布到 [GitHub Releases](https://gi
 4. **确认 Actions 可以写 Release**：发布流水线在 workflow 里声明了 `contents: write`，一般不需要改仓库设置；
    如果组织策略限制了 `GITHUB_TOKEN` 的权限，请在 Settings → Actions → General → Workflow permissions 中允许。
 
+5. **在 xiaofany.com 后台登记软件**（平台侧的完整约定见 xiaofany.com 仓库的技术方案与《录播宝接入说明》）：
+   - 「软件」→ 新建：slug `cliprecipe`，名称「剪方 ClipRecipe」，框架 `tauri`。资料页的「同步到 GitHub Releases」保持关闭
+     （本项目自己有 GitHub Release，发布时登记为备用线路）。简介、图标、截图、源代码地址可以以后再补。
+   - 「API Token」→ 新建：只勾 `release:cliprecipe`，设过期日期。明文只显示一次，存为仓库 Secret `RELEASE_TOKEN`：
+
+     ```powershell
+     gh secret set RELEASE_TOKEN
+     ```
+
+   没有这个 Secret 时 `publish-xiaofany` 只给出提示后跳过，GitHub Release 照常可用。Token 泄露时在后台吊销并重建。
+
 ## 每次发布
 
 以发布 `0.2.0` 为例：
@@ -95,7 +108,13 @@ ClipRecipe 通过 GitHub Actions 打包并发布到 [GitHub Releases](https://gi
    - `verify`：下载草稿里的 `latest.json`，确认版本号正确，Windows 指向 NSIS 安装包、Linux 指向 AppImage，且都有签名。
 
 6. **检查草稿 Release**（Releases 页面里标为 Draft）：文件齐全（见上表），说明无误；最好下载 Windows 安装包和 AppImage
-   各装一次试试。确认后点 **Publish release**。发布之后，已安装的程序（Windows 安装包版、AppImage 版）检查更新时就能发现新版本。
+   各装一次试试。确认后点 **Publish release**。
+
+7. **等 `publish-xiaofany` 完成**（Actions → Publish to xiaofany.com，几分钟）：它下载 Release 上的 `ClipRecipe_*` 文件，
+   用 `scripts/xiaofany-manifest.mjs` 生成清单（文件不全、缺签名、认不出的文件名都会失败），以 CHANGELOG 这一节为更新说明
+   （`node scripts/release.mjs update-notes`）用 `scripts/publish-xiaofany.mjs` 上传并发布，最后核对 xiaofany.com 的版本接口和
+   Windows / Linux 的升级接口都返回这个版本、签名与 `.sig` 一致。通过之后，已安装的程序（Windows 安装包版、AppImage 版）检查更新时
+   就能发现新版本。Release 标为 pre-release 时发到 beta 渠道。
 
 ### 出错时
 
@@ -104,6 +123,11 @@ ClipRecipe 通过 GitHub Actions 打包并发布到 [GitHub Releases](https://gi
   或在网页上删除。
 - 打包失败：在 Actions 中重新运行失败的任务即可（草稿 Release 会被沿用，已上传的同名文件会被覆盖）。
 - 已经发布的 Release 不能再用同一个 tag 重新发布（流水线会拒绝），请改版本号发布新版本。
+- `publish-xiaofany` 失败：修好原因（例如补上 `RELEASE_TOKEN`）后在 Actions 里重新运行，或手动运行它并填 tag。重跑是安全的：
+  已发布的版本会跳过，上次中途失败留下的草稿会被覆盖。xiaofany.com 上同一版本号只能发布一次，文件不能替换。
+- 发现某个版本有问题：在 xiaofany.com 后台撤回（只影响 xiaofany.com，升级接口立即退回上一个版本，已装上的用户不会被降级），
+  再尽快发布修复版本。撤回过的版本号不能再用。GitHub 上的 Release 需要另外处理。
+- xiaofany.com 每个平台只保留最近 3 个版本的文件，更早的版本只能从 GitHub Release 下载。
 
 ## 本地打包
 

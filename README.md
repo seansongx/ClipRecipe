@@ -1,6 +1,6 @@
-# ClipRecipe
+# 剪方 ClipRecipe
 
-开源的视频批量处理桌面工具，基于 **Tauri 2 + React 19 + TypeScript + Rust + FFmpeg**，MIT 许可，免费使用、无需注册。
+剪方（ClipRecipe）是开源的视频批量处理桌面工具，基于 **Tauri 2 + React 19 + TypeScript + Rust + FFmpeg**，MIT 许可，免费使用、无需注册。
 
 把一组处理步骤（去水印、裁剪、画中画、变速、调色……）配成一份“配方”，批量套用到整个视频队列；另有 34 个独立工具
 （合并、分割、重组、提取、转换、字幕、封面等）。全部处理都由本机的 FFmpeg 完成，不依赖任何云服务。
@@ -67,14 +67,23 @@ ClipRecipe 不使用它们。
 
 ## 下载与更新
 
-从 [GitHub Releases](https://github.com/seansongx/ClipRecipe/releases) 下载：Windows 10 / 11 用 `*_x64-setup.exe`
-（NSIS 安装包，安装到当前用户），Linux 用 `*.AppImage` 或 `*.deb`。暂不提供 macOS 版本。
+下载最新版本：
+
+| 平台 | 下载 | 说明 |
+|---|---|---|
+| Windows 10 / 11 x64 | <https://xiaofany.com/dl/cliprecipe/win> | NSIS 安装包，安装到当前用户 |
+| Linux x64 | <https://xiaofany.com/dl/cliprecipe/linux> | AppImage，加上可执行权限后直接运行 |
+| Linux x64（Debian / Ubuntu） | <https://xiaofany.com/dl/cliprecipe/linux?format=deb> | deb 安装包 |
+
+同样的文件也在 [GitHub Releases](https://github.com/seansongx/ClipRecipe/releases)（含历史版本）。暂不提供 macOS 版本。
 安装包没有 Windows 代码签名，首次运行时 SmartScreen 可能提示“已保护你的电脑”，点“更多信息”→“仍要运行”即可。
 
-**自动更新**：启动时（设置 → 通用 → 启动时检查更新，可关闭）或手动检查 GitHub 上的最新发布。Windows 安装包版与
+**自动更新**：启动时（设置 → 通用 → 启动时检查更新，可关闭）或手动检查最新发布。Windows 安装包版与
 AppImage 版发现新版本时显示版本号与更新说明，确认后在程序内下载（可取消）、校验签名、安装并重启；deb 安装的版本、
-开发版，以及下载或校验失败时，改为在浏览器中打开发布页。检查更新只访问 GitHub（Release 里的 `latest.json`，
-必要时 `api.github.com` 的公开发布信息），请求是不带用户信息的普通 GET；确认更新之后才从 GitHub Release 下载安装包。
+开发版，以及下载或校验失败时，改为在浏览器中打开发布页。检查更新先问 xiaofany.com 的升级接口，连不上或出错时改读
+GitHub Release 里的 `latest.json`（必要时再查 `api.github.com` 的公开发布信息）；请求都是不带用户信息的普通 GET
+（xiaofany.com 能看到的只有当前版本、系统与架构，它们就在请求地址里）。确认更新之后才下载安装包：从 xiaofany.com 查到时
+从 `dl.xiaofany.cn` 下载，从 GitHub 查到时从 GitHub Release 下载。签名由程序内置的公钥校验，与下载来源无关。
 发布流程见 [docs/RELEASING.md](docs/RELEASING.md)，各版本的变化见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 构建与运行

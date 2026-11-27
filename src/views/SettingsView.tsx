@@ -2,7 +2,17 @@
 // 字段定义见 lib/backend.ts 的 Settings（与后端 model/settings.rs 一致）。
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { BookOpen, FileInput, FolderOpen, Play, RefreshCw, Trash2, TriangleAlert, X } from "lucide-react";
+import {
+  BookOpen,
+  FileInput,
+  FolderOpen,
+  MessageSquareWarning,
+  Play,
+  RefreshCw,
+  Trash2,
+  TriangleAlert,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -53,6 +63,7 @@ import { EXAMPLE_PATHS, usePlatform } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { shortcutGroups } from "@/lib/shortcuts";
 import { useEncoders } from "@/state/encoders";
+import { openFeedback } from "@/state/feedback";
 import { SOURCE_LABELS, useFfmpeg } from "@/state/ffmpeg";
 import { playCompletionSound } from "@/state/finish";
 import { useLog } from "@/state/log";
@@ -870,7 +881,7 @@ function AboutGroup() {
   return (
     <>
       <Section>
-        <Row label="ClipRecipe" stacked>
+        <Row label="剪方 ClipRecipe" stacked>
           <p>{info ? `版本 ${info.version}` : "开源的视频批量处理桌面工具"}</p>
           <p className="mt-1 text-xs text-muted-foreground">以 MIT 许可证开源，免费使用，无需注册。</p>
           <Button
@@ -881,6 +892,25 @@ function AboutGroup() {
             className="mt-1.5"
           >
             <BookOpen /> 使用文档（GitHub）
+          </Button>
+        </Row>
+        <Row
+          label="反馈问题"
+          hint="在 GitHub 上提交 issue（需要 GitHub 账号）；页面里会预先填好版本、系统与 FFmpeg 信息，提交前可以修改"
+          stacked
+        >
+          <p className="text-xs text-muted-foreground">
+            处理出错时，请在“处理记录”面板点“复制记录”，或在失败的任务下点“复制错误信息”，把内容粘贴到 issue 里。
+            程序本身不会上传任何内容。
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!isTauri}
+            onClick={() => void openFeedback()}
+            className="mt-1.5"
+          >
+            <MessageSquareWarning /> 反馈问题（GitHub）
           </Button>
         </Row>
         <Row label="FFmpeg 说明" stacked>

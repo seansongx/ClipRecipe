@@ -16,6 +16,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import ChoiceGroup from "@/components/ChoiceGroup";
 import FolderInput from "@/components/FolderInput";
+import FailureNote from "@/components/FailureNote";
 import Hint from "@/components/Hint";
 import OutputPicker from "@/components/OutputPicker";
 import { useFolderDrop } from "@/components/useFolderDrop";
@@ -133,7 +134,7 @@ function ItemRow({ item, active }: { item: ToolRunItem; active: boolean }) {
           />
         )}
         {item.state === "failed" && item.error && (
-          <p className="mt-1 line-clamp-2 text-xs text-destructive select-text">{item.error}</p>
+          <FailureNote name={item.label} error={item.error} taskId={item.id} />
         )}
         {item.state === "done" && item.outputs.length > 0 && (
           <Hint label={item.outputs.join("\n")} side="bottom" align="start">

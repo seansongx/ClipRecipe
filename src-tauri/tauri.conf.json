@@ -14,7 +14,7 @@
       {
         "label": "main",
         "create": false,
-        "title": "ClipRecipe",
+        "title": "剪方 ClipRecipe",
         "width": 1280,
         "height": 800,
         "minWidth": 1180,
@@ -53,7 +53,7 @@
     "homepage": "https://github.com/seansongx/ClipRecipe",
     "category": "Video",
     "shortDescription": "开源的视频批量处理桌面工具",
-    "longDescription": "ClipRecipe 是开源的视频批量处理桌面工具：把裁剪、调速、水印、字幕、拼接等处理组成配方，一次应用到整批视频，另有几十个独立的视频小工具。基于 Tauri 2 与 FFmpeg。",
+    "longDescription": "剪方（ClipRecipe）是开源的视频批量处理桌面工具：把裁剪、调速、水印、字幕、拼接等处理组成配方，一次应用到整批视频，另有几十个独立的视频小工具。基于 Tauri 2 与 FFmpeg。",
     "license": "MIT",
     "icon": [
       "icons/32x32.png",
@@ -82,6 +82,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM5NzUxMTIwRUI5MjBEMDEKUldRQkRaTHJJQkYxT2FhZzF3WnFkRVVDQlNKZlJzWlFFL0hUVFdpRlNzYysvUkd0b0RaZ0FpWmEK",
       "endpoints": [
+        "https://xiaofany.com/api/update/cliprecipe/tauri/{{target}}/{{arch}}/{{current_version}}",
         "https://github.com/seansongx/ClipRecipe/releases/latest/download/latest.json"
       ],
       "windows": {

@@ -523,6 +523,7 @@ dependencies = [
  "ureq",
  "webview2-com",
  "windows",
+ "windows-version",
 ]
 
 [[package]]

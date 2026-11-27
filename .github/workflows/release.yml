@@ -62,7 +62,7 @@ jobs:
             echo "沿用已有的草稿 Release"
           else
             gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
-              --title "ClipRecipe ${GITHUB_REF_NAME#v}" --notes-file release-notes.md
+              --title "剪方 ClipRecipe ${GITHUB_REF_NAME#v}" --notes-file release-notes.md
           fi
           ids=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
             --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\" and .draft) | .id")
@@ -151,8 +151,20 @@ jobs:
             jq -e --arg k "$key" '.platforms[$k].url and .platforms[$k].signature' latest.json > /dev/null \
               || { echo "::error::latest.json 缺少 $key"; exit 1; }
           done
-          jq -e '.platforms["windows-x86_64"].url | endswith("-setup.exe")' latest.json > /dev/null \
-            || { echo "::error::windows-x86_64 应指向 NSIS 安装包"; exit 1; }
-          jq -e '.platforms["linux-x86_64"].url | endswith(".AppImage")' latest.json > /dev/null \
-            || { echo "::error::linux-x86_64 应指向 AppImage"; exit 1; }
+          # 草稿 Release 的 latest.json 里，tauri-action 写的是 API 地址（.../releases/assets/<id>）而不是文件下载地址：
+          # 草稿的下载地址在发布后会变，API 地址不变。更新插件下载时带 Accept: application/octet-stream，GitHub 会跳转到文件本身。
+          # 所以先把地址换算成 Release 上的文件名再检查。
+          asset_name() {
+            local url
+            url=$(jq -r --arg k "$1" '.platforms[$k].url' latest.json)
+            case "$url" in
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/assets/"*) gh api "${url#https://api.github.com/}" --jq .name ;;
+              *) basename "${url%%\?*}" ;;
+            esac
+          }
+          win=$(asset_name windows-x86_64)
+          linux=$(asset_name linux-x86_64)
+          echo "windows-x86_64 → $win；linux-x86_64 → $linux"
+          [[ "$win" == *-setup.exe ]] || { echo "::error::windows-x86_64 应指向 NSIS 安装包，实际是 $win"; exit 1; }
+          [[ "$linux" == *.AppImage ]] || { echo "::error::linux-x86_64 应指向 AppImage，实际是 $linux"; exit 1; }
           echo "latest.json 正常。检查草稿 Release 后在 GitHub 上手动发布。"

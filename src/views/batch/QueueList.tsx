@@ -25,6 +25,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
+import FailureNote from "@/components/FailureNote";
 import Hint from "@/components/Hint";
 import { COVER_EXTENSIONS, isTauri, pickFile, SUBTITLE_EXTENSIONS } from "@/lib/backend";
 import { dirName, formatBitrate, formatDuration, formatFps, formatSize } from "@/lib/format";
@@ -315,7 +316,7 @@ function Row({
             <Progress value={Math.max(0, Math.min(100, item.percent))} className="mt-1" />
           )}
           {item.state === "failed" && item.error && (
-            <p className="mt-1 line-clamp-2 text-xs text-destructive select-text">{item.error}</p>
+            <FailureNote name={item.name} error={item.error} taskId={item.id} tabIndex={-1} />
           )}
           <OutputLine item={item} />
           <ToolRowProgress queueId={item.id} path={item.path} />

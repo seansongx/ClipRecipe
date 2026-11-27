@@ -117,9 +117,62 @@ pub fn shutdown_now() -> Result<(), String> {
     }
 }
 
+// ---------------------------------------------------------------- 系统信息
+
+/// 操作系统名称与版本，如 `Windows 11 (10.0.26100)`、`macOS 15.1`、`Ubuntu 24.04 LTS`。
+/// 用户反馈问题时附在环境信息里；取不到版本时只返回系统名。
+pub fn os_description() -> String {
+    #[cfg(windows)]
+    {
+        let v = windows_version::OsVersion::current();
+        windows_name(v.major, v.minor, v.build)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("sw_vers")
+            .arg("-productVersion")
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
+            .filter(|v| !v.is_empty())
+            .map_or_else(|| "macOS".to_owned(), |v| format!("macOS {v}"))
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        std::fs::read_to_string("/etc/os-release")
+            .ok()
+            .and_then(|text| parse_os_release(&text))
+            .unwrap_or_else(|| "Linux".to_owned())
+    }
+}
+
+/// Windows 的名称：Windows 11 的内核版本号仍是 10.0，按内部版本号（≥ 22000）区分。
+#[cfg(any(windows, test))]
+fn windows_name(major: u32, minor: u32, build: u32) -> String {
+    let name = match (major, minor) {
+        (10, _) if build >= 22000 => "Windows 11".to_owned(),
+        (10, _) => "Windows 10".to_owned(),
+        _ => format!("Windows {major}.{minor}"),
+    };
+    format!("{name} ({major}.{minor}.{build})")
+}
+
+/// `/etc/os-release` 里的发行版名称（`PRETTY_NAME`，没有时用 `NAME`）。
+#[cfg(any(not(any(windows, target_os = "macos")), test))]
+fn parse_os_release(text: &str) -> Option<String> {
+    let field = |key: &str| {
+        text.lines()
+            .filter_map(|line| line.trim().strip_prefix(key)?.strip_prefix('='))
+            .map(|value| value.trim().trim_matches(['"', '\'']).to_owned())
+            .find(|value| !value.is_empty())
+    };
+    field("PRETTY_NAME").or_else(|| field("NAME"))
+}
+
 // ---------------------------------------------------------------- 检查更新
 
-/// 开源仓库（检查更新与“使用文档”入口）。
+/// 开源仓库（检查更新、“使用文档”与“反馈问题”入口）。
 pub const REPO_URL: &str = "https://github.com/seansongx/ClipRecipe";
 /// GitHub 公开 API：最新发布（不能自动更新时的检查方式）。
 pub const LATEST_RELEASE_API: &str =
@@ -424,6 +477,26 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
 
+    /// 更新地址的顺序：先 xiaofany.com（主线路），再 GitHub 的 `latest.json`（xiaofany 连不上或出错时的备用）。
+    #[test]
+    fn updater_tries_xiaofany_before_github() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let endpoints: Vec<&str> = conf["plugins"]["updater"]["endpoints"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert_eq!(
+            endpoints,
+            [
+                "https://xiaofany.com/api/update/cliprecipe/tauri/{{target}}/{{arch}}/{{current_version}}",
+                format!("{REPO_URL}/releases/latest/download/latest.json").as_str(),
+            ]
+        );
+    }
+
     #[test]
     fn countdown_ticks_and_fires() {
         let ticks = Arc::new(Mutex::new(Vec::new()));
@@ -534,6 +607,27 @@ mod tests {
         );
         assert_eq!(release_page("v0.2.0"), release_page("0.2.0"));
         assert!(is_project_url(&release_page("1.0.0")));
+    }
+
+    #[test]
+    fn os_description_names_the_system() {
+        assert_eq!(windows_name(10, 0, 26100), "Windows 11 (10.0.26100)");
+        assert_eq!(windows_name(10, 0, 19045), "Windows 10 (10.0.19045)");
+        assert_eq!(windows_name(6, 1, 7601), "Windows 6.1 (6.1.7601)");
+        assert_eq!(
+            parse_os_release("NAME=\"Ubuntu\"\nPRETTY_NAME=\"Ubuntu 24.04 LTS\"\n").as_deref(),
+            Some("Ubuntu 24.04 LTS")
+        );
+        assert_eq!(parse_os_release("NAME=Arch\nPRETTY_NAME=\"\"\n").as_deref(), Some("Arch"));
+        assert_eq!(parse_os_release("ID=x\n"), None);
+        assert!(!os_description().is_empty());
+    }
+
+    #[test]
+    fn issue_pages_are_project_urls() {
+        assert!(is_project_url(&format!(
+            "{REPO_URL}/issues/new?template=bug_report.yml&environment=x"
+        )));
     }
 
     #[test]

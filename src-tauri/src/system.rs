@@ -618,7 +618,10 @@ mod tests {
             parse_os_release("NAME=\"Ubuntu\"\nPRETTY_NAME=\"Ubuntu 24.04 LTS\"\n").as_deref(),
             Some("Ubuntu 24.04 LTS")
         );
-        assert_eq!(parse_os_release("NAME=Arch\nPRETTY_NAME=\"\"\n").as_deref(), Some("Arch"));
+        assert_eq!(
+            parse_os_release("NAME=Arch\nPRETTY_NAME=\"\"\n").as_deref(),
+            Some("Arch")
+        );
         assert_eq!(parse_os_release("ID=x\n"), None);
         assert!(!os_description().is_empty());
     }

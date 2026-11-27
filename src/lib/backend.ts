@@ -207,7 +207,7 @@ export const DEFAULT_SETTINGS: Settings = {
   removeFinished: false,
   confirmRemove: true,
   keepQueue: true,
-  autoUpdate: false,
+  autoUpdate: true,
   tray: false,
   mutePreview: false,
   fissionFolder: false,

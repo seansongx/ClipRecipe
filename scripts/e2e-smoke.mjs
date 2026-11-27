@@ -249,10 +249,11 @@ class Session {
     this.cdp = null;
     this.appPids = new Set();
     this.launches = 0;
-    // 每个会话一个隔离的配置目录；关闭完成提示音（测试时不出声），其余为默认设置
+    // 每个会话一个隔离的配置目录；关闭完成提示音（测试时不出声）与启动时检查更新（测试不联网，
+    // 有新版本时的对话框也会挡住界面），其余为默认设置
     this.configDir = w(`config-${this.label}`);
     fs.mkdirSync(this.configDir, { recursive: true });
-    fs.writeFileSync(path.join(this.configDir, "settings.json"), JSON.stringify({ version: 1, sound: false }));
+    fs.writeFileSync(path.join(this.configDir, "settings.json"), JSON.stringify({ version: 1, sound: false, autoUpdate: false }));
   }
 
   env(port) {

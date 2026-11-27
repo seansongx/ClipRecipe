@@ -153,7 +153,7 @@ pub struct Settings {
     pub confirm_remove: bool,
     /// `set.keep-queue`：保留未完成的任务，下次启动时载入
     pub keep_queue: bool,
-    /// `set.auto-update`：启动时检查新版本
+    /// `set.auto-update`：启动时检查新版本（默认开：否则已安装的程序不会知道有新版本）
     pub auto_update: bool,
     /// `set.tray`：关闭窗口时最小化到托盘
     pub tray: bool,
@@ -209,7 +209,7 @@ impl Default for Settings {
             remove_finished: false,
             confirm_remove: true,
             keep_queue: true,
-            auto_update: false,
+            auto_update: true,
             tray: false,
             mute_preview: false,
             fission_folder: false,

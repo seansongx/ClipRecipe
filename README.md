@@ -81,7 +81,7 @@ macOS 版是实验性的：没有 Apple 开发者签名与公证，也没有充�
 在终端执行 `xattr -dr com.apple.quarantine /Applications/ClipRecipe.app` 再打开。
 安装包没有 Windows 代码签名，首次运行时 SmartScreen 可能提示“已保护你的电脑”，点“更多信息”→“仍要运行”即可。
 
-**自动更新**：启动时（设置 → 通用 → 启动时检查更新，可关闭）或手动检查最新发布。Windows 安装包版与
+**自动更新**：启动时（设置 → 通用 → 启动时检查更新，默认开启，可关闭）或手动检查最新发布。Windows 安装包版与
 AppImage 版发现新版本时显示版本号与更新说明，确认后在程序内下载（可取消）、校验签名、安装并重启；deb 安装的版本、
 开发版，以及下载或校验失败时，改为在浏览器中打开发布页。检查更新先问 xiaofany.com 的升级接口，连不上或出错时改读
 GitHub Release 里的 `latest.json`（必要时再查 `api.github.com` 的公开发布信息）；请求都是不带用户信息的普通 GET

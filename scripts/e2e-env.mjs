@@ -300,7 +300,9 @@ public static IntPtr MainWindow(uint target) {
 `;
 
 function powershell(script) {
-  return execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+  // 输出按 UTF-8 编码：默认是系统代码页，窗口标题里的中文（“剪方”）会变成问号
+  const utf8 = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ";
+  return execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", utf8 + script], {
     encoding: "utf8",
     windowsHide: true,
     timeout: 30000,

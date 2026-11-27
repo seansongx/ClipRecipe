@@ -11,6 +11,9 @@ src-tauri/gen/schemas/
 # FFmpeg 二进制不入库
 src-tauri/binaries/
 
+# xiaofany.com 发布脚本的续传记录（含预签名上传地址）
+.release-state.json
+
 # 编辑器
 .vscode/*
 !.vscode/extensions.json

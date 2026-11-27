@@ -424,6 +424,26 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
 
+    /// 更新地址的顺序：先 xiaofany.com（主线路），再 GitHub 的 `latest.json`（xiaofany 连不上或出错时的备用）。
+    #[test]
+    fn updater_tries_xiaofany_before_github() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let endpoints: Vec<&str> = conf["plugins"]["updater"]["endpoints"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert_eq!(
+            endpoints,
+            [
+                "https://xiaofany.com/api/update/cliprecipe/tauri/{{target}}/{{arch}}/{{current_version}}",
+                format!("{REPO_URL}/releases/latest/download/latest.json").as_str(),
+            ]
+        );
+    }
+
     #[test]
     fn countdown_ticks_and_fires() {
         let ticks = Arc::new(Mutex::new(Vec::new()));

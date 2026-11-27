@@ -151,7 +151,7 @@ export default function App() {
             CR
           </div>
           <span aria-hidden className="text-sm font-semibold">
-            ClipRecipe
+            剪方
           </span>
           <Tabs value={view} onValueChange={(v) => setView(v as ViewId)}>
             <nav>

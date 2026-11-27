@@ -870,7 +870,7 @@ function AboutGroup() {
   return (
     <>
       <Section>
-        <Row label="ClipRecipe" stacked>
+        <Row label="剪方 ClipRecipe" stacked>
           <p>{info ? `版本 ${info.version}` : "开源的视频批量处理桌面工具"}</p>
           <p className="mt-1 text-xs text-muted-foreground">以 MIT 许可证开源，免费使用，无需注册。</p>
           <Button

@@ -62,7 +62,7 @@ jobs:
             echo "沿用已有的草稿 Release"
           else
             gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
-              --title "ClipRecipe ${GITHUB_REF_NAME#v}" --notes-file release-notes.md
+              --title "剪方 ClipRecipe ${GITHUB_REF_NAME#v}" --notes-file release-notes.md
           fi
           ids=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
             --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\" and .draft) | .id")

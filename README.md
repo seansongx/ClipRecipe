@@ -42,12 +42,13 @@
 
 ClipRecipe 不包含也不分发 FFmpeg，而是把它作为独立程序调用。有两种方式：
 
-- **应用内下载（最简单）**：没有找到 FFmpeg 时，批量处理页顶部会提示，点“下载 FFmpeg”即可；也可以在
+- **应用内下载（最简单）**：启动时没有找到 FFmpeg，程序会直接开始下载，批量处理页顶部的提示里显示进度，可以取消；
+  取消或失败后不会再自动重试，点提示里的“下载 FFmpeg”即可重新下载。也可以在
   设置 → 关于 → 运行环境 中下载、更新或删除。下载的是 npm 包 [`@seankit/ffmpeg`](https://www.npmjs.com/package/@seankit/ffmpeg) /
   [`@seankit/ffprobe`](https://www.npmjs.com/package/@seankit/ffprobe) 中未经修改的上游静态构建（当前为 FFmpeg 9.0.2，
   Windows 上是 gyan.dev 的 essentials 构建，两个压缩包合计约 75 MB），先从 npmmirror、失败时从 npmjs 下载，
   按程序内置的大小与 SHA-256 校验后放到本机数据目录（Windows：`%LOCALAPPDATA%\com.xiaofany.cliprecipe\ffmpeg\<版本>\`），
-  下载后立即生效、无需重启。只有点击按钮时才会联网；请求只是普通的 GET，不带任何用户信息；会使用环境变量
+  下载后立即生效、无需重启。只在启动时缺少 FFmpeg（自动下载一次）或点击按钮时才会联网；请求只是普通的 GET，不带任何用户信息；会使用环境变量
   `HTTPS_PROXY` / `NO_PROXY` 设置的代理。这些 FFmpeg 构建按 GPL-3.0-or-later 授权。
 - **自行安装**：例如 Windows 上 `winget install Gyan.FFmpeg`（full 构建），让 `ffmpeg` / `ffprobe` 在 `PATH` 中，
   或设置环境变量 `CLIPRECIPE_FFMPEG` 指向 ffmpeg 可执行文件（ffprobe 需在同一目录）。
@@ -152,5 +153,5 @@ docs/RELEASING.md         发布流程（版本号、CHANGELOG、tag、草稿 Re
 
 ## 许可
 
-[MIT](LICENSE)。FFmpeg 是独立项目，不随本仓库或安装包分发（应用内下载只在用户点击时从 npm 获取上游构建，
+[MIT](LICENSE)。FFmpeg 是独立项目，不随本仓库或安装包分发（应用内下载在本机缺少 FFmpeg 时从 npm 获取上游构建，
 并作为独立程序运行），使用时请遵守其许可条款（LGPL / GPL，取决于构建方式；应用内下载的构建为 GPL-3.0-or-later）。

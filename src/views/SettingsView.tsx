@@ -674,7 +674,7 @@ function FfmpegRow({ ffmpeg }: { ffmpeg: FfmpegStatus | null }) {
         <>
           <p>未找到可用的 FFmpeg</p>
           <p className="text-xs text-muted-foreground">
-            {ffmpeg.error}。可以在下方一键下载，或自行安装 FFmpeg 并加入 PATH、设置环境变量 CLIPRECIPE_FFMPEG 指向
+            {ffmpeg.error}。可以在下方下载（启动时会自动下载一次），或自行安装 FFmpeg 并加入 PATH、设置环境变量 CLIPRECIPE_FFMPEG 指向
             ffmpeg 可执行文件（如 {EXAMPLE_PATHS[platform].ffmpeg}，ffprobe 需在同一目录）。
           </p>
         </>
@@ -886,7 +886,7 @@ function AboutGroup() {
         <Row label="FFmpeg 说明" stacked>
           <p className="text-xs text-muted-foreground">
             本程序调用 FFmpeg / FFprobe（作为独立程序运行）完成全部音视频处理，本身不包含也不分发 FFmpeg：可以使用系统中安装的
-            FFmpeg，或在下方“运行环境”中点击下载（只在点击时下载未经修改的上游构建）。FFmpeg 是 FFmpeg 项目的商标，
+            FFmpeg，或在下方“运行环境”中点击下载（启动时找不到 FFmpeg 会自动下载未经修改的上游构建）。FFmpeg 是 FFmpeg 项目的商标，
             依其构建方式按 LGPL 或 GPL 授权（应用内下载的构建为 GPL-3.0-or-later）；请遵守相应许可。
           </p>
         </Row>

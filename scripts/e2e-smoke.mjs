@@ -1779,7 +1779,8 @@ async function ffmpegDownloadScenarios(exe, media) {
     return;
   }
   log("  准备假的 FFmpeg 下载服务器（打包 tgz）…");
-  const server = await startFakeFfmpegServer({ dir: w("fake-ffmpeg"), ffmpeg, ffprobe });
+  // 启动即自动下载：先慢速发送，才能稳定地看到“自动开始后的下载中”并在下完前取消
+  const server = await startFakeFfmpegServer({ dir: w("fake-ffmpeg"), ffmpeg, ffprobe, slow: true });
   const s = new Session("prod", exe, {
     label: "ffmpeg",
     env: { CLIPRECIPE_E2E_ISOLATE_FFMPEG: "1", CLIPRECIPE_E2E_FFMPEG_MANIFEST: server.manifestPath },
@@ -1793,27 +1794,101 @@ async function ffmpegDownloadScenarios(exe, media) {
       return;
     }
     const { page } = s;
+    // Session.start 连上调试端口后会重新加载一次页面（让探针从文档开始生效）。程序启动即自动下载：第一个文档开始的下载在 Rust 里
+    // 继续，重新加载后的文档再自动下载会被拒绝（“FFmpeg 正在下载”）。这里取消那次下载、等它在 Rust 里结束，再加载一次，
+    // 观察一个从文档开始就有探针记录的、完整的“启动即下载”（在第一个场景开头调用，失败记在场景里）。
+    const reloadForAutoDownload = async () => {
+      const until = Date.now() + 60000;
+      for (;;) {
+        const r = await page.invoke("cancel_ffmpeg_download");
+        if (r.ok && r.value === false) break;
+        assert(Date.now() < until, `等待启动时的下载结束：${JSON.stringify(r)}`);
+        await sleep(200);
+      }
+      server.hits.length = 0;
+      await page.reload();
+      await page.waitFor("主界面", () => !!document.querySelector("#nav-batch") && document.body.innerText.includes("视频队列"), [], { timeout: 30000 });
+    };
     const managedRoot = path.join(s.configDir, "ffmpeg");
     const BANNER = "[role=region][aria-label='未找到 FFmpeg']";
     const bannerShown = () => page.evaluate((sel) => !!document.querySelector(sel), BANNER);
     const rootEntries = () => (fs.existsSync(managedRoot) ? fs.readdirSync(managedRoot) : []);
     const total = server.sizes.ffmpeg + server.sizes.ffprobe;
 
-    await scenario(s, "缺少 FFmpeg：批量处理页提示一键下载；导入被引导到下载入口；不会自动下载", async () => {
+    /** 等处理记录满足条件（15 秒） */
+    const waitLog = async (what, pred) => {
+      const until = Date.now() + 15000;
+      for (;;) {
+        const t = await ui.logText(page);
+        if (pred(t)) return;
+        assert(Date.now() < until, `${what}：处理记录 ${t.slice(0, 300)}`);
+        await sleep(200);
+      }
+    };
+    /** 前端发出的 download_ffmpeg 次数（启动后的自动下载与每次点击各一次） */
+    const downloadCalls = () => page.evaluate(() => window.__e2e.ipc.filter((r) => r.cmd === "download_ffmpeg").length);
+    /** 等一段时间，确认没有自己开始下载：没有新的 download_ffmpeg、假服务器没有新请求、提示里是“下载 FFmpeg”按钮而不是进度 */
+    const assertNoAutoDownload = async (what, calls) => {
+      const hits = server.hits.length;
+      await sleep(3000);
+      assert((await downloadCalls()) === calls, `${what}：不应再自动调用 download_ffmpeg（${calls} → ${await downloadCalls()}）`);
+      assert(server.hits.length === hits, `${what}：不应再有下载请求：${server.hits.slice(hits)}`);
+      assert(!(await page.evaluate(() => !!document.querySelector("[data-testid=ffmpeg-download-progress]"))), `${what}：不应出现下载进度`);
+    };
+
+    await scenario(s, "缺少 FFmpeg：启动后不点击就自动开始下载；下载中导入被拦截并说明原因", async () => {
+      await reloadForAutoDownload();
       const st = await page.invoke("ffmpeg_status");
       assert(st.ok && !st.value.available && st.value.source === "missing", `ffmpeg_status：${JSON.stringify(st).slice(0, 400)}`);
       assert(st.value.managed.supported && st.value.managed.downloadSize === total, `managed：${JSON.stringify(st.value.managed)}`);
+      // 没有任何点击：提示出现时已经在下载（进度、来源、速度）
       await page.waitFor("下载提示", (sel) => !!document.querySelector(sel), [BANNER]);
+      const progress = await page.waitFor("自动开始的下载进度", () => {
+        const el = document.querySelector("[data-testid=ffmpeg-download-progress]");
+        return el && /正在下载 ffmpeg：.+ \/ .+/.test(el.innerText) ? el.innerText.replace(/\s+/g, " ") : null;
+      }, [], { timeout: 30000, interval: 100 });
       const text = await page.evaluate((sel) => document.querySelector(sel).innerText, BANNER);
-      assert(/下载 FFmpeg/.test(text) && text.includes("GPL"), `提示内容：${text}`);
+      assert(text.split("\n")[0] === "正在下载 FFmpeg，完成后即可导入和处理视频", `下载中的提示标题：${text.split("\n")[0]}`);
+      assert(text.includes("GPL"), `提示内容：${text}`);
+      assert((await downloadCalls()) === 1, `启动后应自动调用一次 download_ffmpeg：${await downloadCalls()}`);
+      assert(server.hits.slice(0, 2).join(",") === "/mirror/ffmpeg.tgz,/npm/ffmpeg.tgz", `自动下载的请求：${server.hits}`);
+      const autoLog = await ui.logText(page);
+      assert(autoLog.includes(`未找到 FFmpeg，开始自动下载 FFmpeg ${server.version}`), `处理记录没有自动下载：${autoLog.slice(0, 300)}`);
+      await auditUi(page, "FFmpeg 下载提示（自动下载中）", BANNER);
+      await saveShot(s, "ffmpeg-downloading");
+      // 下载中拖入视频：不导入，处理记录说明原因（下载中的提示不能关闭，一直在）
+      await ui.dropOnQueue(page, [media.a]);
+      await waitLog("处理记录说明原因", (t) => t.includes("未找到可用的 FFmpeg"));
+      assert((await ui.rows(page)).length === 0, "没有 FFmpeg 时不应导入");
+      const imports = await page.evaluate(() => window.__e2e.ipc.filter((r) => r.cmd === "import_paths").length);
+      assert(imports === 0, "不应调用 import_paths");
+      assert(await bannerShown(), "下载中的提示应一直显示");
+      return `未点击即开始：${progress}；请求 ${server.hits.slice(0, 2).join(" → ")}；下载大小 ${(total / 1048576).toFixed(1)} MB；导入被拦截并说明原因`;
+    });
+
+    await scenario(s, "取消自动下载：临时文件清理，回到下载按钮且不会自己再开始；关闭提示后导入仍被引导到下载入口", async () => {
+      const calls = await downloadCalls();
+      await page.click({ selector: `${BANNER} button`, text: "取消" });
+      await page.waitFor("取消后回到下载按钮", (sel) => {
+        const b = document.querySelector(sel);
+        return b && !b.querySelector("[data-testid=ffmpeg-download-progress]") && [...b.querySelectorAll("button")].some((x) => x.textContent.includes("下载 FFmpeg"));
+      }, [BANNER], { timeout: 60000 });
+      const left = rootEntries();
+      assert(left.length === 0, `取消后不应留下文件：${left}`);
+      const logText = await ui.logText(page);
+      assert(logText.includes("已取消下载 FFmpeg"), "处理记录没有“已取消”");
+      const title = await page.evaluate((sel) => document.querySelector(sel).innerText.split("\n")[0], BANNER);
+      assert(title === "未找到 FFmpeg，暂时无法导入和处理视频", `取消后的提示标题：${title}`);
       await auditUi(page, "FFmpeg 下载提示", BANNER);
-      // 关掉提示后拖入视频：不导入，提示重新出现，处理记录说明原因
+      await saveShot(s, "ffmpeg-banner");
+      await assertNoAutoDownload("取消后", calls);
+      // 关掉提示后拖入视频：不导入，提示重新出现，处理记录说明原因；也不会因此开始下载
       await page.click({ selector: "button", label: "关闭 FFmpeg 提示" });
       await page.waitFor("提示关闭", (sel) => !document.querySelector(sel), [BANNER]);
+      const errors = (await ui.logText(page)).split("未找到可用的 FFmpeg").length;
       await ui.dropOnQueue(page, [media.a]);
       await page.waitFor("提示重新出现", (sel) => !!document.querySelector(sel), [BANNER]);
-      const logText = await ui.logText(page);
-      assert(logText.includes("未找到可用的 FFmpeg"), `处理记录：${logText.slice(0, 300)}`);
+      await waitLog("处理记录说明原因", (t) => t.split("未找到可用的 FFmpeg").length > errors);
       assert((await ui.rows(page)).length === 0, "没有 FFmpeg 时不应导入");
       const imports = await page.evaluate(() => window.__e2e.ipc.filter((r) => r.cmd === "import_paths").length);
       assert(imports === 0, "不应调用 import_paths");
@@ -1827,36 +1902,18 @@ async function ffmpegDownloadScenarios(exe, media) {
       await auditUi(page, "设置 · 关于（缺少 FFmpeg）", "main");
       await saveShot(s, "ffmpeg-missing-settings");
       await ui.nav(page, "batch", "视频队列");
-      assert(server.hits.length === 0, `未点击下载时不应有请求：${server.hits}`);
-      return `提示：${text.split("\n")[0]}；下载大小 ${(total / 1048576).toFixed(1)} MB；导入被拦截并说明原因`;
-    });
-    await saveShot(s, "ffmpeg-banner");
-
-    await scenario(s, "下载 FFmpeg：进度与速度显示，取消后临时文件清理", async () => {
-      await page.click({ selector: `${BANNER} button`, textIncludes: "下载 FFmpeg" });
-      const progress = await page.waitFor("下载进度", () => {
-        const el = document.querySelector("[data-testid=ffmpeg-download-progress]");
-        return el && /正在下载 ffmpeg：.+ \/ .+/.test(el.innerText) ? el.innerText.replace(/\s+/g, " ") : null;
-      }, [], { timeout: 30000, interval: 100 });
-      await page.evaluate(() => window.__e2e.audit({ root: "[role=region]" }))
-        .then((r) => assert(r.problems.length === 0, `下载进度区审计：${r.problems.join(" | ")}`));
-      await saveShot(s, "ffmpeg-downloading");
-      await page.click({ selector: `${BANNER} button`, text: "取消" });
-      await page.waitFor("取消后回到下载按钮", (sel) => {
-        const b = document.querySelector(sel);
-        return b && !b.querySelector("[data-testid=ffmpeg-download-progress]") && [...b.querySelectorAll("button")].some((x) => x.textContent.includes("下载 FFmpeg"));
-      }, [BANNER], { timeout: 60000 });
-      const left = rootEntries();
-      assert(left.length === 0, `取消后不应留下文件：${left}`);
-      const logText = await ui.logText(page);
-      assert(logText.includes("已取消下载 FFmpeg"), "处理记录没有“已取消”");
-      return `取消前：${progress}；取消后下载目录为空`;
+      await assertNoAutoDownload("关闭提示、拖入视频、打开设置页后", calls);
+      return `取消后下载目录为空；3 秒内没有新的下载请求；提示：${title}`;
     });
 
-    await scenario(s, "下载 FFmpeg：第一个地址失败换下一个，校验后立即使用（不重启）", async () => {
+    await scenario(s, "点击下载 FFmpeg：第一个地址失败换下一个，校验后立即使用（不重启）", async () => {
+      server.setSlow(false);
       server.hits.length = 0;
+      const calls = await downloadCalls();
       const started = Date.now();
       await page.click({ selector: `${BANNER} button`, textIncludes: "下载 FFmpeg" });
+      await page.waitFor("点击后开始下载", () => !!document.querySelector("[data-testid=ffmpeg-download-progress]") || !document.querySelector("[role=region][aria-label='未找到 FFmpeg']"), [], { timeout: 30000, interval: 100 });
+      assert((await downloadCalls()) === calls + 1, `点击后应调用一次 download_ffmpeg：${calls} → ${await downloadCalls()}`);
       await page.waitFor("下载完成、提示消失", (sel) => !document.querySelector(sel), [BANNER], { timeout: 240000, interval: 300 });
       const secs = ((Date.now() - started) / 1000).toFixed(1);
       const st = await page.invoke("ffmpeg_status");
@@ -1881,14 +1938,22 @@ async function ffmpegDownloadScenarios(exe, media) {
       return `${secs}s；${st.value.version}；${st.value.path}；请求顺序 ${server.hits.join(" → ")}`;
     });
 
-    await scenario(s, "删除已下载的 FFmpeg（确认对话框），回到缺少 FFmpeg 的状态", async () => {
+    await scenario(s, "删除已下载的 FFmpeg（确认对话框），回到缺少 FFmpeg 的状态，不会自动重新下载", async () => {
+      const calls = await downloadCalls();
       await page.click({ selector: "main button", textIncludes: "删除已下载的 FFmpeg" });
       await page.click({ selector: "[role=alertdialog] button", text: "删除" });
       await page.waitFor("设置页显示未找到", () => document.querySelector("main").innerText.includes("未找到可用的 FFmpeg"), [], { timeout: 30000 });
       assert(!fs.existsSync(path.join(managedRoot, server.version)), "版本目录应已删除");
+      // 在设置页（运行环境里也有下载控件）等一段时间：不会自动重新下载。留在设置页等，是因为批量处理页的预览舞台
+      // 会为队列里的视频请求预览帧，没有 FFmpeg 时 render_preview 失败会被记为命令失败
+      await assertNoAutoDownload("删除后", calls);
       await ui.nav(page, "batch", "视频队列");
       await page.waitFor("下载提示重新出现", (sel) => !!document.querySelector(sel), [BANNER]);
-      return `已删除 ${path.join(managedRoot, server.version)}`;
+      const idle = await page.evaluate((sel) => !document.querySelector("[data-testid=ffmpeg-download-progress]") && [...document.querySelectorAll(`${sel} button`)].some((b) => b.textContent.includes("下载 FFmpeg")), BANNER);
+      assert(idle, "删除后批量处理页的提示应是“下载 FFmpeg”按钮，而不是下载进度");
+      assert((await downloadCalls()) === calls, "删除后不应自动调用 download_ffmpeg");
+      assert(rootEntries().length === 0, `删除后又出现了下载：${rootEntries()}`);
+      return `已删除 ${path.join(managedRoot, server.version)}；3 秒内没有自动重新下载`;
     });
     await s.stop({ graceful: true });
   } finally {

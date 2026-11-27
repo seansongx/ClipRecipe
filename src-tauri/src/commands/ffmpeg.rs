@@ -1,6 +1,6 @@
 //! 应用内下载 FFmpeg（`ffmpeg::managed`）：开始 / 取消下载、删除已下载的副本、重新检测。
 //!
-//! 只在用户点击时调用；下载内容由编译时内嵌的清单决定。进度事件 `ffmpeg-download`（[`DownloadProgress`]）。
+//! 启动时缺少 FFmpeg 由前端自动调用一次（state/ffmpeg.ts 的 autoDownloadIfMissing），其余只在用户点击时调用；下载内容由编译时内嵌的清单决定。进度事件 `ffmpeg-download`（[`DownloadProgress`]）。
 //! 下载与删除都在 Rust 中进行，网页本身不联网（CSP 不变），也不需要新增任何 capability。
 
 use serde::Serialize;

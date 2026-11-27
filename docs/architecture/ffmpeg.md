@@ -20,7 +20,7 @@
   ffmpeg 与 ffprobe 在同一目录，另有 `receipt.json`（版本、平台、实际下载地址、tgz 与可执行文件的哈希和大小、安装时间）。
   设置了 `CLIPRECIPE_CONFIG_DIR` 时改为 `<它>/ffmpeg`；`cargo test` 不登记根目录，因此测试永远不碰真实的数据目录。
   版本目录要有安装记录、版本与目录名一致、两个可执行文件的大小与记录相符才算完整；以点开头的临时目录不算。
-- **下载与安装**（`ffmpeg/managed.rs`，只在用户点击时由 `download_ffmpeg` 调用）：按清单顺序尝试地址，失败换下一个；
+- **下载与安装**（`ffmpeg/managed.rs`，由 `download_ffmpeg` 调用：启动时自动一次，见下方“界面”，其余只在用户点击时）：按清单顺序尝试地址，失败换下一个；
   边下载边写入 `<根目录>/.staging-*` 并计算 SHA-256，超过清单大小立即停止，结束时必须正好相等；**先**核对 tgz 的 SHA-256，
   一致后才解压；只解出 `package/<binary>` 这一个条目，其它条目不写入磁盘；任何条目是绝对路径 / 盘符 / 含 `..` / 链接或特殊文件 /
   大于可执行文件，整个压缩包拒绝；核对可执行文件的 SHA-256 与大小；Unix 上设置 0755；两个工具都通过后写安装记录，把临时目录整体改名为
@@ -36,9 +36,12 @@
 - **命令与事件**（`commands/ffmpeg.rs`）：`download_ffmpeg`（返回 `{ cancelled, status }`，失败时返回错误）、`cancel_ffmpeg_download`、
   `remove_managed_ffmpeg`、`redetect_ffmpeg`；进度事件 `ffmpeg-download`（阶段、工具、来源主机、已下载 / 总字节、速度）。
   安装或删除后清空编码器探测缓存；因为 `locate` 不缓存，新副本立即生效，无需重启。没有新增 capability，CSP 不变（下载在 Rust 中进行）。
-- **界面**：`state/ffmpeg.ts`（状态、下载进度、`requireFfmpeg`：导入 / 开始处理 / 运行工具前发现没有 FFmpeg 时在处理记录里指向下载入口并
-  重新显示提示）、`components/FfmpegDownload.tsx`（下载 / 进度 / 速度 / 取消 / 失败重试、下载说明、批量处理页“未找到 FFmpeg”提示，
-  可关闭）；设置 → 关于 → 运行环境：来源、版本、路径、重新检测、下载 / 更新 / 删除（AlertDialog 确认）。
+- **自动下载**：启动时检测完成（`state/events.ts`）后，没有可用的 FFmpeg 且本平台支持应用内下载，就直接开始下载，不等用户点击
+  （`autoDownloadIfMissing`，处理记录里记一条“未找到 FFmpeg，开始自动下载 …”）。每次启动只自动尝试一次：用户取消、下载失败、
+  之后在设置里删除，都不会再自动重下，改由批量处理页提示或设置页里的按钮手动触发；更新到新版本也只在点击时进行。
+- **界面**：`state/ffmpeg.ts`（状态、下载进度、自动下载、`requireFfmpeg`：导入 / 开始处理 / 运行工具前发现没有 FFmpeg 时在处理记录里指向下载入口并
+  重新显示提示）、`components/FfmpegDownload.tsx`（下载 / 进度 / 速度 / 取消 / 失败重试、下载说明、批量处理页“未找到 FFmpeg”提示：
+  下载中显示进度、标题改为“正在下载 FFmpeg…”且不能关闭，其余时候可关闭）；设置 → 关于 → 运行环境：来源、版本、路径、重新检测、下载 / 更新 / 删除（AlertDialog 确认）。
 - **essentials 构建缺少的功能**（与 gyan.dev 9.1 full 对比 `-filters` / `-encoders` / `-decoders`）：`whisper`（语音生成字幕的内置引擎：
   `ffmpeg_status.whisper` 为 false 时表单提前说明，运行时报错指向 whisper-cli 或完整构建）、`flite`（只有测试用来合成语音：
   没有时真实识别的测试打印原因跳过）、libdav1d（AV1 改用 libaom 解码）、SVT-AV1 / rav1e / libjxl 等编码器、frei0r、libplacebo、
@@ -50,5 +53,6 @@
 - **端到端测试**：`npm run e2e` 以 `--features e2e-hooks` 构建调试版。这个特性（只能用于调试构建，否则 `compile_error!`）多出两个
   环境变量：`CLIPRECIPE_E2E_FFMPEG_MANIFEST`（用测试清单代替内嵌清单，允许 `http://` 本机地址）与 `CLIPRECIPE_E2E_ISOLATE_FFMPEG=1`
   （不查找程序目录、PATH、node_modules）。正式构建里这些代码不存在，所以无法被触发。`[ffmpeg]` 场景用
-  `scripts/e2e-ffmpeg-server.mjs` 的本机假服务器（把 node_modules 里的真 ffmpeg / ffprobe 打成 npm 结构的 tgz，第一个地址返回 503）
-  走完整界面流程：缺少提示与导入拦截 → 下载中取消（临时文件清理）→ 下载完成后立即可导入 → 设置页删除。
+  `scripts/e2e-ffmpeg-server.mjs` 的本机假服务器（把 node_modules 里的真 ffmpeg / ffprobe 打成 npm 结构的 tgz，第一个地址返回 503；
+  先慢速发送，以便看到自动开始的下载并取消）走完整界面流程：启动后不点击即自动下载、下载中导入被拦截 → 取消（临时文件清理、
+  不会自己再开始、关闭提示后导入仍被拦截）→ 点击重新下载，完成后立即可导入 → 设置页删除（不会自动重下）。

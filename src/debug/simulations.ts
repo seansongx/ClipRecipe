@@ -75,7 +75,7 @@ function releaseFfmpegActions(id: SimulationId) {
   realFfmpegActions = null;
 }
 
-/** 一个“没有找到 FFmpeg、可以一键下载”的状态（下载信息沿用真实状态里的，没有时用示例值）。 */
+/** 一个“没有找到 FFmpeg、可以应用内下载”的状态（下载信息沿用真实状态里的，没有时用示例值）。 */
 function missingStatus(real: FfmpegStatus | null): FfmpegStatus {
   const managed = real?.managed;
   return {
@@ -348,7 +348,7 @@ const FAKE_LOGS: { level: LogLevel; message: string; task?: boolean }[] = [
   { level: "warn", task: true, message: "重复帧移除之后还有变速：建议把变速放在前面，否则时长可能与预计不同" },
   { level: "warn", message: "无法导入：损坏的文件.mp4：moov atom not found" },
   { level: "error", task: true, message: "处理失败：ffmpeg 退出码 1：Error while filtering: Invalid argument" },
-  { level: "error", message: "未找到可用的 FFmpeg，无法开始处理。可以在批量处理页顶部的提示或“设置 → 关于 → 运行环境”中一键下载" },
+  { level: "error", message: "未找到可用的 FFmpeg，无法开始处理。可以在批量处理页顶部的提示或“设置 → 关于 → 运行环境”中下载（启动时会自动下载；取消或失败后需手动重试）" },
 ];
 
 let logIds: Set<number> | null = null;

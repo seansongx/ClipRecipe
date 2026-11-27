@@ -1,5 +1,6 @@
 // FFmpeg 状态与应用内下载（设置页“运行环境”、批量处理页的“未找到 FFmpeg”提示共用）。
-// 只有用户点击“下载”时才会下载；下载在 Rust 中进行（commands/ffmpeg.rs），网页本身不联网。
+// 启动时没有可用的 FFmpeg 就自动开始下载（autoDownloadIfMissing，每次启动只自动尝试一次）；取消或失败后由用户点击重试，
+// 更新与删除后的重新下载也只在点击时进行。下载在 Rust 中进行（commands/ffmpeg.rs），网页本身不联网。
 // 与 state/queue、state/log 一样是底层状态：只依赖 lib/backend 与 state/log。
 
 import { create } from "zustand";
@@ -132,6 +133,17 @@ export const useFfmpeg = create<FfmpegState>((set, get) => ({
   dismissBanner: () => set({ bannerDismissed: true }),
 }));
 
+/**
+ * 启动时检测完成后调用：没有可用的 FFmpeg、且本平台支持应用内下载时直接开始下载，不等用户点击。
+ * 只在启动时调用一次：用户取消、下载失败或之后在设置里删除，都不会再自动重下，改由界面上的按钮触发。
+ */
+export function autoDownloadIfMissing(status: FfmpegStatus | null): void {
+  if (!status || status.available || !status.managed.supported) return;
+  if (useFfmpeg.getState().download.kind !== "idle") return;
+  useLog.getState().add("info", `未找到 FFmpeg，开始自动下载 FFmpeg ${status.managed.pinnedVersion}（约 ${formatSize(status.managed.downloadSize)}）`);
+  void useFfmpeg.getState().startDownload();
+}
+
 /** 只读：当前 FFmpeg 的状态（未检测时为 null）。工具表单可用它提前说明缺少的功能（如 whisper 滤镜）。 */
 export const useFfmpegStatus = () => useFfmpeg((s) => s.status);
 
@@ -145,8 +157,10 @@ export async function requireFfmpeg(action: string): Promise<boolean> {
   status = (await useFfmpeg.getState().refresh()) ?? status;
   if (status.available) return true;
   useFfmpeg.setState({ bannerDismissed: false });
-  const hint = status.managed.supported
-    ? "可以在批量处理页顶部的提示或“设置 → 关于 → 运行环境”中一键下载"
+  const hint = useFfmpeg.getState().download.kind === "running"
+    ? "FFmpeg 正在下载，完成后再试"
+    : status.managed.supported
+    ? "可以在批量处理页顶部的提示或“设置 → 关于 → 运行环境”中下载（启动时会自动下载；取消或失败后需手动重试）"
     : "请安装 FFmpeg 并加入 PATH，或设置环境变量 CLIPRECIPE_FFMPEG";
   useLog.getState().add("error", `未找到可用的 FFmpeg，无法${action}。${hint}`);
   return false;

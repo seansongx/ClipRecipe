@@ -1,5 +1,5 @@
 // 应用内下载 FFmpeg 的控件（设置页与批量处理页的提示共用）：下载 / 进度 / 取消 / 失败重试，
-// 以及“未找到 FFmpeg”提示。只有点击按钮才会下载；状态见 state/ffmpeg.ts。
+// 以及“未找到 FFmpeg”提示。启动时缺少 FFmpeg 会自动开始下载，取消或失败后才需要点按钮；状态见 state/ffmpeg.ts。
 
 import { Download, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -60,12 +60,12 @@ export function FfmpegDownloadNote() {
       FFmpeg {managed.pinnedVersion}（ffmpeg + ffprobe，下载约 {formatSize(managed.downloadSize)}）来自 npm 包
       @seankit/ffmpeg 与 @seankit/ffprobe {managed.packageVersion}，经 npmmirror（失败时改用 npmjs）下载，是未经修改的上游构建
       （Windows 为 gyan.dev essentials）。下载后按程序内置的 SHA-256 逐一校验。FFmpeg 是按 GPL 授权的第三方软件，
-      ClipRecipe 不包含也不分发它；只有点击下载按钮时才会下载。
+      ClipRecipe 不包含也不分发它；启动时找不到 FFmpeg 会自动下载，其余情况只在点击下载按钮时下载。
     </p>
   );
 }
 
-/** 批量处理页：启动时没有可用的 FFmpeg 时提示一键下载（不阻塞界面，可关闭）。 */
+/** 批量处理页：没有可用的 FFmpeg 时的提示。启动时会自动开始下载，这里显示进度；取消或失败后可在这里重试（不阻塞界面，可关闭）。 */
 export function FfmpegMissingBanner() {
   const status = useFfmpeg((s) => s.status);
   const dismissed = useFfmpeg((s) => s.bannerDismissed);
@@ -81,12 +81,14 @@ export function FfmpegMissingBanner() {
     >
       <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <p className="font-medium">未找到 FFmpeg，暂时无法导入和处理视频</p>
+        <p className="font-medium">
+          {running ? "正在下载 FFmpeg，完成后即可导入和处理视频" : "未找到 FFmpeg，暂时无法导入和处理视频"}
+        </p>
         {managed.supported ? (
           <>
             <p className="text-muted-foreground">
-              可以一键下载 FFmpeg {managed.pinnedVersion}（约 {formatSize(managed.downloadSize)}，来自 npmmirror / npm 上的
-              @seankit/ffmpeg，未经修改的上游构建，GPL 许可）。也可以自行安装 FFmpeg 后在“设置 → 关于”中重新检测。
+              FFmpeg {managed.pinnedVersion}（约 {formatSize(managed.downloadSize)}）来自 npmmirror / npm 上的
+              @seankit/ffmpeg，是未经修改的上游构建，GPL 许可。启动时找不到会自动下载；也可以自行安装 FFmpeg 后在“设置 → 关于”中重新检测。
             </p>
             <FfmpegDownloadControl idleLabel={`下载 FFmpeg（${formatSize(managed.downloadSize)}）`} />
           </>

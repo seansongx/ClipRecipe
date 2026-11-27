@@ -3,7 +3,9 @@
 // 把 node_modules 里（或 CLIPRECIPE_FFMPEG 指定的）真正的 ffmpeg / ffprobe 打成与 npm 包相同结构的 tgz
 // （package/package.json + package/bin/<可执行文件>），在 127.0.0.1 的随机端口上提供：
 //   /mirror/<工具>.tgz → 503（验证换下一个地址）
-//   /npm/<工具>.tgz    → 正常内容，分块限速发送（界面能看到进度、来得及点“取消”）
+//   /npm/<工具>.tgz    → 正常内容，分块限速发送（界面能看到进度、来得及点“取消”）。
+//                        程序启动时缺少 FFmpeg 会自动开始下载：用 slow: true 启动，先慢速发送，测试稳定地看到“自动开始后的
+//                        下载中”并取消；之后 setSlow(false) 恢复正常速度（正在进行的发送下一块起生效）
 // 并写一份与 src-tauri/resources/ffmpeg-manifest.json 格式相同的测试清单（http://127.0.0.1 地址、真实的哈希）。
 //
 // 程序只在以 `--features e2e-hooks` 构建的调试版中、设置了 CLIPRECIPE_E2E_FFMPEG_MANIFEST 时才读取这份清单
@@ -58,7 +60,11 @@ function packageTgz(tool, binary) {
  * 启动假服务器并写出测试清单。
  * @returns {{ manifestPath, port, hits: string[], close: () => Promise<void>, sizes }}
  */
-export async function startFakeFfmpegServer({ dir, ffmpeg, ffprobe, chunk = 512 * 1024, delayMs = 15 }) {
+export async function startFakeFfmpegServer({ dir, ffmpeg, ffprobe, chunk = 512 * 1024, delayMs = 15, slow = false }) {
+  // 慢速：每 250 ms 发 64 KB（约 256 KB/s），进度在动、取消在块之间生效，几十秒内不会下完
+  const SLOW = { chunk: 64 * 1024, delayMs: 250 };
+  let slowMode = slow;
+  const pace = () => (slowMode ? SLOW : { chunk, delayMs });
   fs.mkdirSync(dir, { recursive: true });
   const committed = JSON.parse(fs.readFileSync(path.join(REPO, "src-tauri", "resources", "ffmpeg-manifest.json"), "utf8"));
   const version = committed.ffmpegVersion;
@@ -93,9 +99,10 @@ export async function startFakeFfmpegServer({ dir, ffmpeg, ffprobe, chunk = 512 
         res.end();
         return;
       }
-      const next = body.subarray(offset, offset + chunk);
+      const p = pace();
+      const next = body.subarray(offset, offset + p.chunk);
       offset += next.length;
-      res.write(next, () => setTimeout(pump, delayMs));
+      res.write(next, () => setTimeout(pump, p.delayMs));
     };
     pump();
   });
@@ -142,6 +149,10 @@ export async function startFakeFfmpegServer({ dir, ffmpeg, ffprobe, chunk = 512 
     version,
     manifestPath,
     sizes: { ffmpeg: files.ffmpeg.tgz.length, ffprobe: files.ffprobe.tgz.length },
+    /** 切换慢速发送（见文件头） */
+    setSlow: (on) => {
+      slowMode = on;
+    },
     close: () =>
       new Promise((resolve) => {
         for (const s of sockets) s.destroy();

@@ -14,7 +14,7 @@ import {
 import { loadRealPlatform } from "../lib/platform";
 import { onToolEvent } from "../lib/tools";
 import { useEncoders } from "./encoders";
-import { useFfmpeg } from "./ffmpeg";
+import { autoDownloadIfMissing, useFfmpeg } from "./ffmpeg";
 import { handleRunFinished } from "./finish";
 import { persistQueue, useQueue } from "./queue";
 import { useQuitConfirm } from "./quit";
@@ -61,8 +61,14 @@ export function initBackend(): () => void {
   if (isTauri) {
     // 真实平台以后端为准（lib/platform.ts；读到之前用 User-Agent 推断）
     void loadRealPlatform();
-    // 启动时检测 FFmpeg：没有时批量处理页提示一键下载（不会自动下载）
-    void useFfmpeg.getState().refresh().then(() => useEncoders.getState().refresh());
+    // 启动时检测 FFmpeg：没有时直接开始下载（批量处理页的提示里显示进度，可取消）
+    void useFfmpeg
+      .getState()
+      .refresh()
+      .then((status) => {
+        autoDownloadIfMissing(status);
+        return useEncoders.getState().refresh();
+      });
     // 页面重新加载后同步“是否正在处理”
     jobsRunning()
       .then((running) => useQueue.setState({ running }))

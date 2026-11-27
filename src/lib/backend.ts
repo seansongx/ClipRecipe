@@ -396,7 +396,7 @@ export const getCachedEncoderInfo = () => call<EncoderInfo | null>("encoder_info
 
 // ---------- 应用内下载 FFmpeg（src-tauri/src/commands/ffmpeg.rs） ----------
 
-/** 下载并安装固定版本的 FFmpeg；只在用户点击时调用。失败时以错误信息拒绝。 */
+/** 下载并安装固定版本的 FFmpeg；启动时缺少 FFmpeg 自动调用一次，其余只在用户点击时调用。失败时以错误信息拒绝。 */
 export const downloadFfmpeg = () => call<FfmpegDownloadOutcome>("download_ffmpeg");
 export const cancelFfmpegDownload = () => call<boolean>("cancel_ffmpeg_download");
 export const removeManagedFfmpeg = () => call<FfmpegStatus>("remove_managed_ffmpeg");

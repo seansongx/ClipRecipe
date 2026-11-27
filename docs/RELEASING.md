@@ -121,7 +121,7 @@ GitHub Release 是备用线路（程序在 xiaofany.com 连不上时读 Release 
    `release:check` 带上 tag 时与流水线的检查相同：tag 与版本号一致、CHANGELOG 有该版本的小节并写了日期、已填真正的公钥。
 
 5. **等发布流水线完成**（Actions → Release，约 20～40 分钟）。它依次：
-   - `prepare`：做上面的检查，确认设置了签名私钥，创建草稿 Release（标题 `ClipRecipe 0.2.0`，说明取自 CHANGELOG）；
+   - `prepare`：做上面的检查，确认设置了签名私钥，确认这个提交的 CI 已通过（还在跑就等它结束），创建草稿 Release（标题 `ClipRecipe 0.2.0`，说明取自 CHANGELOG）；
    - `build-macos`：两种芯片各打一个 dmg 并上传（实验性，与下面两步互不影响）；
    - `build`：先 Windows、后 Linux（逐个进行，避免两边同时改写 `latest.json`）用
      [`tauri-apps/tauri-action`](https://github.com/tauri-apps/tauri-action) 打包、签名并上传；
@@ -141,6 +141,8 @@ GitHub Release 是备用线路（程序在 xiaofany.com 连不上时读 Release 
 - 检查没通过（版本号、CHANGELOG、公钥、Secret）：按日志提示修好后删除远程 tag 再重新打：
   `git push origin :refs/tags/v0.2.0`，`git tag -d v0.2.0`，修复并提交后从第 4 步重来。草稿 Release 如已创建，可以保留（会被沿用）
   或在网页上删除。
+- CI 没通过：失败就修好后按上一条重新打 tag；被 main 上更新的推送取消、或这个提交没有 CI 运行时，在 Actions → CI 里
+  重新运行（或对这个 tag 手动运行），通过后重新运行 Release 流程，不用重打 tag。
 - 打包失败：在 Actions 中重新运行失败的任务即可（草稿 Release 会被沿用，已上传的同名文件会被覆盖）。
 - 已经发布的 Release 不能再用同一个 tag 重新发布（流水线会拒绝），请改版本号发布新版本。
 - `publish-xiaofany` 失败：修好原因（例如补上 `RELEASE_TOKEN`）后在 Actions 里重新运行，或手动运行它并填 tag。重跑是安全的：

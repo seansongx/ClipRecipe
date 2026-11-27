@@ -24,14 +24,16 @@ env:
   NODE_VERSION: "26"
 
 jobs:
-  # 检查版本号、CHANGELOG 与 updater 公钥，然后创建草稿 Release（说明取自 CHANGELOG 对应小节）。
+  # 检查版本号、CHANGELOG、updater 公钥和这个提交的 CI，然后创建草稿 Release（说明取自 CHANGELOG 对应小节）。
   # 先建好草稿再并行打包，避免两个打包任务各自创建一个 Release。
   prepare:
     name: 检查并创建草稿 Release
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # CI 还在跑时要等它结束，CI 最长的任务是 60 分钟
+    timeout-minutes: 80
     permissions:
       contents: write
+      actions: read
     outputs:
       release-id: ${{ steps.release.outputs.id }}
     steps:
@@ -49,6 +51,35 @@ jobs:
             echo "::error::没有设置仓库 Secret TAURI_SIGNING_PRIVATE_KEY，见 docs/RELEASING.md“首次配置”"
             exit 1
           fi
+      # tag 指向的提交必须有一次通过的 CI 运行；还在跑就等它结束，没有运行（例如刚推送、还没排上队）时最多等 5 分钟。
+      - name: 检查这个提交的 CI 已通过
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(git rev-parse HEAD)
+          echo "检查提交 $sha 的 CI"
+          waited_without_run=0
+          while true; do
+            runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$sha&per_page=100" \
+              --jq '.workflow_runs[] | "\(.status) \(.conclusion) \(.html_url)"')
+            if echo "$runs" | grep -q '^completed success '; then
+              echo "CI 已通过：$(echo "$runs" | grep '^completed success ' | head -n1 | cut -d' ' -f3)"
+              break
+            fi
+            if [ -z "$runs" ]; then
+              if [ "$waited_without_run" -ge 300 ]; then
+                echo "::error::提交 $sha 没有 CI 运行。确认它已推送到 main，或在 Actions → CI 里对这个 tag 手动运行，通过后重新运行本流程"
+                exit 1
+              fi
+              waited_without_run=$((waited_without_run + 30))
+            elif ! echo "$runs" | grep -qv '^completed '; then
+              echo "$runs"
+              echo "::error::提交 $sha 的 CI 没有通过（失败或被取消）。修好后重新打 tag，或在 Actions 里重新运行 CI，通过后重新运行本流程"
+              exit 1
+            fi
+            echo "CI 还没有结果，30 秒后再查"
+            sleep 30
+          done
       - name: 创建草稿 Release
         id: release
         env:

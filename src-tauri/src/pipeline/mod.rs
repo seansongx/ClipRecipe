@@ -132,6 +132,20 @@ pub struct StreamState {
     pub vfr: bool,
 }
 
+/// 预览画面里某个模块画上去的东西所在的矩形（见 [`BuildContext::mark_preview_region`]），
+/// 界面据此提供直接在画面上操作的把手（例：拖动水印调整位置）。坐标是占画面宽 / 高的比例（0～1），
+/// 与预览缩小到多大无关。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewRegion {
+    /// 登记它的模块（功能 ID）
+    pub module: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
 /// 读取素材媒体信息的函数（见 [`BuildContext::probe`]）。
 pub type ProbeFn<'a> = &'a dyn Fn(&Path) -> Result<MediaInfo, String>;
 
@@ -167,6 +181,8 @@ pub struct BuildContext<'a> {
     pub encode: EncodeParams,
     pub stream: StreamState,
     warnings: Vec<String>,
+    /// 模块登记的预览区域（见 [`Self::mark_preview_region`]）
+    preview_regions: Vec<PreviewRegion>,
     current_module: &'static str,
     /// 本次构建中启用且已实现的模块（按应用顺序）
     enabled_modules: Vec<&'static str>,
@@ -206,6 +222,7 @@ impl<'a> BuildContext<'a> {
                 vfr: false,
             },
             warnings: Vec::new(),
+            preview_regions: Vec::new(),
             current_module: "",
             enabled_modules: Vec::new(),
             probe_fn: None,
@@ -248,6 +265,23 @@ impl<'a> BuildContext<'a> {
         } else {
             "setpts=PTS-STARTPTS".to_owned()
         }
+    }
+
+    /// 登记当前模块画在画面上的东西所在的矩形（像素，按此刻的 `ctx.stream` 尺寸），预览结果会把它带给界面
+    /// （[`PreviewRegion`]）。只在预览时记录；之后的模块不能再改变画面的几何（裁剪、缩放、加边），否则位置就不对了
+    /// ——目前只有排在最后的叠加类模块使用。
+    pub fn mark_preview_region(&mut self, x: f64, y: f64, width: f64, height: f64) {
+        let (w, h) = (f64::from(self.stream.width), f64::from(self.stream.height));
+        if !self.preview || w <= 0.0 || h <= 0.0 || width <= 0.0 || height <= 0.0 {
+            return;
+        }
+        self.preview_regions.push(PreviewRegion {
+            module: self.current_module.to_owned(),
+            x: x / w,
+            y: y / h,
+            width: width / w,
+            height: height / h,
+        });
     }
 
     /// 本次构建临时目录下的一个文件路径（目录第一次调用时创建；不创建文件本身）。
@@ -388,6 +422,9 @@ pub struct BuiltCommand {
     pub expected_duration: f64,
     pub encoder: VideoEncoder,
     pub warnings: Vec<String>,
+    /// 预览画面里模块登记的区域（正式构建为空；不属于命令本身，不随命令序列化）
+    #[serde(skip)]
+    pub preview_regions: Vec<PreviewRegion>,
     /// 模块登记的临时文件：命令要用到它们，所以要让它活到 ffmpeg 结束；最后一个克隆丢弃时删除。
     #[serde(skip)]
     pub temp_files: TempGuard,
@@ -799,6 +836,7 @@ fn build_inner(
         expected_duration: stream.duration,
         encoder,
         warnings,
+        preview_regions: Vec::new(),
         temp_files: TempGuard::new(temp),
     })
 }
@@ -929,6 +967,7 @@ fn finish_preview(
         extra_inputs,
         encode,
         warnings,
+        preview_regions,
         temp,
         ..
     } = ctx;
@@ -973,6 +1012,7 @@ fn finish_preview(
         expected_duration,
         encoder: VideoEncoder::software(VideoCodec::H264),
         warnings,
+        preview_regions,
         temp_files: TempGuard::new(temp),
     })
 }

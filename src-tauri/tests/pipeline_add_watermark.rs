@@ -652,7 +652,35 @@ fn preview_shows_watermark_at_any_time() {
             );
             let outside = image_rgb(&paths, Path::new(&frame.path), (40, 120, 40, 40));
             assert!(is_gray(outside), "{name}：水印之外是原画面：{outside:?}");
+            // 预览结果带着水印所在的区域（占画面的比例），界面用它在画面上拖动水印
+            let [region] = frame.regions.as_slice() else {
+                panic!("{name}：应登记一个水印区域：{:?}", frame.regions);
+            };
+            assert_eq!(region.module, "pipe.add-watermark");
+            for (what, actual, expected) in [
+                ("x", region.x, 224.0 / 320.0),
+                ("y", region.y, 12.0 / 240.0),
+                ("宽", region.width, 80.0 / 320.0),
+                ("高", region.height, 40.0 / 240.0),
+            ] {
+                assert_close(actual, expected, 0.002, &format!("{name} 水印区域的{what}"));
+            }
         }
+        // 滚动时位置随时间变化，不登记区域（界面上不能拖）
+        let mut scrolling = recipe.clone();
+        scrolling.modules.add_watermark.scroll = ScrollMode::Left;
+        let moving = render_preview(
+            &paths,
+            &PreviewSpec {
+                recipe: scrolling,
+                ..spec(PreviewOutput::Frame { time: 1.0 })
+            },
+            &previews,
+            &CancelToken::new(),
+            |_| {},
+        )
+        .unwrap();
+        assert!(moving.regions.is_empty(), "{:?}", moving.regions);
         for start in [1.03, 2.37] {
             let clip = render_preview(
                 &paths,

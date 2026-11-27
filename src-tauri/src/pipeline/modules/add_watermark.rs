@@ -426,6 +426,24 @@ fn overlay(
     Ok(())
 }
 
+/// 九宫格某一维的像素位置（与 [`axis_expr`] 的表达式算出来的相同）。
+fn axis_px(side: i8, margin: u32, full: f64, own: f64) -> f64 {
+    match side {
+        -1 => f64::from(margin),
+        0 => (full - own) / 2.0,
+        _ => full - own - f64::from(margin),
+    }
+}
+
+/// 素材画面的宽高（预览时用来算水印占的区域）；不在预览、无法读取或读取失败时为 None。
+fn asset_size(ctx: &BuildContext, path: &Path) -> Option<(u32, u32)> {
+    if !ctx.is_preview() || !ctx.can_probe() {
+        return None;
+    }
+    let (w, h) = ctx.probe(path).ok()?.video?.display_size();
+    (w > 0 && h > 0).then_some((w, h))
+}
+
 /// 百分比 → 像素（四舍五入，至少 `min`）。
 fn percent_px(percent: f64, full: u32, min: u32) -> u32 {
     ((percent / 100.0 * f64::from(full)).round() as u32).max(min)
@@ -470,6 +488,19 @@ impl PipelineModule for AddWatermarkParams {
             ctx.warn("静态图片水印不支持倒放，已忽略");
         }
         let place = self.place(mx, my, speed / 100.0 * f64::from(w));
+        // 预览：告诉界面主水印画在哪里，用来在画面上直接拖动调整位置。只在位置由九宫格与边距决定、
+        // 且只有一个素材时登记（滚动、铺满、分段轮换时位置不固定或不止一个）；读不到素材尺寸时不登记。
+        if let (Some(width), ScrollMode::None, [(path, _)]) =
+            (look.width, self.scroll, assets.as_slice())
+        {
+            if let Some((aw, ah)) = asset_size(ctx, path) {
+                let height = (f64::from(width) * f64::from(ah) / f64::from(aw)).round();
+                let width = f64::from(width);
+                let x = axis_px(self.anchor.column(), mx, f64::from(w), width);
+                let y = axis_px(self.anchor.row(), my, f64::from(h), height);
+                ctx.mark_preview_region(x, y, width, height);
+            }
+        }
         for (path, enable) in &assets {
             overlay(ctx, path, &look, &place, enable.as_deref())?;
         }

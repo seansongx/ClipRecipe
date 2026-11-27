@@ -83,6 +83,47 @@ export interface AddWatermarkParams {
   sub: SubWatermarkParams;
 }
 
+const ANCHOR_GRID: Anchor[][] = [
+  ["topLeft", "top", "topRight"],
+  ["left", "center", "right"],
+  ["bottomLeft", "bottom", "bottomRight"],
+];
+
+/** 水印中心离画面中线这么近（占画面的比例）时吸附到居中。 */
+export const CENTER_SNAP = 0.02;
+
+/** 一维上的吸附：水印中心靠近画面中线时返回居中的位置，否则原样返回。 */
+export function snapToCenter(start: number, size: number): number {
+  return Math.abs(start + size / 2 - 0.5) <= CENTER_SNAP ? (1 - size) / 2 : start;
+}
+
+/**
+ * 把水印在画面上的矩形（左上角与宽高，都是占画面宽 / 高的比例 0～1）换算成位置参数：
+ * 每一维上，中心靠近中线时取“居中”（该维的边距不起作用，保持不变），否则贴近哪一边就以哪一边为准，
+ * 边距取到这一边的距离。边距是固定值（两端相等）：拖出来的是一个确定的位置。
+ * 与后端 add_watermark.rs 的 `axis_expr` 互为反函数。
+ */
+export function placementFromRect(
+  rect: { x: number; y: number; width: number; height: number },
+  current: Pick<AddWatermarkParams, "marginX" | "marginY">,
+): Pick<AddWatermarkParams, "anchor" | "marginX" | "marginY"> {
+  const axis = (start: number, size: number): { side: 0 | 1 | 2; margin: number | null } => {
+    if (snapToCenter(start, size) !== start || start + size / 2 === 0.5) return { side: 1, margin: null };
+    const before = start + size / 2 < 0.5;
+    const distance = before ? start : 1 - start - size;
+    // 0.1% 一档，范围与表单一致（0～50）
+    return { side: before ? 0 : 2, margin: Math.min(50, Math.max(0, Math.round(distance * 1000) / 10)) };
+  };
+  const col = axis(rect.x, rect.width);
+  const row = axis(rect.y, rect.height);
+  const fixed = (value: number | null, keep: Range): Range => (value === null ? keep : { min: value, max: value });
+  return {
+    anchor: ANCHOR_GRID[row.side][col.side],
+    marginX: fixed(col.margin, current.marginX),
+    marginY: fixed(row.margin, current.marginY),
+  };
+}
+
 /** 与后端 WATERMARK_EXTENSIONS 一致 */
 const WATERMARK_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "bmp", "gif", "mp4", "mov", "webm", "mkv"];
 

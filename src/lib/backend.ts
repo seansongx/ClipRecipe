@@ -483,6 +483,16 @@ export interface PreviewSpec {
   subtitle?: string | null;
 }
 
+/** 预览画面里某个模块画上去的东西所在的矩形：占画面宽 / 高的比例（0～1）。 */
+export interface PreviewRegion {
+  /** 登记它的模块（功能 ID） */
+  module: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface PreviewResult {
   /** 预览文件（mp4 / jpg），用 mediaUrl() 转成可显示的地址 */
   path: string;
@@ -493,6 +503,8 @@ export interface PreviewResult {
   /** 实际参与预览的模块 */
   modules: string[];
   warnings: string[];
+  /** 模块画在画面上的东西所在的区域（如水印），用来直接在画面上操作；没有时为空 */
+  regions: PreviewRegion[];
 }
 
 export interface FrameResult {

@@ -50,6 +50,10 @@
 - **奇数尺寸**：构建最后若 `ctx.stream` 的宽或高为奇数，会统一 `crop` 到偶数（yuv420p 编码要求）。模块不必自己取偶，
   但必须让 `ctx.stream` 反映真实尺寸。
 - **卡死保护**：`ffmpeg::run` 在 180 秒（`DEFAULT_STALL_TIMEOUT`）内输出没有任何进展时结束 ffmpeg，任务失败并提示“卡死”。
+- `ctx.mark_preview_region(x, y, 宽, 高)`：登记当前模块画在画面上的东西所在的矩形（像素，按此刻的 `ctx.stream`）。只在预览时记录，
+  随预览结果的 `regions`（占画面的比例，带模块 ID）交给界面，用来在预览舞台上直接操作——加水印据此提供可拖动的把手
+  （`add_watermark.rs` 登记，`views/batch/WatermarkHandle.tsx` 拖动，`features/pipeline/add-watermark.tsx` 的
+  `placementFromRect` 把松手的位置换算回参数）。登记之后的模块不能再改变画面的几何，所以目前只有排在最后的叠加类模块使用。
 - `ctx.is_preview()`：是否在构建预览（`pipe.preview` / 单模块预览）。只在预览里显示的辅助标记据此添加，正式输出里绝不能出现
   （例：去水印在预览里用 `drawbox` 标出区域，见 `remove_watermark.rs`；单元测试可用 `pipeline::testing::build_preview_with`）。
 - **预览定位**：预览要看的时间点不在开头时，主输入用输入端 `-ss` 直接定位过去（不从头解码），主视频 / 音频流开头把时间戳

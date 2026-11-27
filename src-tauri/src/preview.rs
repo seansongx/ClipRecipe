@@ -16,7 +16,7 @@ use crate::ffmpeg::{self, path_arg, CancelToken, EncoderCaps, FfmpegPaths, Media
 use crate::model::Recipe;
 use crate::model::Settings;
 use crate::pipeline::{
-    self, BuildRequest, PreviewOptions, PreviewOutput, MODULE_IDS, PREVIEW_EXCLUDED,
+    self, BuildRequest, PreviewOptions, PreviewOutput, PreviewRegion, MODULE_IDS, PREVIEW_EXCLUDED,
 };
 
 /// 预览画面的默认最大高度。
@@ -215,6 +215,8 @@ pub struct PreviewResult {
     /// 参与预览的模块
     pub modules: Vec<String>,
     pub warnings: Vec<String>,
+    /// 模块画在画面上的东西所在的区域（如水印），供界面直接在画面上操作；没有时为空
+    pub regions: Vec<PreviewRegion>,
 }
 
 /// 预览失败的原因。
@@ -344,6 +346,7 @@ pub fn render_preview(
         seed,
         modules,
         warnings: built.warnings,
+        regions: built.preview_regions,
     })
 }
 

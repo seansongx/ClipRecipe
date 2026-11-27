@@ -310,6 +310,7 @@ pub fn render_tool_preview(
         seed,
         modules: vec![spec.tool.clone()],
         warnings,
+        regions: Vec::new(),
     })
 }
 

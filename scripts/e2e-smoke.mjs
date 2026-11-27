@@ -1271,6 +1271,58 @@ async function batchScenarios(s, media) {
     await page.queueDialog(media.watermark);
     await page.click({ selector: "aside [data-slot=input-group]:has(input[aria-label=水印文件路径]) button", label: "浏览" });
     await page.waitFor("水印路径", (p) => document.querySelector("aside input[aria-label=水印文件路径]")?.value === p, [media.watermark]);
+    // 在预览舞台上拖动水印：把手是后端随预览结果给出的水印区域；拖到左下角后参数变成“左下 + 固定边距”，
+    // 画面刷新后水印（把手）就在松手的位置。默认位置是右上。
+    const HANDLE = `${STAGE} [aria-label^=水印位置]`;
+    const handleBox = () =>
+      page.evaluate((sel, stage) => {
+        const el = document.querySelector(sel);
+        const frame = el?.parentElement?.getBoundingClientRect();
+        if (!el || !frame || frame.width <= 0) return null;
+        const r = el.getBoundingClientRect();
+        return {
+          cx: r.left + r.width / 2,
+          cy: r.top + r.height / 2,
+          x: (r.left - frame.left) / frame.width,
+          y: (r.top - frame.top) / frame.height,
+          w: r.width / frame.width,
+          h: r.height / frame.height,
+          frame: { left: frame.left, top: frame.top, width: frame.width, height: frame.height },
+          src: document.querySelector(`${stage} img`)?.src ?? null,
+        };
+      }, HANDLE, STAGE);
+    const grab = await page.waitFor("舞台上出现水印把手", (sel) => !!document.querySelector(sel), [HANDLE], { timeout: 30000 }).then(handleBox);
+    assert(grab && grab.x > 0.5 && grab.y < 0.5, `水印把手应在右上：${JSON.stringify(grab)}`);
+    // 目标：左边距 10%、下边距 20%
+    const want = { x: 0.1, y: 1 - 0.2 - grab.h };
+    const to = {
+      x: grab.frame.left + (want.x + grab.w / 2) * grab.frame.width,
+      y: grab.frame.top + (want.y + grab.h / 2) * grab.frame.height,
+    };
+    await page.cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: grab.cx, y: grab.cy, button: "none", pointerType: "mouse" });
+    await page.mouse("mousePressed", grab.cx, grab.cy);
+    for (let i = 1; i <= 8; i++) {
+      const x = grab.cx + ((to.x - grab.cx) * i) / 8;
+      const y = grab.cy + ((to.y - grab.cy) * i) / 8;
+      await page.cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, button: "left", buttons: 1, pointerType: "mouse" });
+      await sleep(20);
+    }
+    await page.cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: to.x, y: to.y, button: "left", buttons: 0, clickCount: 1, pointerType: "mouse" });
+    const placed = await page.waitFor("拖动后配方里的水印位置", () => {
+      const p = JSON.parse(localStorage.getItem("cliprecipe.recipe") ?? "{}").modules?.["pipe.add-watermark"];
+      return p?.anchor === "bottomLeft" ? { anchor: p.anchor, marginX: p.marginX, marginY: p.marginY } : null;
+    });
+    assert(
+      placed.marginX.min === placed.marginX.max && Math.abs(placed.marginX.min - 10) <= 1.5 &&
+        placed.marginY.min === placed.marginY.max && Math.abs(placed.marginY.min - 20) <= 1.5,
+      `拖动后的边距应约为左 10%、下 20%（固定值）：${JSON.stringify(placed)}`,
+    );
+    await ui.waitStageImage(page, "拖动水印后舞台刷新", { notSrc: grab.src });
+    const moved = await handleBox();
+    assert(
+      moved && Math.abs(moved.x - want.x) <= 0.02 && Math.abs(moved.y - want.y) <= 0.02,
+      `刷新后水印应在松手的位置（${JSON.stringify(want)}）：${JSON.stringify(moved)}`,
+    );
     await page.click({ selector: "aside button", textIncludes: "预览此步骤" });
     const r = await ui.checkVideo(page, "加水印预览");
     const steps = await page.evaluate(() => [...document.querySelectorAll("[role=dialog] p")].map((p) => p.textContent).find((t) => t.includes("参与预览的步骤")));

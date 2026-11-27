@@ -12,7 +12,7 @@ scope: 批量流水线的 18 个模块与流水线级功能（pipe.*）
 | ID | 功能 | 参数要点 | FFmpeg 思路 |
 |---|---|---|---|
 | `pipe.remove-watermark` | 去水印（区域模糊） | 预设方案（各平台常见水印位置）或自定义 1～2 处矩形；可限定生效时段；预览时用框线标出区域 | `delogo` / 裁出区域 `boxblur` 后 `overlay`，`enable='between(t,a,b)'` |
-| `pipe.add-watermark` | 加水印 | 图片 / GIF / 视频（mp4、mov）；位置（九宫格 + 边距偏移）、大小、透明度、滚动效果；居中时可拉伸；倒序播放；去除水印素材的背景色；目录模式下可随机取、分段依次显示；支持第二个“子水印”（参数较少） | `overlay` + `colorkey`/`chromakey` + `format=rgba,colorchannelmixer=aa=` |
+| `pipe.add-watermark` | 加水印 | 图片 / GIF / 视频（mp4、mov）；位置（九宫格 + 边距偏移；也可以在预览舞台的效果画面上直接拖动主水印，或聚焦后按方向键微调，松手后换算成位置与固定边距，靠近中线时吸附到居中；滚动、拉伸铺满、分段依次显示时不能拖）、大小、透明度、滚动效果；居中时可拉伸；倒序播放；去除水印素材的背景色；目录模式下可随机取、分段依次显示；支持第二个“子水印”（参数较少） | `overlay` + `colorkey`/`chromakey` + `format=rgba,colorchannelmixer=aa=` |
 | `pipe.pip` | 画中画 | 两种模式：①自身画面作背景；②外部图片/视频作背景（单文件或目录随机）。可设边距、相对居中的偏移、视频位置自定义、背景虚化及强度、前景纯色抠除（绿幕） | `split` → 背景 `scale,boxblur` → `overlay`；抠像 `chromakey` |
 | `pipe.text` | 文本 | 最多 3 处；内容来源：文件名（可设断行符、截掉不需要的子串）、文本目录、自定义文本；字体/颜色/描边等样式、分行、延时显示 | `drawtext`（或生成 ASS 后 `subtitles`） |
 

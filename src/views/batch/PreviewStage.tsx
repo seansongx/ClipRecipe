@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Eye, RefreshCw, Shuffle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -16,6 +16,7 @@ import { useRecipe } from "@/state/recipe";
 import { useSelectedVideo } from "@/state/selection";
 import { useSettings } from "@/state/settings";
 import { stageKey, useStage, variantCount, type StageView } from "@/state/stage";
+import WatermarkHandle, { watermarkRegion } from "./WatermarkHandle";
 
 /** 自动刷新的防抖（毫秒）：改参数时等输入停下来（中间值常常是无效的，例如刚打开模块还没选素材）。 */
 const DEBOUNCE_MS = 400;
@@ -123,6 +124,9 @@ export default function PreviewStage() {
 
   const refreshing = view === "effect" ? loading || (stale && !autoPaused) : source.loading;
 
+  // 主水印在画面上的位置（后端随预览结果给出）：有的话可以直接在画面上拖动
+  const watermark = view === "effect" && !error && image ? watermarkRegion(result?.regions) : null;
+
   let body: ReactNode = null;
   if (!isTauri) {
     body = <Message>预览需要在桌面应用中使用</Message>;
@@ -134,7 +138,11 @@ export default function PreviewStage() {
   } else if (error) {
     body = <Message error>{error}</Message>;
   } else if (image) {
-    body = <Frame src={image.url} alt={`「${item.name}」套用配方后的画面`} />;
+    body = (
+      <Frame src={image.url} alt={`「${item.name}」套用配方后的画面`}>
+        {watermark && <WatermarkHandle region={watermark} />}
+      </Frame>
+    );
   } else if (autoPaused && !loading) {
     body = <Message>批量处理中，自动刷新已暂停，可点刷新按钮手动生成画面</Message>;
   }
@@ -246,6 +254,7 @@ export default function PreviewStage() {
             <span className="whitespace-nowrap">变速、背景音、加头尾、</span>
             <span className="whitespace-nowrap">帧率、码率不参与预览</span>
           </span>
+          {watermark ? <span>可在画面上拖动水印调整位置</span> : null}
           {running ? <span>批量处理中，自动刷新已暂停</span> : null}
         </p>
         {view === "effect" &&
@@ -337,11 +346,45 @@ function Variants({ count }: { count: number }) {
   );
 }
 
-/** 画面区里的图片：居中、等比缩放、不超出区域。 */
-function Frame({ src, alt }: { src: string; alt: string }) {
+/**
+ * 画面区里的图片：居中、等比缩放、不超出区域。`children` 放在正好盖住图片的一层里（图片在区域里的位置
+ * 随窗口大小变化，所以量出来再定位），里面用百分比定位就是相对画面的位置。
+ */
+function Frame({ src, alt, children }: { src: string; alt: string; children?: ReactNode }) {
+  const img = useRef<HTMLImageElement>(null);
+  const [box, setBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = img.current;
+    if (!el) return;
+    const measure = () => {
+      const next =
+        el.offsetWidth > 0 && el.offsetHeight > 0
+          ? { left: el.offsetLeft, top: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight }
+          : null;
+      setBox((prev) =>
+        prev && next && prev.left === next.left && prev.top === next.top && prev.width === next.width && prev.height === next.height
+          ? prev
+          : next,
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    if (el.parentElement) observer.observe(el.parentElement);
+    el.addEventListener("load", measure);
+    return () => {
+      observer.disconnect();
+      el.removeEventListener("load", measure);
+    };
+  }, []);
   return (
     <div className="absolute inset-0 flex items-center justify-center">
-      <img src={src} alt={alt} draggable={false} className="max-h-full max-w-full rounded-md object-contain" />
+      <img ref={img} src={src} alt={alt} draggable={false} className="max-h-full max-w-full rounded-md object-contain" />
+      {children && box && (
+        <div className="absolute" style={box}>
+          {children}
+        </div>
+      )}
     </div>
   );
 }

@@ -543,3 +543,135 @@ fn portrait_and_odd_sources_without_audio() {
     assert!(is_red(avg_rgb(&paths, &output, 0.5, (180, 175, 120, 50))));
     assert!(is_gray(avg_rgb(&paths, &output, 0.5, (0, 0, 140, 140))));
 }
+
+/// 图片（预览的单帧 jpg）中区域的平均颜色。图片不能用 `avg_rgb`（它带 `-ss`，FFmpeg 对单张图片不出帧）。
+fn image_rgb(paths: &FfmpegPaths, image: &Path, (x, y, w, h): (u32, u32, u32, u32)) -> [i32; 3] {
+    let output = ffmpeg::command(&paths.ffmpeg)
+        .args(["-hide_banner", "-loglevel", "error", "-i"])
+        .arg(image)
+        .args(["-frames:v", "1", "-vf"])
+        .arg(format!(
+            "crop={w}:{h}:{x}:{y},scale=1:1:flags=area,format=rgb24"
+        ))
+        .args(["-f", "rawvideo", "-"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(output.stdout.len(), 3);
+    [0, 1, 2].map(|i| i32::from(output.stdout[i]))
+}
+
+/// 预览直接定位到取帧时间（不从头解码）时，水印在任何时间点都要画上——包括不是整秒、不落在帧边界上的时间：
+/// 素材的时间戳若被取整到主画面那一帧之后，那一帧上就没有水印。静态图片与循环的动态素材都检查，单帧与片段都检查。
+#[test]
+fn preview_shows_watermark_at_any_time() {
+    use cliprecipe_lib::ffmpeg::CancelToken;
+    use cliprecipe_lib::pipeline::PreviewOutput;
+    use cliprecipe_lib::preview::{render_preview, PreviewDir, PreviewSpec};
+
+    let paths = ffmpeg_paths();
+    let dir = TempDir::new("wm-preview-seek");
+    // 30 帧：图片素材的时间基是 1/25，主视频的帧不落在它的刻度上时才会暴露取整问题（25 帧的视频碰巧对得上）
+    let main = dir.join("src/main.mp4");
+    generate(
+        &paths,
+        &main,
+        &[
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=0x808080:s=320x240:r=30:d=4,noise=alls=12:allf=t+u",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=4",
+            "-c:a",
+            "aac",
+            "-shortest",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-pix_fmt",
+            "yuv420p",
+        ],
+    );
+    let logo = dir.join("assets/logo.png");
+    solid_png(&paths, &logo, "red", 80, 40);
+    let anim = dir.join("assets/anim.gif");
+    generate(
+        &paths,
+        &anim,
+        &["-f", "lavfi", "-i", "color=c=red:s=80x40:r=10:d=0.5"],
+    );
+    let previews = PreviewDir::under(dir.path(), 1);
+
+    for asset in [&logo, &anim] {
+        // 宽 25% → 80×40，右上角，边距 5% → x 224～304、y 12～52
+        let mut recipe = Recipe::disabled();
+        recipe.modules.add_watermark = AddWatermarkParams {
+            enabled: true,
+            source: file(asset),
+            anchor: Anchor::TopRight,
+            size: Range::fixed(25.0),
+            margin_x: Range::fixed(5.0),
+            margin_y: Range::fixed(5.0),
+            opacity: Range::fixed(100.0),
+            ..AddWatermarkParams::default()
+        };
+        let spec = |output| PreviewSpec {
+            path: main.to_string_lossy().into_owned(),
+            info: None,
+            recipe: recipe.clone(),
+            settings: Settings::default(),
+            only_module: None,
+            output,
+            seed: Some(3),
+            number: 1,
+            max_height: 240,
+            subtitle: None,
+        };
+        let name = asset.file_name().unwrap().to_string_lossy().into_owned();
+        for time in [0.0, 0.03, 0.5, 1.0, 1.03, 1.37, 2.5, 3.31, 3.9] {
+            let frame = render_preview(
+                &paths,
+                &spec(PreviewOutput::Frame { time }),
+                &previews,
+                &CancelToken::new(),
+                |_| {},
+            )
+            .unwrap();
+            let inside = image_rgb(&paths, Path::new(&frame.path), (236, 20, 56, 24));
+            assert!(
+                is_red(inside),
+                "{name}：第 {time} 秒的预览帧上应有水印：{inside:?}"
+            );
+            let outside = image_rgb(&paths, Path::new(&frame.path), (40, 120, 40, 40));
+            assert!(is_gray(outside), "{name}：水印之外是原画面：{outside:?}");
+        }
+        for start in [1.03, 2.37] {
+            let clip = render_preview(
+                &paths,
+                &spec(PreviewOutput::Clip {
+                    start,
+                    duration: 1.0,
+                }),
+                &previews,
+                &CancelToken::new(),
+                |_| {},
+            )
+            .unwrap();
+            for t in [0.0, 0.5] {
+                let inside = avg_rgb(&paths, Path::new(&clip.path), t, (236, 20, 56, 24));
+                assert!(
+                    is_red(inside),
+                    "{name}：从第 {start} 秒起的预览片段第 {t} 秒应有水印：{inside:?}"
+                );
+            }
+        }
+    }
+}

@@ -51,6 +51,17 @@ pub trait PipelineModule {
 /// 预览定位起点（秒）在构建过程中的占位标记：起点要等模块都应用完才能确定（受去头尾影响），
 /// 构建结束时统一替换为数字（见 [`BuildContext::preview_seek`]）。
 const SEEK_MARKER: &str = "@@cliprecipe-seek@@";
+/// 素材（额外输入）在预览定位时的起点的占位标记：定位起点向下取整到整秒（见 [`extras_start`]）。
+const SEEK_EXTRAS_MARKER: &str = "@@cliprecipe-seek-extras@@";
+
+/// 预览定位时素材的起点：不晚于主视频流的定位起点，并且是整秒。
+///
+/// 素材必须在主视频流的第一帧之前（或同时）就有画面，否则那一帧上没有它（overlay 只在素材出过帧之后才叠加）。
+/// 素材的时间戳要换算到它自己的时间基，起点不是整秒时（如 10.03 秒在 1/25 的时间基里是 250.75）会被取整，
+/// 可能落到主视频流第一帧之后——所以取整秒：在任何常见的时间基里都能精确表示。多出来的不到一秒由 FFmpeg 跳过。
+fn extras_start(start: f64) -> f64 {
+    start.floor().max(0.0)
+}
 
 /// 全部模块 ID（顺序同 registry.ts）。
 pub const MODULE_IDS: [&str; 18] = [
@@ -229,11 +240,13 @@ impl<'a> BuildContext<'a> {
     }
 
     /// 把一条素材流的时间戳重排为“从视频开头开始”的滤镜：通常是 `setpts=PTS-STARTPTS`；
-    /// 预览定位时主视频流从定位起点开始，素材也要从那里开始，否则 FFmpeg 会先把素材从 0 处理到起点。
+    /// 预览定位时主视频流从定位起点开始，素材也要从那附近开始（见 [`extras_start`]），
+    /// 否则 FFmpeg 会先把素材从 0 处理到起点。
     pub fn restart_pts_filter(&self) -> String {
-        match self.preview_seek() {
-            Some(seek) => format!("setpts=PTS-STARTPTS+{seek}/TB"),
-            None => "setpts=PTS-STARTPTS".to_owned(),
+        if self.seek {
+            format!("setpts=PTS-STARTPTS+{SEEK_EXTRAS_MARKER}/TB")
+        } else {
+            "setpts=PTS-STARTPTS".to_owned()
         }
     }
 
@@ -314,11 +327,14 @@ impl<'a> BuildContext<'a> {
 
     /// 添加一个额外输入，返回它的 FFmpeg 输入序号（主输入为 0）。
     ///
-    /// 预览定位时（[`Self::preview_seek`]）素材的时间戳自动平移到定位起点（`-itsoffset`），与主视频流对齐；
+    /// 预览定位时（[`Self::preview_seek`]）素材的时间戳自动平移到定位起点之前最近的整秒（`-itsoffset`，见 [`extras_start`]）；
     /// 循环素材因此从第一帧开始播放，相位与正式输出可能不同。
     pub fn add_input(&mut self, mut args: Vec<String>, path: &Path) -> Result<usize, String> {
-        if let Some(seek) = self.preview_seek() {
-            args.splice(0..0, ["-itsoffset".to_owned(), seek.to_owned()]);
+        if self.seek {
+            args.splice(
+                0..0,
+                ["-itsoffset".to_owned(), SEEK_EXTRAS_MARKER.to_owned()],
+            );
         }
         self.extra_inputs.push(InputSpec {
             args,
@@ -866,10 +882,13 @@ fn begin_preview_seek(ctx: &mut BuildContext, req: &BuildRequest, options: &Prev
 /// 定位起点确定后：替换占位标记，并把主输入的 `-ss` / `-t`（去头尾可能已经写了）推后 / 缩短 `start` 秒。
 fn finish_preview_seek(ctx: &mut BuildContext, start: f64) {
     let text = fmt_num(start);
+    let extras = fmt_num(extras_start(start));
+    // 先换较长的那个标记（两个标记互不包含，顺序其实无关）
+    ctx.graph.replace_marker(SEEK_EXTRAS_MARKER, &extras);
     ctx.graph.replace_marker(SEEK_MARKER, &text);
     for arg in ctx.extra_inputs.iter_mut().flat_map(|i| i.args.iter_mut()) {
-        if arg == SEEK_MARKER {
-            arg.clone_from(&text);
+        if arg == SEEK_EXTRAS_MARKER {
+            arg.clone_from(&extras);
         }
     }
     fn shift(args: &mut [String], flag: &str, by: f64, min: f64) -> bool {
@@ -1321,7 +1340,7 @@ mod tests {
         assert!(fc.starts_with("[0:v:0]setpts=PTS+4/TB,zoompan="), "{fc}");
         assert!(fc.contains("cos(2*PI*(in+4*25)/100)"), "{fc}");
         assert!(fc.contains(":fps=25,setpts=PTS+4/TB,"), "{fc}");
-        assert!(!args.contains(SEEK_MARKER), "{args}");
+        assert!(!args.contains("@@"), "{args}");
         assert!(
             args.ends_with("-an -frames:v 1 -q:v 3 preview.mp4"),
             "{args}"
@@ -1356,12 +1375,12 @@ mod tests {
         ctx.graph.video(ctx.restart_pts_filter());
         finish_preview_seek(&mut ctx, 12.5);
         assert_eq!(ctx.main_input_args, ["-ss", "12.5"]);
-        assert_eq!(
-            ctx.extra_inputs[0].args,
-            ["-itsoffset", "12.5", "-loop", "1"]
-        );
+        // 素材从定位起点之前的整秒开始：12.5 在素材的时间基里可能取整到主视频流第一帧之后，那一帧上就没有素材
+        assert_eq!(ctx.extra_inputs[0].args, ["-itsoffset", "12", "-loop", "1"]);
         let fc = ctx.graph.render().unwrap().filter_complex.unwrap();
-        assert_eq!(fc, "[0:v:0]setpts=PTS-STARTPTS+12.5/TB[v0]");
+        assert_eq!(fc, "[0:v:0]setpts=PTS-STARTPTS+12/TB[v0]");
+        assert_eq!(extras_start(0.4), 0.0);
+        assert_eq!(extras_start(250.0), 250.0);
     }
 
     #[test]

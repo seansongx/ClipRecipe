@@ -1,5 +1,8 @@
 import {
+  memo,
+  useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -213,7 +216,23 @@ function stateText(item: QueueItem): { label: string; detail: string } {
   return { label, detail: detail.join(" · ") };
 }
 
-function Row({
+/**
+ * 引用不变、但总是调用最新一版 `fn` 的函数。传给 [`Row`] 的回调都经过它：
+ * 回调每次渲染都是新的闭包，直接传下去会让记忆化的行全部重新渲染。
+ */
+function useStableCallback<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+  const latest = useRef(fn);
+  useLayoutEffect(() => {
+    latest.current = fn;
+  });
+  return useCallback((...args: A) => latest.current(...args), []);
+}
+
+/**
+ * 队列的一行。记忆化：处理中每次进度事件、每次点选都会让列表重新渲染，只有自己的数据变了的行才需要重画
+ * （否则几百个视频时每次更新要几百毫秒）。所以传进来的属性必须在数据没变时保持引用不变，回调见 `useStableCallback`。
+ */
+const Row = memo(function Row({
   item,
   index,
   selected,
@@ -391,7 +410,7 @@ function Row({
       </ContextMenuContent>
     </ContextMenu>
   );
-}
+});
 
 /** 拖动排序：按住把手拖到目标位置。窗口启用了系统拖放，HTML5 拖放不可用，所以用指针事件。 */
 function useDragReorder(container: RefObject<HTMLDivElement | null>) {
@@ -406,7 +425,7 @@ function useDragReorder(container: RefObject<HTMLDivElement | null>) {
     return { index, mark: y < box.top + box.height / 2 ? ("before" as const) : ("after" as const) };
   };
 
-  const onGripDown = (e: ReactPointerEvent, id: string) => {
+  const onGripDown = useStableCallback((e: ReactPointerEvent, id: string) => {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
@@ -437,7 +456,7 @@ function useDragReorder(container: RefObject<HTMLDivElement | null>) {
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
-  };
+  });
 
   return { dragId, drop, onGripDown };
 }
@@ -455,13 +474,13 @@ function useListKeyboard(list: RefObject<HTMLUListElement | null>, visible: Queu
     if (active) document.getElementById(rowDomId(active))?.scrollIntoView({ block: "nearest" });
   }, [active]);
 
-  const onRowClick = (e: ReactMouseEvent, item: QueueItem) => {
+  const onRowClick = useStableCallback((e: ReactMouseEvent, item: QueueItem) => {
     const { select } = useQueue.getState();
     if (e.shiftKey) selectRange(visible, item.id, filtered);
     else select(item.id, isModKey(e) ? "toggle" : "single");
     setActiveId(item.id);
     list.current?.focus({ preventScroll: true });
-  };
+  });
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLUListElement>) => {
     if (e.target !== e.currentTarget) return;

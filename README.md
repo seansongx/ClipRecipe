@@ -74,8 +74,11 @@ ClipRecipe 不使用它们。
 | Windows 10 / 11 x64 | <https://xiaofany.com/dl/cliprecipe/win> | NSIS 安装包，安装到当前用户 |
 | Linux x64 | <https://xiaofany.com/dl/cliprecipe/linux> | AppImage，加上可执行权限后直接运行 |
 | Linux x64（Debian / Ubuntu） | <https://xiaofany.com/dl/cliprecipe/linux?format=deb> | deb 安装包 |
+| macOS 10.15+（Apple 芯片 / Intel，实验性） | `curl -fsSL https://cliprecipe.xiaofany.com/install.sh \| sh` | 在终端执行；自动选芯片、校验后装进“应用程序”，更新时重新执行 |
 
-同样的文件也在 [GitHub Releases](https://github.com/seansongx/ClipRecipe/releases)（含历史版本）。暂不提供 macOS 版本。
+同样的文件也在 [GitHub Releases](https://github.com/seansongx/ClipRecipe/releases)（含历史版本）。
+macOS 版是实验性的：没有 Apple 开发者签名与公证，也没有充分测试，不支持程序内更新；手动下载 dmg 安装后若提示“已损坏，无法打开”，
+在终端执行 `xattr -dr com.apple.quarantine /Applications/ClipRecipe.app` 再打开。
 安装包没有 Windows 代码签名，首次运行时 SmartScreen 可能提示“已保护你的电脑”，点“更多信息”→“仍要运行”即可。
 
 **自动更新**：启动时（设置 → 通用 → 启动时检查更新，可关闭）或手动检查最新发布。Windows 安装包版与

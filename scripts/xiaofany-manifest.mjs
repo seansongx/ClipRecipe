@@ -35,10 +35,15 @@ if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version)) fail(`tag 不是 v<semve
 const v = version.replace(/[.+]/g, "\\$&");
 // 文件名是 tauri-action 按 productName 生成的默认名字（见 docs/RELEASING.md「发布哪些文件」）。
 // signed：自动更新用的包，正式构建一定带 .sig（缺了说明 Release 上的文件不全）。
+// arch 没写的规则取文件名里的第一个捕获组。
+// optional：实验性的 macOS dmg（release.yml 的 build-macos 任务，没有更新包与签名）。有就一起发布，
+// 供 website/install.sh 从 xiaofany.com 下载；缺了只给出提示，不拦住 Windows 与 Linux 的发布。
 const RULES = [
   { re: new RegExp(`^ClipRecipe_${v}_x64-setup\\.exe$`), platform: "win", arch: "x64", format: "exe", signed: true },
   { re: new RegExp(`^ClipRecipe_${v}_amd64\\.AppImage$`), platform: "linux", arch: "x64", format: "appimage", signed: true },
   { re: new RegExp(`^ClipRecipe_${v}_amd64\\.deb$`), platform: "linux", arch: "x64", format: "deb" },
+  { re: new RegExp(`^ClipRecipe_${v}_macos_(arm64)\\.dmg$`), platform: "mac", format: "dmg", optional: true },
+  { re: new RegExp(`^ClipRecipe_${v}_macos_(x64)\\.dmg$`), platform: "mac", format: "dmg", optional: true },
 ];
 // latest.json 是 GitHub 兜底更新清单，不上传；发布清单自己也在目录里。
 const IGNORED = new Set(["latest.json", "xiaofany-release.json"]);
@@ -60,7 +65,7 @@ for (const name of names) {
   const entry = {
     path: path.relative(path.dirname(out), path.join(dir, name)).split(path.sep).join("/"),
     platform: rule.platform,
-    arch: rule.arch,
+    arch: rule.arch ?? rule.re.exec(name)[1],
     format: rule.format,
     kind: "installer",
     upstreamUrl: `${base}/${encodeURIComponent(name)}`,
@@ -72,9 +77,14 @@ for (const name of names) {
   }
   files.push(entry);
 }
-// 每个版本都应三个包齐全：少了哪个，xiaofany.com 上该平台就会停在旧版本。
+// 每个版本都应 Windows 与 Linux 的三个包齐全：少了哪个，xiaofany.com 上该平台就会停在旧版本。
 for (const rule of RULES) {
-  if (!names.some((name) => rule.re.test(name))) fail(`缺少 ${rule.platform} ${rule.format} 安装包（${rule.re.source}）`);
+  if (names.some((name) => rule.re.test(name))) continue;
+  if (rule.optional) {
+    console.warn(`！没有 ${rule.platform} ${rule.format} 安装包（${rule.re.source}），该平台在 xiaofany.com 上停在旧版本`);
+  } else {
+    fail(`缺少 ${rule.platform} ${rule.format} 安装包（${rule.re.source}）`);
+  }
 }
 
 await writeFile(out, `${JSON.stringify({ version, files }, null, 2)}\n`);

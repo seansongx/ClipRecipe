@@ -136,6 +136,19 @@ jobs:
               [ "$name" = "$file" ] || { echo "$target 的下载地址指向 ${name}，应为 $file"; return 1; }
               echo "✓ $target → $got"
             done
+            # macOS 的 dmg（实验性，Release 上有才核对）：website/install.sh 用的文件信息接口返回这个文件和它的 SHA-256
+            for arch in arm64 x64; do
+              file="ClipRecipe_${version}_macos_${arch}.dmg"
+              [ -f "$RUNNER_TEMP/dist/$file" ] || continue
+              info="$(curl -fsS "$RELEASE_API/api/v1/products/$RELEASE_SLUG/asset?platform=mac&arch=$arch&format=dmg&version=$version" | tr -d '\r')" \
+                || { echo "mac $arch 的文件信息接口没有返回 $version"; return 1; }
+              name="$(printf '%s\n' "$info" | sed -n 's/^name=//p' | head -n 1)"
+              [ "$name" = "$file" ] || { echo "mac $arch 的文件信息接口返回 ${name}，应为 $file"; return 1; }
+              expected="$(sha256sum "$RUNNER_TEMP/dist/$file" | awk '{print $1}')"
+              got="$(printf '%s\n' "$info" | sed -n 's/^sha256=//p' | head -n 1 | tr 'A-F' 'a-f')"
+              [ "$got" = "$expected" ] || { echo "mac $arch 的 SHA-256 与 $file 不一致"; return 1; }
+              echo "✓ mac/$arch → $file"
+            done
           }
           for attempt in 1 2 3 4 5 6; do
             if check; then

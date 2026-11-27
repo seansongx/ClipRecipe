@@ -4,6 +4,12 @@
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。发布流程见 [docs/RELEASING.md](docs/RELEASING.md)：
 发布时把版本标题里的“未发布”改为发布日期（`YYYY-MM-DD`），该小节的内容会成为 GitHub Release 的说明和程序内更新对话框里的更新说明。
 
+## [未发布]
+
+### 新增
+
+- macOS 版（实验性，Apple 芯片与 Intel，macOS 10.15 及以上）：在终端执行 `curl -fsSL https://cliprecipe.xiaofany.com/install.sh | sh` 安装，更新时重新执行一次。没有 Apple 开发者签名，不支持程序内更新，界面与系统相关的行为尚未充分测试。
+
 ## [0.1.1] - 2026-11-26
 
 ### 新增

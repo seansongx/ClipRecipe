@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>剪方 ClipRecipe — 开源的视频批量处理工具</title>
+    <meta name="description" content="剪方（ClipRecipe）是开源的视频批量处理桌面工具：把裁剪、调速、水印、字幕、拼接等处理组成配方，一次应用到整批视频。">
+    <meta name="color-scheme" content="dark">
+    <style>
+      :root {
+        --background: #111214;
+        --card: #1a1b1f;
+        --border: #2c2e34;
+        --foreground: #ececee;
+        --muted: #a1a3ab;
+        --primary: #f2a33a;
+        --primary-foreground: #2b1d06;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--background);
+        color: var(--foreground);
+        font: 16px/1.7 system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+      }
+      main { max-width: 44rem; margin: 0 auto; padding: 4.5rem 1.5rem 3rem; }
+      h1 { margin: 0; font-size: 2.25rem; line-height: 1.25; letter-spacing: -0.01em; }
+      h1 small { display: block; margin-top: 0.25rem; color: var(--primary); font-size: 1rem; font-weight: 600; letter-spacing: 0.04em; }
+      h2 { margin: 3rem 0 0.75rem; font-size: 1.125rem; }
+      p { margin: 0.75rem 0; }
+      .lead { margin-top: 1.25rem; color: var(--muted); font-size: 1.0625rem; }
+      .note { color: var(--muted); font-size: 0.875rem; }
+      a { color: var(--primary); text-underline-offset: 0.2em; }
+      a:focus-visible, button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+      .downloads { display: grid; gap: 0.75rem; margin: 1rem 0 0; padding: 0; list-style: none; }
+      .downloads li {
+        display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem;
+        padding: 0.875rem 1rem; border: 1px solid var(--border); border-radius: 0.625rem; background: var(--card);
+      }
+      .downloads span { color: var(--muted); font-size: 0.875rem; }
+      .button {
+        display: inline-block; padding: 0.375rem 0.875rem; border-radius: 0.5rem;
+        background: var(--primary); color: var(--primary-foreground); font-weight: 600; font-size: 0.875rem; text-decoration: none;
+      }
+      .command {
+        display: flex; align-items: center; gap: 0.75rem; margin-top: 1rem;
+        padding: 0.75rem 0.75rem 0.75rem 1rem; border: 1px solid var(--border); border-radius: 0.625rem; background: var(--card);
+      }
+      .command code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font: 0.875rem/1.6 ui-monospace, "SF Mono", Consolas, monospace; }
+      .command button {
+        flex: none; padding: 0.3rem 0.75rem; border: 1px solid var(--border); border-radius: 0.5rem;
+        background: transparent; color: var(--foreground); font: inherit; font-size: 0.8125rem; cursor: pointer;
+      }
+      .command button:hover { border-color: var(--muted); }
+      footer { max-width: 44rem; margin: 0 auto; padding: 1.5rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.8125rem; }
+      footer a { color: inherit; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>剪方<small>ClipRecipe</small></h1>
+      <p class="lead">开源的视频批量处理桌面工具：把裁剪、调速、水印、字幕、拼接等处理组成配方，一次应用到整批视频，另有几十个独立的视频小工具。</p>
+
+      <h2>Windows 与 Linux</h2>
+      <ul class="downloads">
+        <li>
+          <div>Windows 10 / 11（x64）<br><span>安装包，装到当前用户，支持程序内更新</span></div>
+          <a class="button" href="https://xiaofany.com/dl/cliprecipe/win">下载</a>
+        </li>
+        <li>
+          <div>Linux（x64）AppImage<br><span>加上可执行权限后直接运行，支持程序内更新</span></div>
+          <a class="button" href="https://xiaofany.com/dl/cliprecipe/linux">下载</a>
+        </li>
+        <li>
+          <div>Linux（x64）deb<br><span>Debian / Ubuntu</span></div>
+          <a class="button" href="https://xiaofany.com/dl/cliprecipe/linux?format=deb">下载</a>
+        </li>
+      </ul>
+
+      <h2>macOS（实验性）</h2>
+      <p>在“终端”里执行下面这条命令。它按芯片下载对应的版本、校验 SHA-256 后装进“应用程序”，更新时重新执行一次即可。</p>
+      <div class="command">
+        <code id="install-command">curl -fsSL https://cliprecipe.xiaofany.com/install.sh | sh</code>
+        <button type="button" id="copy-command">复制</button>
+      </div>
+      <p class="note">macOS 版没有 Apple 开发者签名，也没有在各种机型上充分测试；不支持程序内更新。需要 macOS 10.15 或以后的版本。<a href="./install.sh">查看脚本内容</a></p>
+
+      <h2>源代码</h2>
+      <p>MIT 许可，代码、更新日志与历史版本都在 <a href="https://github.com/seansongx/ClipRecipe">GitHub</a>。</p>
+    </main>
+    <footer>
+      <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">鲁ICP备17049248号-1</a>
+    </footer>
+    <script>
+      const button = document.getElementById("copy-command");
+      button.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(document.getElementById("install-command").textContent);
+          button.textContent = "已复制";
+        } catch {
+          button.textContent = "请手动复制";
+        }
+        setTimeout(() => (button.textContent = "复制"), 2000);
+      });
+    </script>
+  </body>
+</html>

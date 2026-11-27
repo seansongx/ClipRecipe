@@ -29,6 +29,8 @@ const FILES = {
 const PUBKEY_PLACEHOLDER = "REPLACE_WITH_UPDATER_PUBLIC_KEY (see docs/RELEASING.md)";
 const REPO_URL = "https://github.com/seansongx/ClipRecipe";
 const XIAOFANY_DL = "https://xiaofany.com/dl/cliprecipe";
+/** 官网（website/，由 deploy-site.yml 部署）：macOS 的一键安装脚本在这里 */
+const SITE_URL = "https://cliprecipe.xiaofany.com";
 const SEMVER =/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 const read = (file) => fs.readFileSync(path.join(REPO, file), "utf8");
@@ -129,7 +131,7 @@ export function releaseNotes(changelog, version) {
 
 - **Windows 10 / 11（x64）**：\`ClipRecipe_${version}_x64-setup.exe\`。安装包没有代码签名，首次运行时 Windows SmartScreen 可能提示“已保护你的电脑”，点“更多信息”→“仍要运行”即可。
 - **Linux（x64）**：\`ClipRecipe_${version}_amd64.AppImage\`（加上可执行权限后直接运行，支持程序内自动更新），或 \`ClipRecipe_${version}_amd64.deb\`（Debian / Ubuntu，更新时请重新下载安装）。
-- 暂不提供 macOS 版本。
+- **macOS（实验性，Apple 芯片与 Intel）**：在终端执行 \`curl -fsSL ${SITE_URL}/install.sh | sh\`，它按芯片下载对应的 dmg、校验 SHA-256 后装进“应用程序”，更新时重新执行一次。macOS 版没有 Apple 开发者签名，不支持程序内更新；手动下载 \`ClipRecipe_${version}_macos_arm64.dmg\` / \`_macos_x64.dmg\` 安装后如果提示“已损坏，无法打开”，在终端执行 \`xattr -dr com.apple.quarantine /Applications/ClipRecipe.app\` 再打开。这个版本的 Release 里没有 dmg 时，说明 macOS 这次没有打包成功。
 - 已安装的 Windows 安装包版与 AppImage 版会在“设置 → 检查更新”中提示并可在程序内更新；其余文件（\`.sig\`、\`latest.json\`）供自动更新使用，不需要手动下载。
 `;
 }

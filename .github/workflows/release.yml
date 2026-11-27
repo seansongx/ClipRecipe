@@ -1,8 +1,9 @@
-# 发布：推送 v* tag（如 v0.2.0）时在 Windows 与 Linux 上打包，连同更新包签名与 latest.json 上传到一个草稿 Release，
+# 发布：推送 v* tag（如 v0.2.0）时在 Windows、Linux 与 macOS 上打包，连同更新包签名与 latest.json 上传到一个草稿 Release，
 # 由项目所有者检查后手动发布。完整步骤与首次配置见 docs/RELEASING.md。
 #
-# 产物：Windows NSIS 安装包（*-setup.exe），Linux AppImage 与 deb；自动更新用的 *.sig 与 latest.json。
-# 不打包 macOS（无法测试，未签名的包会被 Gatekeeper 拦截）。
+# 产物：Windows NSIS 安装包（*-setup.exe），Linux AppImage 与 deb；自动更新用的 *.sig 与 latest.json；
+# macOS 两种芯片各一个 dmg（实验性：没有 Apple 开发者签名与公证，不参与程序内自动更新，
+# 用 website/install.sh 一键安装）。
 #
 # 需要的仓库 Secrets：TAURI_SIGNING_PRIVATE_KEY（updater 私钥的内容）、TAURI_SIGNING_PRIVATE_KEY_PASSWORD（私钥口令）。
 name: Release
@@ -130,6 +131,62 @@ jobs:
           uploadUpdaterSignatures: true
           retryAttempts: 2
 
+  # macOS 的 dmg（实验性）。单独一个任务，不经 tauri-action：不生成更新包、不写 latest.json，
+  # 失败也不影响 Windows 与 Linux 的打包和下面的检查（草稿里少了 dmg 时由发布者决定是否照常发布）。
+  # 没有 Apple 开发者账号：应用只做 ad-hoc 签名（tauri.conf.json 的 bundle.macOS.signingIdentity 为 "-"，
+  # Apple 芯片要求可执行文件至少有 ad-hoc 签名），不公证；用户用 website/install.sh 安装时去掉隔离标记。
+  build-macos:
+    name: 打包（macOS ${{ matrix.arch }}）
+    needs: prepare
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            target: aarch64-apple-darwin
+          - arch: x64
+            target: x86_64-apple-darwin
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: release-${{ matrix.target }}
+
+      # 不带 tauri.release.conf.json：不生成更新包，也就不需要签名私钥
+      - name: 打包 dmg
+        run: npx tauri build --ci --target "${{ matrix.target }}" --bundles dmg
+
+      # 文件名统一为 ClipRecipe_<版本>_macos_<arm64|x64>.dmg（scripts/xiaofany-manifest.mjs 按它识别）
+      - name: 上传到草稿 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          set -- src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
+            echo "::error::应有且只有一个 dmg：$*"
+            exit 1
+          fi
+          out="$RUNNER_TEMP/ClipRecipe_${version}_macos_${{ matrix.arch }}.dmg"
+          cp "$1" "$out"
+          ls -l "$out"
+          gh release upload "$GITHUB_REF_NAME" "$out" --repo "$GITHUB_REPOSITORY" --clobber
+
   # 检查草稿 Release 里的 latest.json 同时包含 Windows 与 Linux（AppImage）的更新信息
   verify:
     name: 检查 latest.json
@@ -164,7 +221,7 @@ jobs:
           }
           win=$(asset_name windows-x86_64)
           linux=$(asset_name linux-x86_64)
-          echo "windows-x86_64 → $win；linux-x86_64 → $linux"
+          echo "windows-x86_64 → ${win}；linux-x86_64 → $linux"
           [[ "$win" == *-setup.exe ]] || { echo "::error::windows-x86_64 应指向 NSIS 安装包，实际是 $win"; exit 1; }
           [[ "$linux" == *.AppImage ]] || { echo "::error::linux-x86_64 应指向 AppImage，实际是 $linux"; exit 1; }
           echo "latest.json 正常。检查草稿 Release 后在 GitHub 上手动发布。"

@@ -1,7 +1,7 @@
 # 发布流程
 
 ClipRecipe 通过 GitHub Actions 打包并发布到 [GitHub Releases](https://github.com/seansongx/ClipRecipe/releases)：
-推送 `v*` tag 后，[`.github/workflows/release.yml`](../.github/workflows/release.yml) 在 Windows 与 Linux 上打包，
+推送 `v*` tag 后，[`.github/workflows/release.yml`](../.github/workflows/release.yml) 在 Windows、Linux 与 macOS 上打包，
 把安装包、更新包签名和 `latest.json` 上传到一个**草稿** Release，由项目所有者检查后手动发布。
 发布之后，[`.github/workflows/publish-xiaofany.yml`](../.github/workflows/publish-xiaofany.yml) 自动把同一批文件发布到
 xiaofany.com（slug `cliprecipe`）：官网下载地址 `https://xiaofany.com/dl/cliprecipe/...` 和程序内自动更新的主线路都在那里，
@@ -14,14 +14,33 @@ GitHub Release 是备用线路（程序在 xiaofany.com 连不上时读 Release 
 | Windows 10 / 11 x64 | `ClipRecipe_<版本>_x64-setup.exe`（NSIS 安装包） | 支持 |
 | Linux x64 | `ClipRecipe_<版本>_amd64.AppImage` | 支持 |
 | Linux x64 | `ClipRecipe_<版本>_amd64.deb` | 不支持：程序提示后打开发布页，由用户重新下载安装 |
+| macOS 10.15+（实验性） | `ClipRecipe_<版本>_macos_arm64.dmg`（Apple 芯片）、`ClipRecipe_<版本>_macos_x64.dmg`（Intel） | 不支持：程序提示重新执行安装命令 |
 | 自动更新用 | `*.sig`（更新包签名）、`latest.json`（版本、说明、下载地址与签名） | — |
 
 - **Windows 只发布 NSIS 安装包**（不发布 MSI）：NSIS 默认安装到当前用户目录、不需要管理员权限，自动更新时可以静默替换；
   安装界面支持简体中文；体积较小。两种格式同时发布会让用户困惑，`latest.json` 里也只能指向其中一种。
-- **不提供 macOS 版本**：没有条件测试，且未签名、未公证的应用会被 Gatekeeper 拦截。
+- **macOS 版是实验性的**：没有 Apple 开发者账号，应用只做 ad-hoc 签名（`tauri.conf.json` 的 `bundle.macOS.signingIdentity`
+  为 `-`），不公证，浏览器下载的 dmg 会被 Gatekeeper 拦截。所以推荐的安装方式是一键安装脚本
+  `curl -fsSL https://cliprecipe.xiaofany.com/install.sh | sh`（[`website/install.sh`](../website/install.sh)，写法与录播宝的相同）：
+  它向 xiaofany.com 查询对应芯片的 dmg 与 SHA-256，下载、校验后把应用复制到 `/Applications` 并去掉隔离标记；
+  重新执行就是更新。没有更新包，不参与程序内自动更新，`latest.json` 里也没有 macOS。dmg 由 `release.yml` 里单独的
+  `build-macos` 任务打包，失败时不影响 Windows 与 Linux（草稿里少了 dmg，由发布者决定是否照常发布；
+  发布到 xiaofany.com 时缺 dmg 只给出提示）。界面与系统相关的行为没有在 macOS 上逐一验证。
 - **没有 Windows 代码签名**：安装包未经 Authenticode 签名，首次下载或运行时 Windows SmartScreen 可能提示
   “Windows 已保护你的电脑”，用户需点“更多信息”→“仍要运行”。这与下面的“更新包签名”无关——后者只用于程序内自动更新时
   校验下载的文件确实来自本项目。
+
+## 官网与安装脚本
+
+[`website/`](../website/) 是 `cliprecipe.xiaofany.com` 的内容：一页下载说明和 macOS 的 `install.sh`。main 分支上 `website/` 有改动时
+[`.github/workflows/deploy-site.yml`](../.github/workflows/deploy-site.yml) 用 rsync 同步到官网服务器，再检查线上的首页与 `install.sh`；
+没有配置下面的 Secret 时只给出提示后跳过。安装脚本由 [`.github/workflows/install-scripts.yml`](../.github/workflows/install-scripts.yml)
+在 macOS runner 上离线测试（假的分发平台与假 dmg：正常安装、覆盖安装、校验值错误、目录不可写、尚未发布）。
+
+官网首次上线要做的（只做一次）：把域名 `cliprecipe.xiaofany.com` 解析到服务器并配好站点目录与证书，`install.sh` 要以
+`text/plain` 返回；在服务器上建一个只能同步该目录的部署用户，然后设置仓库 Secret `SITE_DEPLOY_HOST`、`SITE_DEPLOY_USER`、
+`SITE_DEPLOY_SSH_KEY`（没有口令的 OpenSSH 私钥全文）、`SITE_DEPLOY_KNOWN_HOSTS`（服务器的主机公钥记录）；端口不是 22 时设置变量
+`SITE_DEPLOY_PORT`。做法与录播宝的官网相同。
 
 ## 首次配置（只做一次）
 
@@ -103,12 +122,13 @@ GitHub Release 是备用线路（程序在 xiaofany.com 连不上时读 Release 
 
 5. **等发布流水线完成**（Actions → Release，约 20～40 分钟）。它依次：
    - `prepare`：做上面的检查，确认设置了签名私钥，创建草稿 Release（标题 `ClipRecipe 0.2.0`，说明取自 CHANGELOG）；
+   - `build-macos`：两种芯片各打一个 dmg 并上传（实验性，与下面两步互不影响）；
    - `build`：先 Windows、后 Linux（逐个进行，避免两边同时改写 `latest.json`）用
      [`tauri-apps/tauri-action`](https://github.com/tauri-apps/tauri-action) 打包、签名并上传；
    - `verify`：下载草稿里的 `latest.json`，确认版本号正确，Windows 指向 NSIS 安装包、Linux 指向 AppImage，且都有签名。
 
 6. **检查草稿 Release**（Releases 页面里标为 Draft）：文件齐全（见上表），说明无误；最好下载 Windows 安装包和 AppImage
-   各装一次试试。确认后点 **Publish release**。
+   各装一次试试；有 Mac 时把 dmg 也装一次（一键安装脚本要等发布到 xiaofany.com 之后才能下到这个版本）。确认后点 **Publish release**。
 
 7. **等 `publish-xiaofany` 完成**（Actions → Publish to xiaofany.com，几分钟）：它下载 Release 上的 `ClipRecipe_*` 文件，
    用 `scripts/xiaofany-manifest.mjs` 生成清单（文件不全、缺签名、认不出的文件名都会失败），以 CHANGELOG 这一节为更新说明

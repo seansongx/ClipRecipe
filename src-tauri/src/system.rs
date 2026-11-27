@@ -346,13 +346,19 @@ pub fn pubkey_configured(pubkey: Option<&str>) -> bool {
 /// 不能在程序内自动更新的原因；`None` 表示可以。
 ///
 /// 未配置公钥的构建无法校验下载的更新包；deb / rpm 交给系统包管理器（更新插件虽能调用 dpkg / rpm，但需要
-/// 管理员权限，发布流程也只把 AppImage 写进 `latest.json`）；没有打包的程序没有可替换的安装。
+/// 管理员权限，发布流程也只把 AppImage 写进 `latest.json`）；macOS 只发布 dmg、没有更新包，用安装脚本更新；
+/// 没有打包的程序没有可替换的安装。
 pub fn manual_update_reason(kind: InstallKind, pubkey_ok: bool) -> Option<&'static str> {
     if !pubkey_ok {
         return Some("这个版本没有配置更新签名公钥，不能在程序内自动更新");
     }
     match kind {
-        InstallKind::Nsis | InstallKind::Msi | InstallKind::AppImage | InstallKind::MacApp => None,
+        InstallKind::Nsis | InstallKind::Msi | InstallKind::AppImage => None,
+        // macOS 只发布没有开发者签名的 dmg，没有更新包：`latest.json` 与 xiaofany.com 的升级接口里都没有它
+        InstallKind::MacApp => Some(
+            "macOS 版不支持程序内自动更新：退出程序后在终端重新执行安装命令 \
+             curl -fsSL https://cliprecipe.xiaofany.com/install.sh | sh 即可更新，也可以到发布页下载 dmg",
+        ),
         InstallKind::Deb | InstallKind::Rpm => {
             Some("deb / rpm 安装的版本请到发布页下载新的安装包（AppImage 版可以在程序内自动更新）")
         }
@@ -650,13 +656,17 @@ mod tests {
     #[test]
     fn manual_fallback_decision() {
         use InstallKind::*;
-        // 配置了公钥：安装包与 AppImage 可以自动更新，deb / rpm 与未打包的程序回退到发布页
-        for kind in [Nsis, Msi, AppImage, MacApp] {
+        // 配置了公钥：安装包与 AppImage 可以自动更新，deb / rpm、macOS 与未打包的程序回退到发布页
+        for kind in [Nsis, Msi, AppImage] {
             assert_eq!(manual_update_reason(kind, true), None, "{kind:?}");
         }
-        for kind in [Deb, Rpm, Unbundled] {
+        for kind in [Deb, Rpm, MacApp, Unbundled] {
             assert!(manual_update_reason(kind, true).is_some(), "{kind:?}");
         }
+        // macOS 的说明里给出安装命令（与 website/install.sh 开头写的一致）
+        assert!(manual_update_reason(MacApp, true)
+            .unwrap()
+            .contains("curl -fsSL https://cliprecipe.xiaofany.com/install.sh | sh"));
         // 没有公钥时一律回退，并说明是公钥的原因
         for kind in [Nsis, Msi, AppImage, MacApp, Deb, Rpm, Unbundled] {
             assert!(manual_update_reason(kind, false).unwrap().contains("公钥"));

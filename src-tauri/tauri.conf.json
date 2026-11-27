@@ -46,7 +46,8 @@
     "targets": [
       "nsis",
       "appimage",
-      "deb"
+      "deb",
+      "dmg"
     ],
     "publisher": "ClipRecipe contributors",
     "copyright": "Copyright (c) 2026 ClipRecipe contributors. MIT License.",
@@ -71,6 +72,10 @@
         ],
         "displayLanguageSelector": false
       }
+    },
+    "macOS": {
+      "signingIdentity": "-",
+      "minimumSystemVersion": "10.15"
     },
     "linux": {
       "deb": {

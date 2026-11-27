@@ -18,7 +18,7 @@
   以 `--config` 合并。打开它而没有 `TAURI_SIGNING_PRIVATE_KEY` 时 `tauri build` 会直接失败（“A public key has been found, but no
   private key”），放进主配置会让本地打包和端到端构建都依赖私钥。发布用的 tauri CLI 还会核对私钥与 `pubkey` 是否成对。
 - **能否自动更新**（纯函数 `system::manual_update_reason(安装方式, 公钥是否已配置)`，有单元测试）：安装方式取自
-  `tauri::utils::platform::bundle_type()`（打包工具写进程序）。NSIS / MSI / AppImage / macOS 应用包可以；deb / rpm 交给用户重新下载
+  `tauri::utils::platform::bundle_type()`（打包工具写进程序）。NSIS / MSI / AppImage 可以；macOS 只发布没有开发者签名的 dmg、没有更新包，提示重新执行安装命令（`website/install.sh`）；deb / rpm 交给用户重新下载
   （插件虽能调用 dpkg / rpm，但需要管理员权限；xiaofany 的 `linux` 与 `latest.json` 的 `linux-x86_64` 都指向 AppImage）；未打包的程序（开发版、`cargo run`、
   端到端测试的 `--no-bundle` 构建）与未配置公钥的构建不行。
 - **检查**（`check_update`）：能自动更新时用插件检查（xiaofany 的接口只在有新版本时返回该平台的文件；`latest.json` 由插件比较版本，
@@ -35,8 +35,8 @@
 - **界面**：`state/update.ts`（`run`：idle / downloading / installing / failed）、`components/UpdateDialog.tsx`（版本号、更新说明、
   “下载并安装” / “打开发布页” / “稍后”，下载进度与“取消下载”，失败时“重试” / “打开发布页”）。何时检查不变：`set.auto-update`
   启动时检查（失败静默），设置页“立即检查”。
-- **发布**：见 [RELEASING.md](../RELEASING.md)。`.github/workflows/ci.yml`（前端检查；Windows 与 Linux 上 fmt / clippy / test）、
+- **发布**：见 [RELEASING.md](../RELEASING.md)。`.github/workflows/ci.yml`（前端检查；Windows、Linux 与 macOS 上 fmt / clippy / test）、
   `.github/workflows/release.yml`（`v*` tag → 检查版本 / CHANGELOG / 公钥 → 草稿 Release → `tauri-apps/tauri-action@v1` 逐个平台打包签名上传 →
   检查 `latest.json`）、`.github/workflows/publish-xiaofany.yml`（Release 发布后 → `scripts/xiaofany-manifest.mjs` 生成清单 →
-  `scripts/publish-xiaofany.mjs` 上传到 xiaofany.com → 核对版本接口与升级接口）。`bundle.targets` 为 `nsis`、`appimage`、`deb`（每个平台只打本平台的格式）；NSIS 语言为简体中文与英文、
+  `scripts/publish-xiaofany.mjs` 上传到 xiaofany.com → 核对版本接口与升级接口）。`bundle.targets` 为 `nsis`、`appimage`、`deb`、`dmg`（每个平台只打本平台的格式；macOS 的 dmg 由 `release.yml` 的 `build-macos` 任务单独打包上传，见 RELEASING.md）；NSIS 语言为简体中文与英文、
   安装到当前用户。版本号的同步与检查：`scripts/release.mjs`（`npm run release:version` / `release:check`）。

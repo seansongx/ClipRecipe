@@ -155,15 +155,10 @@ export default function App() {
           </span>
           <Tabs value={view} onValueChange={(v) => setView(v as ViewId)}>
             <nav>
-              <TabsList aria-label="主导航" className="group-data-horizontal/tabs:h-8.5 gap-0.5 rounded-lg border bg-background">
+              <TabsList aria-label="主导航" size="lg">
                 {NAV.map(({ id, label, icon: Icon, shortcut }) => (
                   <Hint key={id} label={label} keys={keys[shortcut]} side="bottom">
-                    <TabsTrigger
-                      value={id}
-                      id={triggerId(id)}
-                      aria-controls={panelId(id)}
-                      className="px-3.5 text-muted-foreground data-active:bg-muted data-active:font-semibold data-active:text-foreground dark:text-muted-foreground dark:data-active:border-transparent dark:data-active:bg-muted"
-                    >
+                    <TabsTrigger value={id} id={triggerId(id)} aria-controls={panelId(id)}>
                       <Icon />
                       {label}
                     </TabsTrigger>

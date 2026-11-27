@@ -143,7 +143,9 @@ export default function PreviewStage() {
         </div>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           <ToggleGroup
-            spacing={0.5}
+            variant="segmented"
+            size="sm"
+            spacing={0}
             value={[view]}
             disabled={!usable}
             aria-label="显示原片或效果"
@@ -151,14 +153,9 @@ export default function PreviewStage() {
               const chosen = VIEWS.find((v) => v.value === next[0]);
               if (chosen) useStage.getState().setView(chosen.value);
             }}
-            className="rounded-lg border bg-card p-0.5"
           >
             {VIEWS.map((v) => (
-              <ToggleGroupItem
-                key={v.value}
-                value={v.value}
-                className="h-6 rounded-md px-2.5 font-normal text-muted-foreground aria-pressed:bg-muted aria-pressed:text-foreground"
-              >
+              <ToggleGroupItem key={v.value} value={v.value}>
                 {v.label}
               </ToggleGroupItem>
             ))}

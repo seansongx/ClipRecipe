@@ -133,7 +133,7 @@ function ResolutionForm({ value, onChange }: ModuleFormProps<ResolutionParams>) 
           </ParamField>
           <ParamField label="常用">
             <ToggleGroup
-              variant="outline"
+              variant="segmented"
               spacing={1}
               aria-label="常用尺寸"
               value={SIZE_PRESETS.filter((p) => p.width === value.width && p.height === value.height).map((p) => p.label)}

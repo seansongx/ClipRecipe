@@ -111,7 +111,7 @@ const SCROLL_OPTIONS: { value: ScrollMode; label: string }[] = [
 function AnchorGrid({ value, onChange, label }: { value: Anchor; onChange: (anchor: Anchor) => void; label: string }) {
   return (
     <ToggleGroup
-      variant="outline"
+      variant="segmented"
       spacing={1}
       aria-label={label}
       value={[value]}

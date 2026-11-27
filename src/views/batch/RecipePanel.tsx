@@ -83,15 +83,14 @@ function useVisibleSteps(
 }
 
 /**
- * 展开卡片是 secondary 底：输入框、下拉框、分段按钮（未选中项）默认是半透明底，压在 secondary 上
- * 占位符与选中 / 未选中的对比都不够，卡片里改为不透明的 card 底（与设计稿一致）。
+ * 展开卡片是 secondary 底：输入框、下拉框默认是半透明底，压在 secondary 上占位符对比不够，
+ * 卡片里改为不透明的 card 底（与设计稿一致）。分段选择自带不透明的 background 底（轨道 / 小块），不用在这里改。
  */
 const CARD_CONTROLS = [
   "[&_[data-slot=input]]:bg-card",
   "[&_[data-slot=input-group]]:bg-card",
   "[&_[data-slot=textarea]]:bg-card",
   "[&_[data-slot=select-trigger]]:bg-card",
-  "[&_[data-slot=toggle-group-item]:not([aria-pressed=true]):not(:hover)]:bg-card",
 ].join(" ");
 
 function ModulePreviewButton({ id }: { id: string }) {

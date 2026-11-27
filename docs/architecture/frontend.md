@@ -15,7 +15,9 @@
     先 `npx shadcn@latest add <组件> --diff` 看上游差异，再手动合并。没有“与原版一致”的检查（`check:shadcn` 已删除）。
   - 已改过的组件及原因：`button`（有只给页面唯一主操作用的 `xl` 尺寸）；`switch`（更大；未选中为透明底 + 边框 + 小滑块，因为在琥珀主色下
     选中与未选中的轨道亮度太接近）；`slider`（粗轨道、竖条滑块头、已选段用前景色）；`toggle`（有 `pill` 变体，队列状态筛选用）；
-    `badge` / `field`（`text-primary` 改为 `text-primary-ink`）。再改组件时同样在这里记“改了什么、为什么”，不要抄类名。
+    `toggle` / `toggle-group` / `tabs`（全应用的单选分段只有一种长相，见下方“选中态与对比度”：`toggle` 用 `segmented` 变体代替原来的
+    `outline`，`toggle-group` 按 spacing 把它画成轨道里的段或独立小块，`tabs` 的横向 `default` 变体改成同样的轨道 + 段并加 `size`；
+    竖向 Tabs 的样式不变）；`badge` / `field`（`text-primary` 改为 `text-primary-ink`）。再改组件时同样在这里记“改了什么、为什么”，不要抄类名。
   - 组件里个别用不到的导入（如 `scroll-area.tsx` 的 `import * as React`）会撞上 `noUnusedLocals`；`npm run typecheck`
     （`scripts/typecheck.mjs`）只对 `components/ui/` 忽略这一类（TS6133），业务代码照常检查。
   - **应用只有深色主题**（视频工具，设计稿只有深色；没有主题设置、没有切换）。
@@ -79,8 +81,14 @@
   不会像 Radix 的 `asChild` 那样把选中态改掉；但 shadcn 的 TooltipTrigger 传进来的 `data-slot="tooltip-trigger"` 会覆盖被包控件自己的
   `data-slot`（Mira 的样式与 ButtonGroup、InputGroup 等按 data-slot 选择元素），`Hint` 合并属性时去掉了它。自己用 `render` 把一个
   shadcn 触发器套在另一个 shadcn 控件上时也要注意这一点（e2e 的界面状态审计会检查带状态的控件的 data-slot 没有变成 tooltip-trigger）。
-- **选中态与对比度**：用组件自带的选中样式：导航（顶栏的主导航是横向 Tabs，设置分组与工具箱的分类 / 工具列表是竖向 Tabs）用 Tabs 的 `default` 变体（muted 列表底上的选中项
-  有底色，另有 input 色边框；键盘焦点是 ring 色的描边 + 光晕），分段选择 / 按钮组是 ToggleGroup 的 `outline` 变体（选中项 muted 底）。
+- **选中态与对比度**：用组件自带的选中样式，使用处不另写外观类。“在几个互斥选项间切换”只有一种长相——**分段切换**：一条轨道
+  （细 `border` 边框、`background` 底、2px 内边距），里面的段没有描边、圆角小一号，选中段 muted 底 + 前景色 + 加粗，未选中次要色、悬停浅底，
+  键盘焦点是 ring 色光晕；轨道总高与同尺寸的按钮 / 输入框相同。它有两种写法：ToggleGroup 的 `segmented` 变体（`ChoiceGroup` 默认用它；
+  `spacing={0}` 是轨道，选项放不下时轨道换成多行；`spacing` ≥ 1 是排成栅格的独立小块，块用 `border` 边框、`background` 底，选中态同上；
+  预览舞台顶栏用 `size="sm"`）和横向 Tabs 的 `default` 变体（顶栏主导航用 `size="lg"`，文本模块的“文本 1/2/3”用默认尺寸）。
+  轨道 / 小块的底总是不透明的 `background`，所以压在 card、secondary、background 哪种底色上，选中段（muted）与未选中段的底色对比都是 1.39。
+  不属于这一类的：队列的状态筛选是 ToggleGroup 的 `pill` 变体（筛选标签）；设置分组、工具箱的分类 / 工具列表是竖向 Tabs（导航列表，
+  使用处写了选中样式：muted 底，工具列表另有主色描边）。
   规则：选中项与未选中项的底色亮度对比 ≥ 1.2（只改文字颜色不算选中态），文字对比满足 WCAG AA（正文 4.5:1、大字 3:1），
   控件边界（输入框、复选框、开关）与背景 3:1，键盘焦点环描边与背景 3:1，禁用的控件按 WCAG 豁免；e2e 的界面状态审计
   （`scripts/e2e-audit-page.js`）逐组检查，全部是硬失败（`SOFT_RULES` 为空）。shadcn 默认的深色配色达不到其中几条（输入框与开关边界、

@@ -65,7 +65,7 @@ function RemoveWatermarkForm({ value, onChange }: ModuleFormProps<RemoveWatermar
         <ParamField label="位置" hint="可多选。角标按画面短边的 30%×12% 计算，横竖屏一致；字幕条为画面底部 76%～90% 高度处。">
           <ToggleGroup
             multiple
-            variant="outline"
+            variant="segmented"
             spacing={1}
             value={value.presets}
             onValueChange={(presets) => onChange({ presets: presets as WatermarkPreset[] })}

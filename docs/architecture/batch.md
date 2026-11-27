@@ -104,7 +104,7 @@ use common::*; // ffmpeg_paths()、TempDir、make_clip、probe、collector
 | 开关 | shadcn `Switch`（`checked`、`onCheckedChange`、`aria-label`） | `import { Switch } from "@/components/ui/switch"` |
 | 下拉选择 | shadcn `Select` 系列 | `@/components/ui/select` |
 | 复选框 + 文字 | shadcn `Checkbox` + `Label`（`htmlFor`，id 用 `useId()`） | `@/components/ui/checkbox`、`@/components/ui/label` |
-| 多段可选按钮（可换行） | shadcn `ToggleGroup` / `ToggleGroupItem` | `@/components/ui/toggle-group` |
+| 多段可选按钮 / 预设栅格（可换行、可多选） | shadcn `ToggleGroup` / `ToggleGroupItem`（`variant="segmented"`，栅格加 `spacing={1}`） | `@/components/ui/toggle-group` |
 | 文件 / 目录素材 | `AssetSourceInput`（`value: AssetSource`、`extensions`、`kindLabel`） | `import AssetSourceInput from "@/components/AssetSourceInput"` |
 | 颜色（#rrggbb） | `ColorField`（`value`、`onChange`、`label`）：Popover + 色板 + 十六进制输入 | `import ColorField from "@/components/ColorField"` |
 | 区域框选 / 位置选取 | `RegionPicker` / `PointPicker`（见下） | `@/components/RegionPicker` |

@@ -210,7 +210,7 @@ function PipForm(props: ModuleFormProps<PipParams>) {
               />
             </div>
             <ToggleGroup
-              variant="outline"
+              variant="segmented"
               spacing={1}
               aria-label="常用画布尺寸"
               value={CANVAS_PRESETS.filter((p) => p.width === value.canvasWidth && p.height === value.canvasHeight).map(

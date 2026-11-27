@@ -8,7 +8,10 @@ const toggleVariants = cva(
     variants: {
       variant: {
         default: "bg-transparent",
-        outline: "border border-input bg-transparent hover:bg-muted",
+        // 分段切换（全应用的单选分段 / 预设栅格只用这一种外观）：未选中次要色、悬停浅底，选中 muted 底 + 前景色 + 加粗。
+        // 在 ToggleGroup 里 spacing=0 时各项是轨道里的段（轨道与段高见 toggle-group.tsx），spacing ≥ 1 时是各自带边框的小块。
+        segmented:
+          "bg-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground aria-pressed:bg-muted aria-pressed:font-semibold aria-pressed:text-foreground aria-pressed:hover:bg-muted",
         pill: "rounded-full bg-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground aria-pressed:bg-muted aria-pressed:text-foreground",
       },
       size: {

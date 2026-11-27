@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Eye, RefreshCw, Shuffle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -17,8 +17,10 @@ import { useSelectedVideo } from "@/state/selection";
 import { useSettings } from "@/state/settings";
 import { stageKey, useStage, variantCount, type StageView } from "@/state/stage";
 
-/** 自动刷新的防抖（毫秒）：渲染一帧只要一两百毫秒，这里只需挡住拖动滑块、连续输入时的中间值。 */
-const DEBOUNCE_MS = 150;
+/** 自动刷新的防抖（毫秒）：改参数时等输入停下来（中间值常常是无效的，例如刚打开模块还没选素材）。 */
+const DEBOUNCE_MS = 400;
+/** 只是拖动取帧时间时的防抖：渲染一帧只要一两百毫秒，挡住拖动中的中间值即可。 */
+const SCRUB_DEBOUNCE_MS = 150;
 
 const VIEWS: { value: StageView; label: string }[] = [
   { value: "source", label: "原片" },
@@ -98,11 +100,18 @@ export default function PreviewStage() {
   const autoPaused = running;
   const stale = wanted !== renderedKey || interrupted;
 
+  // 上一次安排刷新时的取帧时间：这次只有它变了，就是在拖动时间滑块
+  const scheduledTime = useRef(time);
   useEffect(() => {
+    const scrubbing = scheduledTime.current !== time;
+    scheduledTime.current = time;
     if (!isTauri || !wanted || !ready || modalOpen || autoPaused || !stale) return;
-    const timer = setTimeout(() => void useStage.getState().render(), DEBOUNCE_MS);
+    const timer = setTimeout(
+      () => void useStage.getState().render(),
+      scrubbing ? SCRUB_DEBOUNCE_MS : DEBOUNCE_MS,
+    );
     return () => clearTimeout(timer);
-  }, [wanted, ready, modalOpen, autoPaused, stale]);
+  }, [wanted, ready, modalOpen, autoPaused, stale, time]);
 
   // 队列清空时删除画面；卸载时删除全部文件
   useEffect(() => {

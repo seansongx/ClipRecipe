@@ -13,3 +13,5 @@
 - Bug 和任务提 issue，不写进文档。
 - 改完文档运行 `node scripts/check-docs.mjs --index` 更新索引，再运行 `node scripts/check-docs.mjs --check`。
 <!-- project-docs:rules:end -->
+
+本项目另外允许两处（`.claude/project-docs.json` 的 `allow`）：`docs/architecture/`（各子系统的架构文档，从 `docs/architecture.md` 的表格进入，新增时在表里加一行）和 `docs/RELEASING.md`（发布流程）。

@@ -110,6 +110,8 @@ export interface Settings {
   targetFormat: TargetFormat;
   onExists: OnExists;
   nameStrip: { text: string; regex: boolean };
+  /** set.name-template：批量处理输出文件名格式，变量见 lib/nameTemplate.ts */
+  nameTemplate: string;
   parallel: number;
   hevc: boolean;
   skipDone: boolean;
@@ -154,12 +156,23 @@ export interface Settings {
   outputDir: string;
 }
 
+/** 本地时间（后端 jobs/output.rs 的 BatchTime），用于输出文件名格式的 {date} / {time}；用 lib/nameTemplate.ts 的 batchTime() 生成。 */
+export interface BatchTime {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+}
+
 /** 与后端 `Settings::default()` 一致（tests/recipe_defaults.rs 会检查）。 */
 export const DEFAULT_SETTINGS: Settings = {
   version: 1,
   targetFormat: "mp4",
   onExists: "rename",
   nameStrip: { text: "", regex: false },
+  nameTemplate: "{name}",
   parallel: 2,
   hevc: false,
   skipDone: true,
@@ -412,6 +425,8 @@ export const startJobs = (request: {
   settings: Settings;
   outputDir: string;
   seed?: number;
+  /** 本批开始处理的本地时间（输出文件名格式的 {date} / {time}） */
+  startedAt: BatchTime;
 }) => call<{ seed: number }>("start_jobs", { request });
 export const stopJobs = () => call<void>("stop_jobs");
 export const cancelTask = (id: string) => call<boolean>("cancel_task", { id });
@@ -423,6 +438,7 @@ export const previewCommand = (request: {
   settings: Settings;
   outputDir: string;
   number: number;
+  startedAt: BatchTime;
 }) => call<PreviewResponse>("preview_command", { request });
 export const checkOutputDir = (outputDir: string, sources: string[]) =>
   call<OutputDirCheck>("check_output_dir", { outputDir, sources });

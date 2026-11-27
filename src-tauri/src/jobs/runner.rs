@@ -16,7 +16,7 @@ use std::thread::JoinHandle;
 use serde::Serialize;
 
 use super::finish::{default_dispose, finish_task};
-use super::output::{path_key, plan_output, FissionSlot, OutputPlan, OutputRequest};
+use super::output::{path_key, plan_output, BatchTime, FissionSlot, OutputPlan, OutputRequest};
 use super::{EventSink, JobEvent, LogLevel, TaskAttachments, TaskSpec, TaskState};
 use crate::ffmpeg::{self, CancelToken, EncoderCaps, FfmpegPaths, MediaInfo, RunError};
 use crate::model::rng::{fission_seed, mix_seed};
@@ -46,6 +46,8 @@ pub struct RunExtras {
     pub attachments: HashMap<String, TaskAttachments>,
     /// 替换“删除源视频”的实际操作（None 时按设置移入回收站或永久删除）
     pub dispose: Option<DisposeFn>,
+    /// 本批开始处理的本地时间（输出文件名格式的 `{date}` / `{time}`）；None 时取开始时的 UTC 时间
+    pub started_at: Option<BatchTime>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
@@ -61,6 +63,8 @@ struct Shared {
     extras: RunExtras,
     sink: Arc<dyn EventSink>,
     total: usize,
+    /// 本批开始处理的时间，同一批的所有任务相同
+    started: BatchTime,
     pending: Mutex<VecDeque<TaskSpec>>,
     running: Mutex<HashMap<String, CancelToken>>,
     reserved: Mutex<HashSet<String>>,
@@ -199,11 +203,13 @@ pub fn start_with(
             t
         })
         .collect();
+    let started = extras.started_at.unwrap_or_else(BatchTime::now_utc);
     let shared = Arc::new(Shared {
         config,
         extras,
         sink,
         total,
+        started,
         pending: Mutex::new(VecDeque::new()),
         running: Mutex::default(),
         reserved: Mutex::default(),
@@ -459,6 +465,7 @@ impl TaskRun<'_> {
                     number: task.number,
                     total: shared.total,
                     fission: slot,
+                    started: shared.started,
                 },
                 Path::exists,
                 |p| reserved.contains(&path_key(p)),

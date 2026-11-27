@@ -1,7 +1,7 @@
 // 设置页：左侧分组列表 + 右侧当前分组。每个设置项对应 docs/specs/settings.md的一个 ID（set.*），
 // 字段定义见 lib/backend.ts 的 Settings（与后端 model/settings.rs 一致）。
 
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { BookOpen, FileInput, FolderOpen, Play, RefreshCw, Trash2, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,6 +48,7 @@ import {
   type TargetFormat,
 } from "@/lib/backend";
 import { formatSize } from "@/lib/format";
+import { batchTime, DEFAULT_NAME_TEMPLATE, NAME_VARIABLES, renderName, timeVars } from "@/lib/nameTemplate";
 import { EXAMPLE_PATHS, usePlatform } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { shortcutGroups } from "@/lib/shortcuts";
@@ -142,6 +143,62 @@ function useCpuCores() {
 
 // ---------------------------------------------------------------- 转换
 
+/** set.name-template：输出文件名格式。变量按钮插入到光标处；示例用固定的文件名与当前时间。 */
+function NameTemplateRow() {
+  const template = useSettings((s) => s.settings.nameTemplate);
+  const update = useSettings((s) => s.update);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const insert = (token: string) => {
+    const input = inputRef.current;
+    const start = input?.selectionStart ?? template.length;
+    const end = input?.selectionEnd ?? start;
+    update({ nameTemplate: template.slice(0, start) + token + template.slice(end) });
+    const caret = start + token.length;
+    requestAnimationFrame(() => {
+      input?.focus();
+      input?.setSelectionRange(caret, caret);
+    });
+  };
+
+  const example = renderName(template, {
+    name: "示例视频",
+    index: "01",
+    folder: "素材",
+    ...timeVars(batchTime()),
+  });
+
+  return (
+    <Row label="输出文件名格式" hint="批量处理输出的文件名。可用变量：文件名（已去除）、队列序号、开始处理的日期与时间、源文件所在文件夹；其它文字原样保留">
+      <div className="flex items-center gap-2">
+        <Input
+          ref={inputRef}
+          aria-label="输出文件名格式"
+          value={template}
+          onChange={(e) => update({ nameTemplate: e.target.value })}
+          placeholder={DEFAULT_NAME_TEMPLATE}
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={template === DEFAULT_NAME_TEMPLATE}
+          onClick={() => update({ nameTemplate: DEFAULT_NAME_TEMPLATE })}
+        >
+          恢复默认
+        </Button>
+      </div>
+      <div className="mt-1.5 flex flex-wrap gap-1">
+        {NAME_VARIABLES.map((v) => (
+          <Button key={v.token} variant="secondary" size="xs" onClick={() => insert(v.token)}>
+            {v.label} {v.token}
+          </Button>
+        ))}
+      </div>
+      <p className="mt-1.5 truncate text-xs text-muted-foreground">示例：{example}.mp4</p>
+    </Row>
+  );
+}
+
 function ConvertGroup() {
   const settings = useSettings((s) => s.settings);
   const update = useSettings((s) => s.update);
@@ -194,6 +251,7 @@ function ConvertGroup() {
             </Label>
           </div>
         </Row>
+        <NameTemplateRow />
         <Row label="并行任务数" hint={`上限为 CPU 核心数（${cpuCores}）`}>
           <NumberInput
             label="并行任务数"

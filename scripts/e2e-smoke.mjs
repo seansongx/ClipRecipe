@@ -1533,6 +1533,14 @@ async function batchScenarios(s, media) {
     await ui.settingsSwitch(page, "自动加载同名字幕", true);
     await ui.settingsSwitch(page, "文件名加队列序号", true);
     await ui.settingsSwitch(page, "静音预览", true);
+    // 输出文件名格式（set.name-template）：输入固定前缀，再用变量按钮把 {name} 插到光标处
+    await page.click({ selector: "[role=tab]", text: "转换" });
+    const templateInput = { selector: "main input", label: "输出文件名格式" };
+    await page.fill(templateInput, "out_");
+    await page.click({ selector: "main button", text: "文件名 {name}" });
+    await page.waitFor("输出文件名格式 = out_{name}", (spec) => window.__e2e.find(spec)?.value === "out_{name}", [templateInput]);
+    await page.waitFor("输出文件名格式的示例", () => document.querySelector("main").innerText.includes("示例：out_示例视频.mp4"));
+    await saveShot(s, "settings-name-template");
     await ui.nav(page, "batch", "视频队列");
     // 只留帧率，避免文本模块也画在底部
     await ui.resetRecipe(page);
@@ -1544,8 +1552,17 @@ async function batchScenarios(s, media) {
     await ui.startBatch(page);
     const summary = await ui.waitBatchFinished(page);
     const files = videoOutputs(out);
-    // 序号按队列长度补零（1 个任务时为 “1_”）
-    assert(files.length === 1 && /^0*1_subbed\.mp4$/.test(files[0]), `输出（应带队列序号）：${files}`);
+    // 文件名按格式 out_{name}，再加队列序号前缀（按队列长度补零，1 个任务时为 “1_”）
+    assert(files.length === 1 && /^0*1_out_subbed\.mp4$/.test(files[0]), `输出（应为 序号_out_源文件名）：${files}`);
+    const jobs = await page.evaluate(() => window.__e2e.ipc.filter((r) => r.cmd === "start_jobs").pop());
+    const startedAt = jobs?.args?.request?.startedAt;
+    assert(jobs?.args?.request?.settings?.nameTemplate === "out_{name}" && startedAt?.year >= 2026, `start_jobs 的格式与开始时间：${JSON.stringify(jobs?.args?.request?.settings?.nameTemplate)} ${JSON.stringify(startedAt)}`);
+    // 改回默认格式（之后的场景按源文件名检查输出）
+    await ui.nav(page, "settings", "设置");
+    await page.click({ selector: "[role=tab]", text: "转换" });
+    await page.click({ selector: "main button", text: "恢复默认" });
+    await page.waitFor("输出文件名格式恢复默认", (spec) => window.__e2e.find(spec)?.value === "{name}", [templateInput]);
+    await ui.nav(page, "batch", "视频队列");
     // 原尺寸灰度帧：源是纯色（标准差≈0），烧录的字幕（白字黑边，底部）让底部一带的标准差明显变大
     const frame = await grayFrame(path.join(out, files[0]), 1.5, 640, 360);
     const src = await grayFrame(media.subbed, 1.5, 640, 360);

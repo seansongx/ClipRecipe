@@ -24,6 +24,7 @@ import {
   type TaskState,
 } from "../lib/backend";
 import { fileName, pathKey } from "../lib/format";
+import { batchTime } from "../lib/nameTemplate";
 import { isSimulated } from "../lib/simulated";
 import { requireFfmpeg } from "./ffmpeg";
 import { useLog } from "./log";
@@ -360,7 +361,13 @@ export const useQueue = create<QueueState>((set, get) => ({
       ),
     });
     try {
-      const { seed } = await startJobs({ tasks, recipe, settings, outputDir: settings.outputDir });
+      const { seed } = await startJobs({
+        tasks,
+        recipe,
+        settings,
+        outputDir: settings.outputDir,
+        startedAt: batchTime(),
+      });
       log.add("debug", `随机种子：${seed}`);
     } catch (e) {
       log.add("error", `无法开始处理：${String(e)}`);

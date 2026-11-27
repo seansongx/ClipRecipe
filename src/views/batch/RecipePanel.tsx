@@ -44,6 +44,7 @@ import { moduleSummary, PIPELINE_DEFS, PREVIEW_EXCLUDED } from "@/features/pipel
 import { moduleIcon } from "@/features/pipeline/icons";
 import { PIPELINE_MODULES, groupBy, type Feature } from "@/features/registry";
 import { isTauri, MAX_FISSION, previewCommand, type ModuleParams } from "@/lib/backend";
+import { batchTime } from "@/lib/nameTemplate";
 import { useLog } from "@/state/log";
 import { usePreview } from "@/state/preview";
 import { useRecipe } from "@/state/recipe";
@@ -310,6 +311,7 @@ async function showCommand() {
       settings,
       outputDir: settings.outputDir,
       number: video.number,
+      startedAt: batchTime(),
     });
     log.add("info", `「${video.item.name}」的处理命令（编码器 ${preview.encoder}）：\n${preview.commandLine}`);
     for (const warning of preview.warnings) log.add("warn", warning);

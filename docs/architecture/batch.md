@@ -182,8 +182,8 @@ import RegionPicker, { PointPicker, type Rect, type Point } from "@/components/R
 
 - **裂变**（`pipe.fission`）：次数存在配方的顶层字段 `fission`（1..=100）。调度器对每个任务依次跑 N 轮，
   第 r 轮的种子为 `rng::fission_seed(任务种子, r)`（第 1 轮就是任务种子，所以 N=1 与不裂变完全一致）。
-  N>1 时输出到 `<输出目录>/<视频名>/<视频名>_<r>.mp4`；开启高级开关 `fissionFolder`（`set.fission-folder`）时改为
-  `<输出目录>/<视频名>/第 r 次裂变/<视频名>.mp4`。进度事件带 `round` / `rounds`，`percent` 是全部轮次的总进度；
+  N>1 时输出到 `<输出目录>/<视频名>/<文件名>_<r>.mp4`；开启高级开关 `fissionFolder`（`set.fission-folder`）时改为
+  `<输出目录>/<视频名>/第 r 次裂变/<文件名>.mp4`（视频名是去除后的源文件名，文件名是套用输出文件名格式后的结果，见下文“输出命名”）。进度事件带 `round` / `rounds`，`percent` 是全部轮次的总进度；
   完成事件的 `outputs` 列出全部输出。某一轮失败或取消时，已完成的轮次保留。
 - **预览**：`pipeline::build_preview` 与正式构建共用模块应用逻辑，只是输出改为 libx264 ultrafast 的低清片段
   （默认高 480，`-ss`/`-t` 放在输出端，因此时间是输出时间轴）或单帧 jpg，不用硬件编码。文件写在
@@ -221,6 +221,11 @@ import RegionPicker, { PointPicker, type Rect, type Point } from "@/components/R
   - 独立工具不经过这些步骤（字幕 / 封面 / 体积压缩只作用于批量处理；版权信息见下文，工具也会写入）。
 - **虚化背景**（`set.blur-center`）：分辨率、画中画的 `blurCenter` 改为 `Option<bool>`，默认 `null` = 跟随设置；旧配方里的 true / false 仍然有效且优先。
   表单为“跟随设置 / 取中 / 拉伸”（`components/BlurCenterChoice.tsx`）。
+- **输出命名**（`jobs/output.rs` 的 `plan_output`，纯函数）：源文件名 → 文件名去除（`set.name-strip`）→ 输出文件名格式
+  （`set.name-template`，`render_name`）→ 队列序号前缀 → 裂变编号 → 扩展名 → 重名时重命名 / 覆盖（不覆盖源文件、不抢本批已占用的名字）。
+  `{date}` / `{time}` 用 `OutputRequest::started`：前端点“开始”（或“查看命令”）时把本地时间作为 `startedAt` 传给
+  `start_jobs` / `preview_command`，经 `RunExtras::started_at` 给整批共用；没有传时用开始时的 UTC 时间。设置页的示例由
+  `lib/nameTemplate.ts` 按同样规则计算。收尾（移回源位置）与队列显示都使用调度器回报的实际输出路径，不自己拼文件名。
 - **目录素材**（`set.recursive`）：`AssetSourceInput` 新建“目录”素材时以设置为“包含子目录”的初始值，之后以素材自己的勾选为准。
 - **附加信息不进 `TaskSpec`**（独立工具也构造它）：`start_jobs` 的任务是 `TaskSpec` + `subtitle` / `cover`（serde flatten），
   按任务 ID 放进 `RunExtras::attachments`，经 `jobs::start_with` 交给调度器；`jobs::start` 不变（等于空的附加信息）。

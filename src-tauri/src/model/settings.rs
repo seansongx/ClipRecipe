@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 
 pub const SETTINGS_VERSION: u32 = 1;
 pub const SETTINGS_FILE: &str = "settings.json";
+/// `set.name-template` 的默认值：输出文件名取（去除后的）源文件名。
+pub const DEFAULT_NAME_TEMPLATE: &str = "{name}";
 
 /// `set.format`
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,6 +95,8 @@ pub struct Settings {
     pub target_format: TargetFormat,
     pub on_exists: OnExists,
     pub name_strip: NameStrip,
+    /// `set.name-template`：批量处理输出文件名的格式（变量见 `jobs::output::render_name`）
+    pub name_template: String,
     /// `set.parallel`：并行任务数，实际运行时限制在 1..=CPU 核心数
     pub parallel: u32,
     /// `set.hevc`
@@ -177,6 +181,7 @@ impl Default for Settings {
             target_format: TargetFormat::Mp4,
             on_exists: OnExists::Rename,
             name_strip: NameStrip::default(),
+            name_template: DEFAULT_NAME_TEMPLATE.into(),
             parallel: 2,
             hevc: false,
             skip_done: true,
@@ -277,10 +282,14 @@ mod tests {
                 regex: false,
             },
             copyright: "© 2026".into(),
+            name_template: "{date}_{name}".into(),
             ..Settings::default()
         };
         settings.save(&path).unwrap();
         assert_eq!(Settings::load(&path).unwrap(), settings);
+        assert!(std::fs::read_to_string(&path)
+            .unwrap()
+            .contains(r#""nameTemplate": "{date}_{name}""#));
 
         std::fs::write(&path, r#"{"hevc":true,"targetFormat":"source"}"#).unwrap();
         let partial = Settings::load(&path).unwrap();
@@ -313,6 +322,9 @@ mod tests {
         assert_eq!(loaded.subtitle_style.color, "#ffffff");
         assert!(loaded.delete_to_trash && !loaded.delete_source);
         assert_eq!(loaded.cover_frames, 1);
+        // 输出文件名格式（set.name-template）出现之前的文件：取默认值，输出名与以前一样
+        assert_eq!(loaded.name_template, DEFAULT_NAME_TEMPLATE);
+        assert_eq!(loaded.name_template, "{name}");
         let startup = Settings::load_for_startup(&path).unwrap();
         assert_eq!(startup.after_all, AfterAll::None);
         assert_eq!(startup.parallel, 3);

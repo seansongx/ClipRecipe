@@ -8,7 +8,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use super::{blocking, AppState};
 use crate::ffmpeg::{self, encoders, EncoderCaps, MediaInfo};
-use crate::jobs::output::{plan_output, same_path, FissionSlot, OutputRequest};
+use crate::jobs::output::{plan_output, same_path, BatchTime, FissionSlot, OutputRequest};
 use crate::jobs::{self, JobEvent, RunConfig, RunExtras, TaskAttachments, TaskSpec};
 use crate::model::rng::{fission_seed, mix_seed, random_seed};
 use crate::model::{Recipe, Settings};
@@ -47,6 +47,9 @@ pub struct StartRequest {
     /// 不指定时随机生成；返回值里带回实际使用的种子
     #[serde(default)]
     seed: Option<u64>,
+    /// 点“开始”时的本地时间（输出文件名格式的 `{date}` / `{time}`）
+    #[serde(default)]
+    started_at: Option<BatchTime>,
 }
 
 #[derive(Serialize)]
@@ -87,7 +90,10 @@ pub async fn start_jobs(
     let sink = move |event: JobEvent| {
         let _ = app.emit("job-event", event);
     };
-    let mut extras = RunExtras::default();
+    let mut extras = RunExtras {
+        started_at: request.started_at,
+        ..RunExtras::default()
+    };
     let mut tasks = Vec::with_capacity(request.tasks.len());
     for task in request.tasks {
         if !task.attachments.is_empty() {
@@ -167,6 +173,9 @@ pub struct PreviewRequest {
     subtitle: Option<String>,
     #[serde(default)]
     cover: Option<String>,
+    /// 当前本地时间（输出文件名格式的 `{date}` / `{time}`）
+    #[serde(default)]
+    started_at: Option<BatchTime>,
 }
 
 #[derive(Serialize)]
@@ -203,6 +212,7 @@ pub async fn preview_command(request: PreviewRequest) -> Result<PreviewResponse,
                     round: 1,
                     total: request.recipe.fission_count(),
                 },
+                started: request.started_at.unwrap_or_else(BatchTime::now_utc),
             },
             Path::exists,
             |_| false,

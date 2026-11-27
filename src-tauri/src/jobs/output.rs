@@ -1,13 +1,141 @@
-//! 输出路径解析：输出目录、按来源文件夹 / 视频名分目录、文件名去除、队列序号、
-//! 裂变（`pipe.fission`）、目标已存在时重命名或覆盖。
+//! 输出路径解析：输出目录、按来源文件夹 / 视频名分目录、文件名去除、输出文件名格式（`set.name-template`）、
+//! 队列序号、裂变（`pipe.fission`）、目标已存在时重命名或覆盖。
 
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use regex::Regex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::model::{NameStrip, OnExists, Settings};
 use crate::pipeline::output_extension;
+
+/// 本批开始处理的本地时间，用于输出文件名格式的 `{date}` / `{time}`；同一批所有任务相同。
+/// 由前端在点“开始”时给出（浏览器的本地时间，各平台一致）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchTime {
+    pub year: u16,
+    pub month: u8,
+    pub day: u8,
+    pub hour: u8,
+    pub minute: u8,
+    pub second: u8,
+}
+
+impl BatchTime {
+    /// `YYYYMMDD`
+    pub fn date(&self) -> String {
+        format!("{:04}{:02}{:02}", self.year, self.month, self.day)
+    }
+
+    /// `HHMMSS`
+    pub fn time(&self) -> String {
+        format!("{:02}{:02}{:02}", self.hour, self.minute, self.second)
+    }
+
+    /// Unix 时间戳（秒）对应的 UTC 时间。
+    pub fn from_unix_utc(secs: u64) -> Self {
+        let days = (secs / 86_400) as i64;
+        let rem = secs % 86_400;
+        // Howard Hinnant 的 civil_from_days
+        let z = days + 719_468;
+        let era = z.div_euclid(146_097);
+        let doe = z - era * 146_097;
+        let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let day = doy - (153 * mp + 2) / 5 + 1;
+        let month = if mp < 10 { mp + 3 } else { mp - 9 };
+        let year = yoe + era * 400 + i64::from(month <= 2);
+        Self {
+            year: year.clamp(0, 9999) as u16,
+            month: month as u8,
+            day: day as u8,
+            hour: (rem / 3_600) as u8,
+            minute: (rem % 3_600 / 60) as u8,
+            second: (rem % 60) as u8,
+        }
+    }
+
+    /// 调用方没有给出时间时的后备：当前 UTC 时间（前端开始处理与生成命令时总会给出本地时间）。
+    pub fn now_utc() -> Self {
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        Self::from_unix_utc(secs)
+    }
+}
+
+/// 输出文件名格式里的变量取值。
+pub struct NameVars<'a> {
+    /// 去除后的源文件名（不含扩展名）
+    pub name: &'a str,
+    /// 已补零的队列序号
+    pub index: &'a str,
+    pub date: &'a str,
+    pub time: &'a str,
+    /// 源文件所在文件夹的名字
+    pub folder: &'a str,
+}
+
+/// 按输出文件名格式（`set.name-template`）生成文件名主体：替换 `{name}` `{index}` `{date}` `{time}` `{folder}`
+/// （区分大小写），其它文字与不认识的 `{…}` 原样保留；非法文件名字符换成 `_`，去掉首尾空格与结尾的点；
+/// 格式为空或结果为空时退回 `{name}`。
+pub fn render_name(template: &str, vars: &NameVars) -> String {
+    let mut out = String::with_capacity(template.len() + vars.name.len());
+    let mut rest = template;
+    while let Some(open) = rest.find('{') {
+        out.push_str(&rest[..open]);
+        let after = &rest[open + 1..];
+        let value = after.find('}').and_then(|close| {
+            let value = match &after[..close] {
+                "name" => vars.name,
+                "index" => vars.index,
+                "date" => vars.date,
+                "time" => vars.time,
+                "folder" => vars.folder,
+                _ => return None,
+            };
+            Some((value, close))
+        });
+        match value {
+            Some((value, close)) => {
+                out.push_str(value);
+                rest = &after[close + 1..];
+            }
+            // 不认识的变量（或没有闭合的花括号）：只保留这个 `{`，后面的文字继续匹配
+            None => {
+                out.push('{');
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    let cleaned: String = out
+        .chars()
+        .map(|c| {
+            if c.is_control() || matches!(c, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|') {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    let cleaned = cleaned
+        .trim()
+        .trim_end_matches(|c: char| c == '.' || c.is_whitespace());
+    if cleaned.is_empty() {
+        vars.name.to_owned()
+    } else {
+        cleaned.to_owned()
+    }
+}
+
+/// 队列序号补零的位数：按本批总数。
+fn index_width(total: usize) -> usize {
+    total.max(1).to_string().len()
+}
 
 /// 裂变中的第几次（从 1 起）与总次数。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,6 +172,8 @@ pub struct OutputRequest<'a> {
     pub total: usize,
     /// 裂变轮次；不裂变时为 [`FissionSlot::SINGLE`]
     pub fission: FissionSlot,
+    /// 本批开始处理的时间（输出文件名格式的 `{date}` / `{time}`）
+    pub started: BatchTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -118,19 +248,35 @@ pub fn plan_output(
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .ok_or_else(|| format!("无效的文件名：{}", req.input.display()))?;
-    let mut stem = strip_name(&original_stem, &req.settings.name_strip)?;
+    let stripped = strip_name(&original_stem, &req.settings.name_strip)?;
     let fission = req.fission;
-    // 裂变次数 >1 时总是输出到视频同名文件夹
+    // 裂变次数 >1 时总是输出到视频同名文件夹；文件夹名用去除后的源文件名，不套输出文件名格式
+    // （否则带日期时间的格式每批都会新建文件夹）
     if req.settings.out_by_name || fission.is_fission() {
-        dir.push(&stem);
+        dir.push(&stripped);
     }
     let round_folders = fission.is_fission() && req.settings.fission_folder;
     if round_folders {
         dir.push(fission_folder_name(fission.round));
     }
+    let width = index_width(req.total);
+    let index = format!("{:0width$}", req.number);
+    let folder = source_dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let mut stem = render_name(
+        &req.settings.name_template,
+        &NameVars {
+            name: &stripped,
+            index: &index,
+            date: &req.started.date(),
+            time: &req.started.time(),
+            folder: &folder,
+        },
+    );
     if req.settings.number_prefix {
-        let width = req.total.max(1).to_string().len();
-        stem = format!("{:0width$}_{stem}", req.number);
+        stem = format!("{index}_{stem}");
     }
     if fission.is_fission() && !round_folders {
         let width = fission.total.to_string().len();
@@ -190,6 +336,16 @@ mod tests {
     use super::*;
     use std::collections::HashSet;
 
+    /// 固定的“本批开始时间”：2026-11-26 09:05:07
+    const STARTED: BatchTime = BatchTime {
+        year: 2026,
+        month: 11,
+        day: 26,
+        hour: 9,
+        minute: 5,
+        second: 7,
+    };
+
     fn plan(
         input: &str,
         out: Option<&str>,
@@ -209,6 +365,7 @@ mod tests {
                 number: 3,
                 total: 12,
                 fission: FissionSlot::SINGLE,
+                started: STARTED,
             },
             |p| existing.contains(&path_key(p)),
             |p| reserved.contains(&path_key(p)),
@@ -294,6 +451,7 @@ mod tests {
                 number: 1,
                 total: 1,
                 fission: FissionSlot::SINGLE,
+                started: STARTED,
             },
             |_| false,
             |_| false,
@@ -322,6 +480,7 @@ mod tests {
                             round,
                             total: total_rounds,
                         },
+                        started: STARTED,
                     },
                     |_| false,
                     |p| taken.contains(&path_key(p)),
@@ -391,5 +550,215 @@ mod tests {
             regex: true,
         };
         assert!(strip_name("x", &bad).is_err());
+    }
+
+    fn with_template(template: &str) -> Settings {
+        Settings {
+            name_template: template.into(),
+            ..Settings::default()
+        }
+    }
+
+    #[test]
+    fn default_name_template_keeps_the_source_name() {
+        assert_eq!(Settings::default().name_template, "{name}");
+        for s in [Settings::default(), with_template("")] {
+            let p = plan("/src/a.mkv", Some("/out"), &s, &[], &[]).unwrap();
+            assert_eq!(p.path, Path::new("/out").join("a.mp4"));
+        }
+    }
+
+    #[test]
+    fn name_template_variables() {
+        let s = with_template("{index}-{date}-{time}-{folder}-{name}");
+        let p = plan("/videos/旅行/clip.mov", Some("/out"), &s, &[], &[]).unwrap();
+        assert_eq!(name(&p), "03-20261126-090507-旅行-clip.mp4");
+        // 每个变量单独使用
+        for (template, expected) in [
+            ("{name}", "clip.mp4"),
+            ("{index}", "03.mp4"),
+            ("{date}", "20261126.mp4"),
+            ("{time}", "090507.mp4"),
+            ("{folder}", "旅行.mp4"),
+            ("前缀 {name} 后缀", "前缀 clip 后缀.mp4"),
+        ] {
+            let p = plan(
+                "/videos/旅行/clip.mov",
+                Some("/out"),
+                &with_template(template),
+                &[],
+                &[],
+            )
+            .unwrap();
+            assert_eq!(name(&p), expected, "{template}");
+        }
+    }
+
+    #[test]
+    fn unknown_variables_and_case_are_kept_as_text() {
+        for (template, expected) in [
+            ("{Name}_{foo}_{name}", "{Name}_{foo}_clip.mp4"),
+            ("{{name}}", "{clip}.mp4"),
+            ("{name}{", "clip{.mp4"),
+            ("{}{name}", "{}clip.mp4"),
+        ] {
+            let p = plan(
+                "/src/clip.mp4",
+                Some("/out"),
+                &with_template(template),
+                &[],
+                &[],
+            )
+            .unwrap();
+            assert_eq!(name(&p), expected, "{template}");
+        }
+    }
+
+    #[test]
+    fn name_template_illegal_chars_and_empty_results() {
+        let p = plan(
+            "/src/clip.mp4",
+            Some("/out"),
+            &with_template("a:b*c?\"<>|/\\\t{name}"),
+            &[],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(name(&p), "a_b_c________clip.mp4");
+        let p = plan(
+            "/src/clip.mp4",
+            Some("/out"),
+            &with_template("  {name}. . "),
+            &[],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(name(&p), "clip.mp4");
+        // 结果为空时退回去除后的源文件名
+        for template in ["   ", "...", " . "] {
+            let p = plan(
+                "/src/clip.mp4",
+                Some("/out"),
+                &with_template(template),
+                &[],
+                &[],
+            )
+            .unwrap();
+            assert_eq!(name(&p), "clip.mp4", "{template:?}");
+        }
+    }
+
+    #[test]
+    fn name_template_with_strip_prefix_and_video_folder() {
+        let s = Settings {
+            name_strip: NameStrip {
+                text: "_raw\n【.*?】".into(),
+                regex: true,
+            },
+            number_prefix: true,
+            out_by_name: true,
+            name_template: "{date}_{name}".into(),
+            ..Settings::default()
+        };
+        let p = plan("/src/【广告】clip_raw.mp4", Some("/out"), &s, &[], &[]).unwrap();
+        // 视频同名文件夹仍是去除后的源文件名；序号前缀加在格式结果之前
+        assert_eq!(
+            p.path,
+            Path::new("/out").join("clip").join("03_20261126_clip.mp4")
+        );
+    }
+
+    #[test]
+    fn name_template_with_fission() {
+        let s = with_template("x_{name}");
+        let paths = plan_rounds(&s, 3);
+        let dir = Path::new("/out").join("clip");
+        assert_eq!(
+            paths,
+            [
+                dir.join("x_clip_1.mp4"),
+                dir.join("x_clip_2.mp4"),
+                dir.join("x_clip_3.mp4")
+            ]
+        );
+        let folders = Settings {
+            fission_folder: true,
+            ..with_template("{date}")
+        };
+        assert_eq!(
+            plan_rounds(&folders, 2),
+            [
+                dir.join("第 1 次裂变").join("20261126.mp4"),
+                dir.join("第 2 次裂变").join("20261126.mp4")
+            ]
+        );
+    }
+
+    /// 同一批的多个视频套同一个不含 `{name}` 的格式：靠现有的重名规则各得其名，即使是覆盖模式也不互相覆盖。
+    #[test]
+    fn same_template_for_a_whole_batch_does_not_collide() {
+        for on_exists in [OnExists::Rename, OnExists::Overwrite] {
+            let s = Settings {
+                on_exists,
+                ..with_template("成片_{date}")
+            };
+            let mut taken: Vec<String> = Vec::new();
+            let names: Vec<String> = ["/src/a.mp4", "/src/b.mov", "/other/c.mkv"]
+                .iter()
+                .enumerate()
+                .map(|(i, input)| {
+                    let plan = plan_output(
+                        &OutputRequest {
+                            input: Path::new(input),
+                            source_root: None,
+                            output_dir: Some(Path::new("/out")),
+                            settings: &s,
+                            number: i + 1,
+                            total: 3,
+                            fission: FissionSlot::SINGLE,
+                            started: STARTED,
+                        },
+                        |p| path_key(p) == path_key(&Path::new("/out").join("成片_20261126.mp4")),
+                        |p| taken.contains(&path_key(p)),
+                    )
+                    .unwrap();
+                    taken.push(path_key(&plan.path));
+                    name(&plan)
+                })
+                .collect();
+            let expected = match on_exists {
+                // 磁盘上已有同名文件：重命名模式从 (1) 开始
+                OnExists::Rename => [
+                    "成片_20261126 (1).mp4",
+                    "成片_20261126 (2).mp4",
+                    "成片_20261126 (3).mp4",
+                ],
+                // 覆盖模式只有第一个覆盖已有文件，其余的不抢本批已占用的名字
+                OnExists::Overwrite => [
+                    "成片_20261126.mp4",
+                    "成片_20261126 (1).mp4",
+                    "成片_20261126 (2).mp4",
+                ],
+            };
+            assert_eq!(names, expected, "{on_exists:?}");
+        }
+    }
+
+    #[test]
+    fn batch_time_formatting() {
+        assert_eq!(STARTED.date(), "20261126");
+        assert_eq!(STARTED.time(), "090507");
+        let epoch = BatchTime::from_unix_utc(0);
+        assert_eq!(
+            (epoch.date(), epoch.time()),
+            ("19700101".into(), "000000".into())
+        );
+        let leap = BatchTime::from_unix_utc(1_709_210_096);
+        assert_eq!(
+            (leap.date(), leap.time()),
+            ("20240229".into(), "123456".into())
+        );
+        let march = BatchTime::from_unix_utc(951_868_800);
+        assert_eq!(march.date(), "20000301");
     }
 }
